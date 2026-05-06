@@ -1,0 +1,38 @@
+{
+  "textAnalysis": {
+    "purpose": "Product document analysis, product info extraction, module brief generation, prompt planning",
+    "apiKeyEnv": "TEXT_ANALYSIS_API_KEY",
+    "baseUrl": "https://www.shanbaob.net/v1",
+    "endpoint": "/chat/completions",
+    "model": "gemini-3.1-pro-preview",
+    "defaults": {
+      "max_tokens": 4096,
+      "temperature": 0.2
+    }
+  },
+  "imageGeneration": {
+    "purpose": "Primary product detail image generation endpoint; each image tries this endpoint first",
+    "apiKeyEnv": "IMAGE_GENERATION_API_KEY",
+    "baseUrl": "https://api-xai.ainaibahub.com/v1",
+    "endpoint": "/images/generations",
+    "model": "gpt-image-2",
+    "defaults": {
+      "size": "1024x1024",
+      "n": 1,
+      "quality": "high",
+      "output_format": "png",
+      "response_format": "b64_json"
+    },
+    "fallback": {
+      "purpose": "Fallback image generation endpoint used only when the primary endpoint fails for the current image",
+      "apiKeyEnv": "FALLBACK_IMAGE_GENERATION_API_KEY",
+      "baseUrl": "https://yunwu.ai/v1",
+      "endpoint": "/images/generations",
+      "model": "gpt-image-2-all",
+      "defaults": {
+        "size": "1024x1024",
+        "n": 1
+      }
+    }
+  }
+}

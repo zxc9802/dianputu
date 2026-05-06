@@ -1,0 +1,85 @@
+export type StepId = "upload" | "style" | "review" | "modules" | "preview";
+
+export type UploadSlot = "product_image" | "reports" | "documents";
+
+export type StyleOption = {
+  id: string;
+  name: string;
+  keywords: string[];
+  primary_color: string;
+  asset: string;
+};
+
+export type ImageGroup = "main" | "campaign" | "detail";
+
+export type ModuleConfig = {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  order: number;
+  image_group?: ImageGroup;
+};
+
+export type ProductInfo = {
+  product_name: string;
+  category: string;
+  spec: string;
+  core_selling_points: string[];
+  functions: string[];
+  ingredients: Array<{ name: string; benefit: string }>;
+  target_users: string[];
+  usage_method: string[];
+  authority_assets: string[];
+  effect_claims: Array<{ claim: string; value: string; source_type: string }>;
+  confirmation_status: "pending" | "confirmed";
+};
+
+export type UploadedFileInfo = {
+  id: string;
+  slot: UploadSlot;
+  name: string;
+  size: number;
+  type: string;
+  lastModified: number;
+  dataUrl?: string;
+  text?: string;
+};
+
+export type MaterialPayload = {
+  slot: UploadSlot;
+  filename: string;
+  content_type: string;
+  data_url?: string;
+  text?: string;
+};
+
+export type PublicModelConfig = {
+  textAnalysis: {
+    model: string;
+    configured: boolean;
+    defaults: {
+      max_tokens: number;
+      temperature: number;
+    };
+  };
+  imageGeneration: {
+    model: string;
+    configured: boolean;
+    defaults: {
+      size: string;
+      n: number;
+      quality?: string;
+      output_format?: string;
+      response_format?: string;
+    };
+    fallback?: {
+      model: string;
+      configured: boolean;
+      defaults: {
+        size: string;
+        n: number;
+      };
+    };
+  };
+};
