@@ -20,4 +20,4 @@ RUN cd frontend && npm run build
 
 EXPOSE 3000
 
-CMD ["./scripts/start-zeabur.sh"]
+CMD ["/bin/bash", "/app/scripts/start-zeabur.sh"]
