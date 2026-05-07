@@ -13,6 +13,7 @@ from app.routers.projects import (
     generate_detail_images,
     normalize_product_info_from_model,
     normalize_style_plan_from_model,
+    prepare_compose_image_urls,
     plan_custom_style,
     run_compose_job,
 )
@@ -586,6 +587,22 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(job["content"], b"")
         finally:
             projects.COMPOSE_JOBS.pop("compose_test", None)
+
+    async def test_prepare_compose_image_urls_uploads_data_urls_before_job_creation(self):
+        with patch(
+            "app.routers.projects.upload_image_url_if_configured",
+            new=AsyncMock(side_effect=["https://img.example.com/composed/source-1.png", "https://img.example.com/source-2.png"]),
+        ) as upload_mocked:
+            result = await prepare_compose_image_urls(
+                [
+                    "data:image/png;base64,aGVsbG8=",
+                    "https://img.example.com/source-2.png",
+                ]
+            )
+
+        self.assertEqual(result, ["https://img.example.com/composed/source-1.png", "https://img.example.com/source-2.png"])
+        upload_mocked.assert_any_await("data:image/png;base64,aGVsbG8=", "compose-sources")
+        upload_mocked.assert_any_await("https://img.example.com/source-2.png", "compose-sources")
 
 
 if __name__ == "__main__":

@@ -51,11 +51,13 @@ assertIncludes("components/PreviewStep.tsx", "download", "preview step must expo
 assertIncludes("components/PreviewStep.tsx", "groupedItems.detail.map", "preview step must render every generated detail image in the long preview");
 assertNotIncludes("components/PreviewStep.tsx", "generatedImages[0]?.url", "preview step must not use only the first generated image as the full long preview");
 assertIncludes("components/PreviewStep.tsx", "createComposeLongImageJob", "preview step must start backend JPEG composition for the full long image");
+assertIncludes("components/PreviewStep.tsx", "prepareComposeLongImageSources", "preview step must upload data URL sources before creating the compose job");
 assertIncludes("components/PreviewStep.tsx", "fetchComposeLongImageJob", "preview step must poll backend JPEG composition progress");
 assertIncludes("components/PreviewStep.tsx", "composeStatus", "preview step must show backend progress during composition");
 assertIncludes("components/PreviewStep.tsx", "full-detail.jpg", "full long image export must download a JPG file");
 assertNotIncludes("components/PreviewStep.tsx", "full-detail.svg", "full long image export must not download SVG");
 assertIncludes("lib/api.ts", "/api/projects/compose-long-image", "frontend API must expose backend long image composition");
+assertIncludes("lib/api.ts", "/api/projects/compose-long-image/prepare", "frontend API must expose backend compose source preparation");
 assertIncludes("app/page.tsx", "PROJECT_STATE_STORAGE_KEY", "page must define a storage key for preserving generated results");
 assertIncludes("app/page.tsx", "localStorage", "page must persist generated results across reloads and step changes");
 assertIncludes("app/page.tsx", "restored.generatedImages", "page must restore generated images from saved state");

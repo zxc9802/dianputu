@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Download, FileImage, Monitor, Smartphone } from "lucide-react";
-import { createComposeLongImageJob, fetchComposeLongImageDownload, fetchComposeLongImageJob } from "@/lib/api";
+import { createComposeLongImageJob, fetchComposeLongImageDownload, fetchComposeLongImageJob, prepareComposeLongImageSources } from "@/lib/api";
 import type { CommercePlatform, GeneratedImageVersionState, ImageGroup, ModuleConfig } from "@/lib/types";
 
 type GeneratedImage = { module_id: string; url: string };
@@ -111,7 +111,10 @@ export function PreviewStep({
     setComposeError("");
     setComposeStatus("正在准备合成");
     try {
-      const { job_id: jobId } = await createComposeLongImageJob(detailManifest);
+      setComposeStatus("正在上传合成素材");
+      const prepared = await prepareComposeLongImageSources(detailManifest);
+      setComposeStatus("正在创建合成任务");
+      const { job_id: jobId } = await createComposeLongImageJob(prepared.images);
       const startedAt = Date.now();
       while (Date.now() - startedAt < COMPOSE_TIMEOUT_MS) {
         const status = await fetchComposeLongImageJob(jobId);

@@ -198,6 +198,14 @@ export async function createComposeLongImageJob(images: ComposeImageInput) {
   });
 }
 
+export async function prepareComposeLongImageSources(images: ComposeImageInput) {
+  return requestJson<{ images: ComposeImageInput }>("/api/projects/compose-long-image/prepare", {
+    method: "POST",
+    body: JSON.stringify({ images }),
+    timeoutMs: 600000
+  });
+}
+
 export async function fetchComposeLongImageJob(jobId: string) {
   return requestJson<ComposeJobStatus>(`/api/projects/compose-long-image/jobs/${jobId}`, { timeoutMs: 600000 });
 }

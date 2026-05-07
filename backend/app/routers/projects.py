@@ -24,7 +24,20 @@ logger = logging.getLogger("detail_image_generation")
 MODEL_GATEWAY_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
 WHITE_BACKGROUND_MODULE_IDS = {"main_white_bg", "campaign_white_bg"}
 COMPOSE_JOBS: dict[str, dict[str, Any]] = {}
+COMPOSE_JOB_TTL_SECONDS = 600  # 10 minutes
 WHITE_BACKGROUND_REFERENCE_REQUIRED_ERROR = "白底图需要先上传产品图，系统会直接复用上传图以避免模型重绘导致包装、Logo 或瓶身变形。"
+
+
+def _cleanup_expired_compose_jobs() -> None:
+    """Remove compose jobs older than TTL to prevent memory leaks."""
+    now = datetime.now(UTC)
+    expired = [
+        job_id
+        for job_id, job in COMPOSE_JOBS.items()
+        if (now - datetime.fromisoformat(job.get("created_at", now.isoformat()))).total_seconds() > COMPOSE_JOB_TTL_SECONDS
+    ]
+    for job_id in expired:
+        COMPOSE_JOBS.pop(job_id, None)
 
 
 async def upload_image_url_if_configured(url: str, folder: str) -> str:
@@ -54,6 +67,13 @@ async def upload_bytes_if_configured(content: bytes, *, content_type: str, folde
 async def upload_material_image_if_configured(material: UploadedMaterial) -> str:
     data_url = _data_uri(material)
     return await upload_image_url_if_configured(data_url, "materials")
+
+
+async def prepare_compose_image_urls(image_urls: list[str]) -> list[str]:
+    prepared: list[str] = []
+    for url in image_urls[:20]:
+        prepared.append(await upload_image_url_if_configured(url, "compose-sources"))
+    return prepared
 
 
 async def call_text_model_with_fallback(settings: Any, messages: list[dict[str, Any]]) -> str:
@@ -642,6 +662,9 @@ try:
     class ComposeLongImageRequest(BaseModel):
         images: list[ComposeImageItem] = Field(default_factory=list)
 
+    class PrepareComposeImagesRequest(BaseModel):
+        images: list[ComposeImageItem] = Field(default_factory=list)
+
     @router.post("")
     async def create_project() -> dict[str, Any]:
         return {"project": create_demo_project(), "styles": STYLE_OPTIONS, "modules": DEFAULT_MODULES}
@@ -696,6 +719,19 @@ try:
             headers={"Content-Disposition": 'attachment; filename="full-detail.jpg"'},
         )
 
+    @router.post("/compose-long-image/prepare")
+    async def prepare_compose_project_images(request: PrepareComposeImagesRequest) -> dict[str, list[dict[str, str]]]:
+        try:
+            prepared_urls = await prepare_compose_image_urls([image.url for image in request.images])
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return {
+            "images": [
+                {"module_id": image.module_id, "module_name": image.module_name, "url": prepared_urls[index]}
+                for index, image in enumerate(request.images[:20])
+            ]
+        }
+
     async def run_compose_job(job_id: str, image_urls: list[str]) -> None:
         def update_progress(current: int, total: int) -> None:
             COMPOSE_JOBS[job_id].update(
@@ -733,9 +769,14 @@ try:
 
     @router.post("/compose-long-image/jobs")
     async def create_compose_project_long_image_job(request: ComposeLongImageRequest, background_tasks: BackgroundTasks) -> dict[str, str]:
-        image_urls = [image.url for image in request.images]
-        if not image_urls:
+        raw_image_urls = [image.url for image in request.images]
+        if not raw_image_urls:
             raise HTTPException(status_code=400, detail="at least one image is required")
+        _cleanup_expired_compose_jobs()
+        try:
+            image_urls = await prepare_compose_image_urls(raw_image_urls)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         job_id = f"compose_{uuid4().hex}"
         COMPOSE_JOBS[job_id] = {
             "status": "pending",
@@ -744,6 +785,7 @@ try:
             "total": min(len(image_urls), 20),
             "message": "等待开始合成",
             "content": b"",
+            "created_at": datetime.now(UTC).isoformat(),
         }
         background_tasks.add_task(run_compose_job, job_id, image_urls[:20])
         return {"job_id": job_id}
@@ -764,8 +806,11 @@ try:
             raise HTTPException(status_code=409, detail="compose job is not ready")
         if job.get("url"):
             return {"url": str(job["url"])}
+        content = job["content"]
+        # Free the binary content from memory after download
+        job["content"] = b""
         return Response(
-            content=job["content"],
+            content=content,
             media_type="image/jpeg",
             headers={"Content-Disposition": 'attachment; filename="full-detail.jpg"'},
         )
