@@ -371,6 +371,7 @@ def build_module_image_prompt(
     module_index: int,
     total_modules: int,
     promotion_info: str | None = None,
+    has_style_reference: bool = False,
 ) -> str:
     style_keywords = " / ".join(_string_items(style.get("keywords"))) or "高级 / 干净 / 统一"
     group = module.get("image_group")
@@ -410,15 +411,33 @@ def build_module_image_prompt(
             "- 不出现乱码、水印、品牌侵权标识。",
         ]
     else:
-        style_section = [
-            "【统一视觉风格】",
-            f"- 风格名称：{_text(style.get('name'), '绿色修护风')}",
-            f"- 主色：{_text(style.get('primary_color'), '根据风格选择主色')}",
-            f"- 视觉关键词：{style_keywords}",
-            "- 中文电商视觉，高级、干净、统一；产品外观如有参考图必须保持一致。",
-            "- 字体层级清楚，标题短促有力，说明文字清晰可读，不出现乱码、水印、品牌侵权标识。",
-            "- 所有效果、权威、成分表达必须谨慎，不使用医疗化、绝对化承诺。",
-        ]
+        if has_style_reference:
+            style_section = [
+                "【统一视觉风格】",
+                "- 上传的风格参考图优先：只参考排版、色调、光影和氛围，不改变产品外观、包装和品牌信息。",
+                "- 不要混入预设风格名称、主色或关键词；风格只以已上传的风格参考图为准。",
+                "- 中文电商视觉，高级、干净、统一；产品外观如有产品参考图必须保持一致。",
+                "- 字体层级清楚，标题短促有力，说明文字清晰可读，不出现乱码、水印、品牌侵权标识。",
+                "- 所有效果、权威、成分表达必须谨慎，不使用医疗化、绝对化承诺。",
+            ]
+        else:
+            style_section = [
+                "【统一视觉风格】",
+                f"- 风格名称：{_text(style.get('name'), '绿色修护风')}",
+                f"- 主色：{_text(style.get('primary_color'), '根据风格选择主色')}",
+                f"- 视觉关键词：{style_keywords}",
+                *(
+                    [
+                        f"- AI 规划视觉方向：{_text(style.get('visual_direction'), '')}",
+                        f"- AI 规划版式方向：{_text(style.get('layout_guidance'), '')}",
+                    ]
+                    if style.get("id") == "ai_custom"
+                    else []
+                ),
+                "- 中文电商视觉，高级、干净、统一；产品外观如有参考图必须保持一致。",
+                "- 字体层级清楚，标题短促有力，说明文字清晰可读，不出现乱码、水印、品牌侵权标识。",
+                "- 所有效果、权威、成分表达必须谨慎，不使用医疗化、绝对化承诺。",
+            ]
 
     visual_constraints = _module_visual_constraints(module)
 

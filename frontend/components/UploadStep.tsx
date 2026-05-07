@@ -41,6 +41,7 @@ const uploadSlots: Array<{
     multiple: true,
     icon: ImageIcon
   },
+
   {
     id: "report-file-upload",
     slot: "reports",
@@ -234,6 +235,12 @@ export function UploadStep({
               <ShieldCheck size={26} />
               <p>
                 <b>风格：</b>{selectedStyleName}
+              </p>
+            </div>
+            <div>
+              <Sparkles size={26} />
+              <p>
+                <b>风格参考：</b>{filesForSlot(uploadedFiles, "style_reference").length} 张
               </p>
             </div>
             <div>

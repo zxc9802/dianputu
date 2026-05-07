@@ -67,7 +67,10 @@ export async function generateImages(
   styleId: string,
   productInfo?: ProductInfo,
   referenceImages: string[] = [],
-  promotionInfo = ""
+  promotionInfo = "",
+  platformSize = "",
+  styleReferenceImages: string[] = [],
+  customStyle?: StyleOption
 ) {
   try {
     return await requestJson<{ source: string; images: Array<{ module_id: string; url: string }>; errors?: string[] }>("/api/projects/generate", {
@@ -77,7 +80,10 @@ export async function generateImages(
         style_id: styleId,
         product_info: productInfo,
         reference_images: referenceImages,
-        promotion_info: promotionInfo
+        style_reference_images: styleReferenceImages,
+        custom_style: customStyle,
+        promotion_info: promotionInfo,
+        platform_size: platformSize
       }),
       timeoutMs: 600000
     });
@@ -86,6 +92,44 @@ export async function generateImages(
       source: "demo",
       images: moduleIds.map((moduleId) => ({ module_id: moduleId, url: "/assets/generated-cica-asset-sheet.png" })),
       errors: ["前端请求后端生成接口失败，已使用本地演示图兜底。"]
+    };
+  }
+}
+
+export async function planAiCustomStyle(productInfo?: ProductInfo, category = "", brandColors: string[] = []) {
+  try {
+    return await requestJson<{ source: string; style?: StyleOption; error?: string }>("/api/projects/plan-style", {
+      method: "POST",
+      body: JSON.stringify({
+        product_info: productInfo,
+        category,
+        brand_colors: brandColors
+      }),
+      timeoutMs: 180000
+    });
+  } catch (error) {
+    return {
+      source: "error",
+      error: error instanceof Error ? error.message : "AI 风格规划请求失败"
+    };
+  }
+}
+
+export async function editGeneratedImage(imageUrl: string, instruction: string, platformSize = "") {
+  try {
+    return await requestJson<{ source: string; url?: string; error?: string }>("/api/projects/edit-image", {
+      method: "POST",
+      body: JSON.stringify({
+        image_url: imageUrl,
+        instruction,
+        platform_size: platformSize
+      }),
+      timeoutMs: 600000
+    });
+  } catch (error) {
+    return {
+      source: "error",
+      error: error instanceof Error ? error.message : "AI 微调请求失败"
     };
   }
 }

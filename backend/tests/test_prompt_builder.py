@@ -88,6 +88,25 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("示意型数据", prompt)
         self.assertIn("避免绝对化医疗表达", prompt)
 
+    def test_style_reference_prompt_overrides_preset_style_for_non_white_background_images(self):
+        build_module_image_prompt = load_prompt_builder()
+        hero_module = next(module for module in DEFAULT_MODULES if module["id"] == "hero")
+
+        prompt = build_module_image_prompt(
+            product_info={"product_name": "积雪草修护精华"},
+            style=STYLE_OPTIONS[0],
+            module=hero_module,
+            module_index=1,
+            total_modules=7,
+            has_style_reference=True,
+        )
+
+        self.assertIn("上传的风格参考图优先", prompt)
+        self.assertIn("只参考排版、色调、光影和氛围", prompt)
+        self.assertIn("不要混入预设风格", prompt)
+        self.assertNotIn("预设风格只作为兜底", prompt)
+        self.assertNotIn("绿色修护风", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

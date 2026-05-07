@@ -40,6 +40,7 @@ async def call_image_model(
     settings: ImageGenerationSettings,
     prompt: str,
     image: list[str] | None = None,
+    size: str | None = None,
 ) -> list[str]:
     if not settings.api_key:
         return []
@@ -49,7 +50,7 @@ async def call_image_model(
     payload = build_image_generation_payload(
         prompt=prompt,
         model=settings.model,
-        size=settings.size,
+        size=size or settings.size,
         n=settings.n,
         quality=settings.quality,
         output_format=settings.output_format,

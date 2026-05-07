@@ -8,7 +8,7 @@ from PIL import Image
 
 from app.demo_data import DEFAULT_MODULES, DEFAULT_PRODUCT_INFO, DEMO_IMAGE_URLS, STYLE_OPTIONS
 from app.routers.models import build_public_model_config
-from app.routers.projects import compose_long_jpeg, generate_detail_images
+from app.routers.projects import compose_long_jpeg, edit_generated_image, generate_detail_images
 
 
 class ApiContractTests(unittest.TestCase):
@@ -78,7 +78,7 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_generation_uses_demo_image_when_primary_and_fallback_fail(self):
-        async def fake_call_image_model(settings, prompt, image=None):
+        async def fake_call_image_model(settings, prompt, image=None, size=None):
             if "详情首图" in prompt:
                 raise RuntimeError("boom")
             return ["https://example.com/usage.png"]
@@ -119,6 +119,50 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["source"], "model")
         self.assertEqual(result["images"], [{"module_id": "campaign_effect", "url": "https://example.com/single.png"}])
+
+    async def test_generation_passes_platform_size_to_image_model(self):
+        previous_key = environ.get("IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        calls = []
+
+        async def fake_call_image_model(settings, prompt, image=None, size=None):
+            calls.append(size)
+            return ["https://example.com/douyin.png"]
+
+        try:
+            with patch("app.routers.projects.call_image_model", new=fake_call_image_model):
+                result = await generate_detail_images(["main_effect"], "green_repair", platform_size="600x600")
+        finally:
+            if previous_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_key
+
+        self.assertEqual(result["source"], "model")
+        self.assertEqual(calls, ["600x600"])
+
+    async def test_edit_generated_image_uses_instruction_and_original_image(self):
+        previous_key = environ.get("IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        calls = []
+
+        async def fake_call_image_model(settings, prompt, image=None, size=None):
+            calls.append({"prompt": prompt, "image": image, "size": size})
+            return ["https://example.com/edited.png"]
+
+        try:
+            with patch("app.routers.projects.call_image_model", new=fake_call_image_model):
+                result = await edit_generated_image("data:image/png;base64,abc", "背景颜色改成深绿色", platform_size="800x800")
+        finally:
+            if previous_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_key
+
+        self.assertEqual(result, {"source": "model", "url": "https://example.com/edited.png"})
+        self.assertIn("背景颜色改成深绿色", calls[0]["prompt"])
+        self.assertEqual(calls[0]["image"], ["data:image/png;base64,abc"])
+        self.assertEqual(calls[0]["size"], "800x800")
 
     async def test_compose_long_jpeg_stacks_images_vertically(self):
         def data_url(color: tuple[int, int, int]) -> str:

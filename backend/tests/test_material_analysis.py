@@ -6,9 +6,13 @@ from unittest.mock import AsyncMock, patch
 from app.routers.projects import (
     UploadedMaterial,
     analyze_uploaded_materials,
+    build_custom_style_sample_prompt,
     build_material_analysis_messages,
+    build_style_planning_messages,
     generate_detail_images,
     normalize_product_info_from_model,
+    normalize_style_plan_from_model,
+    plan_custom_style,
 )
 from app.services.prompt_builder import build_module_image_prompt
 
@@ -61,6 +65,46 @@ class MaterialAnalysisTests(unittest.TestCase):
         self.assertEqual(product_info["core_selling_points"], [])
         self.assertEqual(product_info["ingredients"], [])
         self.assertEqual(product_info["effect_claims"], [])
+
+    def test_model_json_is_normalized_to_custom_style_plan(self):
+        style = normalize_style_plan_from_model(
+            """
+            ```json
+            {
+              "name": "微晶冻感修护风",
+              "primary_color": "#8ECFE6",
+              "keywords": ["微晶", "冻感", "舒缓"],
+              "visual_direction": "透明凝胶质感、冷感光影、留白高级",
+              "layout_guidance": "主图用产品大图配半透明凝胶纹理，详情页用模块化卡片承接数据",
+              "reasoning": "包装为浅蓝色，适合突出清透舒缓和修护科技感"
+            }
+            ```
+            """
+        )
+
+        self.assertEqual(style["id"], "ai_custom")
+        self.assertEqual(style["name"], "微晶冻感修护风")
+        self.assertEqual(style["primary_color"], "#8ECFE6")
+        self.assertEqual(style["keywords"], ["微晶", "冻感", "舒缓"])
+        self.assertIn("透明凝胶", style["visual_direction"])
+        self.assertIn("模块化卡片", style["layout_guidance"])
+
+    def test_style_planning_message_asks_gemini_to_create_not_choose(self):
+        messages = build_style_planning_messages(
+            {
+                "product_name": "积雪草修护精华",
+                "category": "护肤精华",
+                "core_selling_points": ["舒缓泛红", "屏障修护"],
+            },
+            "护肤精华",
+            ["#D8F1EA", "#2D8C6F"],
+        )
+
+        text = messages[0]["content"]
+        self.assertIn("规划一个全新的电商视觉风格", text)
+        self.assertIn("不要从现有三套预设风格里选择", text)
+        self.assertIn("积雪草修护精华", text)
+        self.assertIn("#D8F1EA", text)
 
 
     def test_main_image_prompts_use_module_specific_briefs_and_visual_constraints(self):
@@ -134,6 +178,48 @@ class AnalyzeUploadedMaterialsConfigTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["source"], "error")
         self.assertEqual(result["error"], "text model is not configured")
 
+    async def test_plan_custom_style_calls_text_model_and_returns_style(self):
+        with patch("app.routers.projects.get_model_settings") as mocked_settings:
+            mocked_settings.return_value.text.api_key = "text-key"
+            mocked_settings.return_value.image.api_key = "image-key"
+            with patch(
+                "app.routers.projects.call_text_model",
+                new=AsyncMock(
+                    return_value='{"name":"微晶冻感修护风","primary_color":"#8ECFE6","keywords":["微晶","冻感"],"visual_direction":"清透冷感","layout_guidance":"主图留白，详情页卡片化","reasoning":"匹配包装色"}'
+                ),
+            ) as text_mocked:
+                with patch("app.routers.projects.call_image_model", new=AsyncMock(return_value=["https://example.com/style-sample.png"])) as image_mocked:
+                    result = await plan_custom_style(
+                        product_info={"product_name": "积雪草修护精华", "category": "护肤精华"},
+                        category="护肤精华",
+                        brand_colors=["#8ECFE6"],
+                    )
+
+        self.assertEqual(result["source"], "model")
+        self.assertEqual(result["style"]["id"], "ai_custom")
+        self.assertEqual(result["style"]["name"], "微晶冻感修护风")
+        self.assertIn("清透冷感", result["style"]["visual_direction"])
+        self.assertEqual(result["style"]["asset"], "https://example.com/style-sample.png")
+        self.assertIn("积雪草修护精华", text_mocked.call_args.args[1][0]["content"])
+        self.assertIn("风格样例图", image_mocked.call_args.args[1])
+
+    def test_custom_style_sample_prompt_uses_style_and_product_context(self):
+        prompt = build_custom_style_sample_prompt(
+            {
+                "name": "琉光云纱凝润美学",
+                "primary_color": "#EBE9E9",
+                "keywords": ["琉光透润", "柔纱触感"],
+                "visual_direction": "暖调米白与晨光香槟色，半透明柔纱和凝固透明树脂",
+                "layout_guidance": "主图留白，详情页使用柔和卡片",
+            },
+            {"product_name": "LUMERA HYDRA CREAM", "category": "面霜乳液"},
+        )
+
+        self.assertIn("风格样例图", prompt)
+        self.assertIn("琉光云纱凝润美学", prompt)
+        self.assertIn("LUMERA HYDRA CREAM", prompt)
+        self.assertIn("不要生成真实品牌 Logo", prompt)
+
 
 class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
     async def test_generation_prompt_uses_product_info_and_reference_images(self):
@@ -161,6 +247,81 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("当前模块：详情首图", prompt)
         self.assertIn("只生成当前模块", prompt)
         self.assertEqual(reference_images, ["data:image/png;base64,abc"])
+
+    async def test_generation_uses_custom_style_brief_when_provided(self):
+        previous_key = environ.get("IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        custom_style = {
+            "id": "ai_custom",
+            "name": "微晶冻感修护风",
+            "primary_color": "#8ECFE6",
+            "keywords": ["微晶", "冻感"],
+            "visual_direction": "透明凝胶质感、冷感光影、留白高级",
+            "layout_guidance": "主图用产品大图配半透明凝胶纹理，详情页用模块化卡片承接数据",
+        }
+        try:
+            with patch("app.routers.projects.call_image_model", new=AsyncMock(return_value=["https://example.com/hero.png"])) as mocked:
+                result = await generate_detail_images(
+                    ["hero"],
+                    "green_repair",
+                    product_info={"product_name": "积雪草修护精华"},
+                    custom_style=custom_style,
+                )
+        finally:
+            if previous_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_key
+
+        self.assertEqual(result["source"], "model")
+        prompt = mocked.call_args.args[1] if len(mocked.call_args.args) > 1 else mocked.call_args.kwargs["prompt"]
+        self.assertIn("微晶冻感修护风", prompt)
+        self.assertIn("透明凝胶质感", prompt)
+        self.assertIn("模块化卡片", prompt)
+
+    async def test_generation_sends_style_reference_images_separately_and_prefers_style_reference_prompt(self):
+        previous_key = environ.get("IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        try:
+            with patch("app.routers.projects.call_image_model", new=AsyncMock(return_value=["https://example.com/hero.png"])) as mocked:
+                result = await generate_detail_images(
+                    ["hero"],
+                    "green_repair",
+                    product_info={"product_name": "积雪草修护精华"},
+                    reference_images=["data:image/png;base64,product"],
+                    style_reference_images=["data:image/png;base64,style"],
+                )
+        finally:
+            if previous_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_key
+
+        self.assertEqual(result["source"], "model")
+        prompt = mocked.call_args.args[1] if len(mocked.call_args.args) > 1 else mocked.call_args.kwargs["prompt"]
+        self.assertIn("上传的风格参考图优先", prompt)
+        self.assertEqual(mocked.call_args.kwargs["image"], ["data:image/png;base64,product", "data:image/png;base64,style"])
+
+    async def test_white_background_ignores_style_reference_images(self):
+        previous_key = environ.get("IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        try:
+            with patch("app.routers.projects.call_image_model", new=AsyncMock(return_value=["https://example.com/changed.png"])) as mocked:
+                result = await generate_detail_images(
+                    ["main_white_bg"],
+                    "green_repair",
+                    product_info={"product_name": "积雪草修护精华"},
+                    reference_images=["data:image/png;base64,product"],
+                    style_reference_images=["data:image/png;base64,style"],
+                )
+        finally:
+            if previous_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_key
+
+        self.assertEqual(result["images"], [{"module_id": "main_white_bg", "url": "data:image/png;base64,product"}])
+        mocked.assert_not_called()
     async def test_campaign_generation_prompt_uses_promotion_info(self):
         previous_key = environ.get("IMAGE_GENERATION_API_KEY")
         environ["IMAGE_GENERATION_API_KEY"] = "test-key"
@@ -204,11 +365,32 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["images"], [{"module_id": "main_white_bg", "url": "data:image/png;base64,original"}])
         mocked.assert_not_called()
 
+    async def test_white_background_generation_requires_product_reference_image(self):
+        previous_key = environ.get("IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        try:
+            with patch("app.routers.projects.call_image_model", new=AsyncMock(return_value=["https://example.com/redrawn.png"])) as mocked:
+                result = await generate_detail_images(
+                    ["main_white_bg", "campaign_white_bg"],
+                    "green_repair",
+                    product_info={"product_name": "积雪草修护精华"},
+                )
+        finally:
+            if previous_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_key
+
+        self.assertEqual(result["source"], "error")
+        self.assertEqual(result["images"], [])
+        self.assertIn("白底图需要先上传产品图", result["errors"][0])
+        mocked.assert_not_called()
+
     async def test_generation_runs_image_calls_concurrently(self):
         started = 0
         release = asyncio.Event()
 
-        async def fake_call_image_model(settings, prompt, image=None):
+        async def fake_call_image_model(settings, prompt, image=None, size=None):
             nonlocal started
             started += 1
             if started == 2:
@@ -236,7 +418,7 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
     async def test_image_generation_falls_back_per_image_without_disabling_primary(self):
         calls = []
 
-        async def fake_call_image_model(settings, prompt, image=None):
+        async def fake_call_image_model(settings, prompt, image=None, size=None):
             calls.append(settings.model)
             if settings.model == "gpt-image-2" and len([model for model in calls if model == "gpt-image-2"]) == 1:
                 raise RuntimeError("primary failed once")

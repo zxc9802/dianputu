@@ -1,5 +1,5 @@
 import { Check, ImageIcon, Lock, WandSparkles } from "lucide-react";
-import type { ImageGroup, ModuleConfig, PublicModelConfig, StyleOption } from "@/lib/types";
+import type { CommercePlatform, CommercePlatformId, ImageGroup, ModuleConfig, ProjectTemplate, PublicModelConfig, StyleOption, StyleSource } from "@/lib/types";
 
 const imageGroups: ImageGroup[] = ["main", "campaign", "detail"];
 
@@ -28,7 +28,7 @@ const groupCopy: Record<ImageGroup, { title: string; description: string; output
 };
 
 type GeneratedImage = { module_id: string; url: string };
-type GenerationProgress = { isGenerating: boolean; completed: number; total: number; currentModuleId: string; errorCount: number };
+type GenerationProgress = { isGenerating: boolean; completed: number; total: number; runningModuleIds: string[]; errorCount: number };
 type GenerationProgressMap = Record<ImageGroup, GenerationProgress>;
 
 function moduleGroup(module: ModuleConfig): ImageGroup {
@@ -43,11 +43,18 @@ export function ModulesStep({
   modules,
   activeImageGroup,
   selectedStyle,
+  styleSource,
   modelConfig,
   generatedImages,
   generationProgress,
   promotionInfo,
+  platforms,
+  selectedPlatformId,
+  templates,
   onPromotionInfoChange,
+  onPlatformChange,
+  onTemplateApply,
+  onTemplateSave,
   onImageGroupChange,
   onToggleModule,
   onBack,
@@ -56,11 +63,18 @@ export function ModulesStep({
   modules: ModuleConfig[];
   activeImageGroup: ImageGroup;
   selectedStyle: StyleOption;
+  styleSource: StyleSource;
   modelConfig: PublicModelConfig;
   generatedImages: GeneratedImage[];
   generationProgress: GenerationProgressMap;
   promotionInfo: string;
+  platforms: CommercePlatform[];
+  selectedPlatformId: CommercePlatformId;
+  templates: ProjectTemplate[];
   onPromotionInfoChange: (value: string) => void;
+  onPlatformChange: (id: CommercePlatformId) => void;
+  onTemplateApply: (template: ProjectTemplate) => void;
+  onTemplateSave: () => void;
   onImageGroupChange: (group: ImageGroup) => void;
   onToggleModule: (id: string) => void;
   onBack: () => void;
@@ -72,6 +86,7 @@ export function ModulesStep({
   const generatedCount = currentModules.filter((module) => generatedIds.has(module.id)).length;
   const activeProgress = generationProgress[activeImageGroup];
   const copy = groupCopy[activeImageGroup];
+  const selectedPlatform = platforms.find((platform) => platform.id === selectedPlatformId) ?? platforms[0];
 
   return (
     <>
@@ -101,12 +116,45 @@ export function ModulesStep({
                   <span>{groupCopy[group].description}</span>
                   <em>
                     {groupProgress.isGenerating
-                      ? `生成中 ${groupProgress.completed}/${groupProgress.total}`
+                      ? `并行生成中 ${groupProgress.completed}/${groupProgress.total}`
                       : `已生成 ${groupGeneratedCount}/${modulesInGroup.length}`}
                   </em>
                 </button>
               );
             })}
+          </div>
+
+          <div className="platformPanel">
+            <label>
+              <span>目标平台</span>
+              <select value={selectedPlatformId} onChange={(event) => onPlatformChange(event.target.value as CommercePlatformId)}>
+                {platforms.map((platform) => (
+                  <option key={platform.id} value={platform.id}>
+                    {platform.name} · {platform.mainSize}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p>
+              主图 {selectedPlatform.mainSize}，详情图宽 {selectedPlatform.detailWidth}px。{selectedPlatform.note}
+            </p>
+          </div>
+
+          <div className="templateStrip">
+            <div>
+              <b>项目模板</b>
+              <span>套用模块、风格、品类和平台配置。</span>
+            </div>
+            <div className="templateActions">
+              {templates.map((template) => (
+                <button className="inlineActionButton" key={template.id} onClick={() => onTemplateApply(template)} type="button">
+                  {template.name}
+                </button>
+              ))}
+              <button className="inlineActionButton strong" onClick={onTemplateSave} type="button">
+                保存当前为模板
+              </button>
+            </div>
           </div>
 
           {activeImageGroup === "campaign" ? (
@@ -129,14 +177,14 @@ export function ModulesStep({
             </div>
             <em>
               {activeProgress.isGenerating
-                ? `生成中 ${activeProgress.completed}/${activeProgress.total}`
+                ? `并行生成中 ${activeProgress.completed}/${activeProgress.total}`
                 : `${enabledCount}/${currentModules.length} 已选择，${generatedCount} 已生成`}
             </em>
           </div>
 
           <div className="moduleList">
             {currentModules.map((module) => {
-              const isCurrent = activeProgress.currentModuleId === module.id;
+              const isCurrent = (activeProgress.runningModuleIds ?? []).includes(module.id);
               const isGenerated = generatedIds.has(module.id);
               return (
                 <div
@@ -188,11 +236,11 @@ export function ModulesStep({
             </div>
           </div>
           <div className="planCard">
-            <img src={selectedStyle.asset} alt={selectedStyle.name} />
+            {styleSource === "preset" ? <img src={selectedStyle.asset} alt={selectedStyle.name} /> : null}
             <div className="planMeta">
               <div>
                 <span>当前风格</span>
-                <b>{selectedStyle.name}</b>
+                <b>{styleSource === "reference" ? "风格参考图" : selectedStyle.name}</b>
               </div>
               <div>
                 <span>生成版块</span>
@@ -205,6 +253,10 @@ export function ModulesStep({
               <div>
                 <span>输出内容</span>
                 <b>{copy.output}</b>
+              </div>
+              <div>
+                <span>目标平台</span>
+                <b>{selectedPlatform.name}</b>
               </div>
             </div>
           </div>
@@ -222,7 +274,7 @@ export function ModulesStep({
                 <code>{modelConfig.imageGeneration.model}</code>
               </header>
               <p>
-                优先使用主接口生成图片；单张失败时自动切换备用接口。默认尺寸 {modelConfig.imageGeneration.defaults.size}。
+                优先使用主接口生成图片；当前平台请求尺寸 {selectedPlatform.mainSize}，默认尺寸 {modelConfig.imageGeneration.defaults.size}。
               </p>
             </article>
           </div>
@@ -237,7 +289,7 @@ export function ModulesStep({
         <button className="ghostButton" onClick={onBack} type="button">
           上一步
         </button>
-        <button className="primaryButton" onClick={onGenerate} disabled={activeProgress.isGenerating} type="button">
+        <button className="primaryButton" onClick={() => onGenerate()} disabled={activeProgress.isGenerating} type="button">
           <ImageIcon size={22} />
           {activeProgress.isGenerating ? `${copy.buttonLabel}生成中...` : `生成 ${enabledCount} 张${copy.buttonLabel}`}
         </button>

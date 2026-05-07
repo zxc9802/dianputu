@@ -1,4 +1,4 @@
-import type { ModuleConfig, StyleOption } from "./types";
+import type { CommercePlatform, ModuleConfig, ProjectTemplate, StyleOption } from "./types";
 
 export const STYLE_OPTIONS: StyleOption[] = [
   {
@@ -42,6 +42,75 @@ export const DEFAULT_MODULES: ModuleConfig[] = [
   { id: "competitor_comparison", name: "竞品对比", description: "质地 / 成分 / 效果 / 负面体验", enabled: true, order: 5, image_group: "detail" },
   { id: "ingredient", name: "成分页", description: "特殊成分 + 对应解决问题", enabled: true, order: 6, image_group: "detail" },
   { id: "usage", name: "使用方法", description: "商品怎么用", enabled: true, order: 7, image_group: "detail" }
+];
+
+export const COMMERCE_PLATFORMS: CommercePlatform[] = [
+  { id: "tmall", name: "淘宝 / 天猫", mainSize: "800x800", detailWidth: 750, note: "标准平台主图，详情页宽 750px" },
+  { id: "jd", name: "京东", mainSize: "800x800", detailWidth: 750, note: "适合京东商品主图和 750px 详情图" },
+  { id: "douyin", name: "抖音电商", mainSize: "600x600", detailWidth: 750, note: "主图更轻量，适合短视频货架入口" },
+  { id: "pdd", name: "拼多多", mainSize: "750x750", detailWidth: 750, note: "主图和详情图都按 750px 复用" },
+  { id: "xiaohongshu_square", name: "小红书 1:1", mainSize: "1080x1080", detailWidth: 1080, note: "适合笔记封面和种草商品图" },
+  { id: "xiaohongshu_portrait", name: "小红书 3:4", mainSize: "1080x1440", detailWidth: 1080, note: "适合竖版种草封面" }
+];
+
+export const OFFICIAL_PROJECT_TEMPLATES: ProjectTemplate[] = [
+  {
+    id: "official-serum-green",
+    name: "精华类模板",
+    category: "护肤精华",
+    styleId: "green_repair",
+    platformId: "tmall",
+    source: "official",
+    modules: [
+      { id: "main_white_bg", enabled: true, order: 1 },
+      { id: "main_hero_selling_point", enabled: true, order: 2 },
+      { id: "main_ingredient", enabled: true, order: 3 },
+      { id: "main_effect", enabled: true, order: 4 },
+      { id: "main_usage_scene", enabled: true, order: 5 },
+      { id: "hero", enabled: true, order: 1 },
+      { id: "authority", enabled: true, order: 2 },
+      { id: "effect_comparison", enabled: true, order: 3 },
+      { id: "ingredient", enabled: true, order: 4 },
+      { id: "usage", enabled: true, order: 5 }
+    ]
+  },
+  {
+    id: "official-cream-gold",
+    name: "面霜类模板",
+    category: "面霜乳液",
+    styleId: "gold_antiaging",
+    platformId: "jd",
+    source: "official",
+    modules: [
+      { id: "main_white_bg", enabled: true, order: 1 },
+      { id: "main_hero_selling_point", enabled: true, order: 2 },
+      { id: "main_effect", enabled: true, order: 3 },
+      { id: "campaign_white_bg", enabled: true, order: 1 },
+      { id: "campaign_hero_selling_point", enabled: true, order: 2 },
+      { id: "hero", enabled: true, order: 1 },
+      { id: "pain_scene", enabled: true, order: 2 },
+      { id: "effect_comparison", enabled: true, order: 3 },
+      { id: "competitor_comparison", enabled: true, order: 4 },
+      { id: "usage", enabled: true, order: 5 }
+    ]
+  },
+  {
+    id: "official-clean-blue",
+    name: "清洁洗护模板",
+    category: "清洁洗护",
+    styleId: "blue_hydration",
+    platformId: "douyin",
+    source: "official",
+    modules: [
+      { id: "main_white_bg", enabled: true, order: 1 },
+      { id: "main_hero_selling_point", enabled: true, order: 2 },
+      { id: "main_usage_scene", enabled: true, order: 3 },
+      { id: "hero", enabled: true, order: 1 },
+      { id: "pain_scene", enabled: true, order: 2 },
+      { id: "ingredient", enabled: true, order: 3 },
+      { id: "usage", enabled: true, order: 4 }
+    ]
+  }
 ];
 
 export const DEMO_MODEL_CONFIG = {

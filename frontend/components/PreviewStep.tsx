@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { Download, FileImage, Monitor, Smartphone } from "lucide-react";
 import { createComposeLongImageJob, downloadComposeLongImageJob, fetchComposeLongImageJob } from "@/lib/api";
-import type { ImageGroup, ModuleConfig } from "@/lib/types";
+import type { CommercePlatform, GeneratedImageVersionState, ImageGroup, ModuleConfig } from "@/lib/types";
 
 type GeneratedImage = { module_id: string; url: string };
 type PreviewItem = { module: ModuleConfig; url: string };
-type GenerationProgress = { isGenerating: boolean; completed: number; total: number; currentModuleId: string; errorCount: number };
+type GenerationProgress = { isGenerating: boolean; completed: number; total: number; runningModuleIds: string[]; errorCount: number };
 type GenerationProgressMap = Record<ImageGroup, GenerationProgress>;
 
 const imageGroups: ImageGroup[] = ["main", "campaign", "detail"];
@@ -57,22 +57,33 @@ export function PreviewStep({
   modules,
   activeImageGroup,
   generatedImages,
+  imageVersions,
+  selectedVersionIds,
   generationProgress,
+  selectedPlatform,
   onImageGroupChange,
   onGenerateModule,
+  onSelectVersion,
+  onEditImage,
   onBack
 }: {
   modules: ModuleConfig[];
   activeImageGroup: ImageGroup;
   generatedImages: GeneratedImage[];
+  imageVersions: GeneratedImageVersionState;
+  selectedVersionIds: Record<string, string>;
   generationProgress: GenerationProgressMap;
+  selectedPlatform: CommercePlatform;
   onImageGroupChange: (group: ImageGroup) => void;
   onGenerateModule: (group: ImageGroup, moduleId: string) => void;
+  onSelectVersion: (moduleId: string, versionId: string) => void;
+  onEditImage: (moduleId: string, imageUrl: string, instruction: string) => void;
   onBack: () => void;
 }) {
   const [isComposing, setIsComposing] = useState(false);
   const [composeStatus, setComposeStatus] = useState("");
   const [composeError, setComposeError] = useState("");
+  const [editDrafts, setEditDrafts] = useState<Record<string, string>>({});
   const generatedByModule = new Map(generatedImages.map((image) => [image.module_id, image.url]));
   const groupedModules = {
     main: sortedGroupModules(modules, "main"),
@@ -150,7 +161,7 @@ export function PreviewStep({
                 >
                   <b>{groupCopy[group].title}</b>
                   <span>{groupCopy[group].empty}</span>
-                  <em>{progress.isGenerating ? `生成中 ${progress.completed}/${progress.total}` : `已加载 ${loaded}/${total}`}</em>
+                  <em>{progress.isGenerating ? `并行生成中 ${progress.completed}/${progress.total}` : `已加载 ${loaded}/${total}`}</em>
                 </button>
               );
             })}
@@ -159,10 +170,10 @@ export function PreviewStep({
           <div className="previewToolbar">
             <Monitor size={20} />
             <Smartphone size={20} />
-            <span>{activeImageGroup === "detail" ? "缩放 25%" : "独立主图"}</span>
+            <span>{activeImageGroup === "detail" ? `详情宽 ${selectedPlatform.detailWidth}px` : `主图 ${selectedPlatform.mainSize}`}</span>
             <em>
               {activeProgress.isGenerating
-                ? `生成中 ${activeProgress.completed}/${activeProgress.total}`
+                ? `并行生成中 ${activeProgress.completed}/${activeProgress.total}`
                 : `已加载 ${visibleItems.length}/${visibleModules.length} 张`}
             </em>
           </div>
@@ -173,7 +184,8 @@ export function PreviewStep({
                 <div className="mainImageGrid">
                   {visibleModules.map((module, index) => {
                     const url = generatedByModule.get(module.id);
-                    const isCurrent = activeProgress.currentModuleId === module.id;
+                    const versions = imageVersions[module.id] ?? [];
+                    const isCurrent = (activeProgress.runningModuleIds ?? []).includes(module.id);
                     return (
                       <article className="mainImageCard" key={module.id}>
                         <div className="mainImageFrame">
@@ -200,6 +212,36 @@ export function PreviewStep({
                             {url ? <a href={url} download={`${String(index + 1).padStart(2, "0")}-${module.id}.png`}>下载</a> : null}
                           </span>
                         </footer>
+                        {versions.length > 0 ? (
+                          <div className="versionSwitcher">
+                            {versions.map((version) => (
+                              <button
+                                className={selectedVersionIds[module.id] === version.id ? "active" : ""}
+                                key={version.id}
+                                onClick={() => onSelectVersion(module.id, version.id)}
+                                type="button"
+                              >
+                                {version.label}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                        {url ? (
+                          <div className="editPromptRow">
+                            <input
+                              value={editDrafts[module.id] ?? ""}
+                              placeholder="输入微调指令，例如：文字放大 30%"
+                              onChange={(event) => setEditDrafts((current) => ({ ...current, [module.id]: event.target.value }))}
+                            />
+                            <button
+                              className="inlineActionButton strong"
+                              onClick={() => onEditImage(module.id, url, editDrafts[module.id] ?? "")}
+                              type="button"
+                            >
+                              微调
+                            </button>
+                          </div>
+                        ) : null}
                       </article>
                     );
                   })}
@@ -219,6 +261,38 @@ export function PreviewStep({
                   {groupedItems.detail.map((item, index) => (
                     <section className="longImageSection" key={item.module.id} aria-label={`${item.module.name}生成图`}>
                       <img src={item.url} alt={`${item.module.name}生成图`} loading={index > 1 ? "lazy" : "eager"} />
+                      <div className="longImageControls">
+                        <b>{item.module.name}</b>
+                        <span className="previewCardActions">
+                          {(imageVersions[item.module.id] ?? []).map((version) => (
+                            <button
+                              className={selectedVersionIds[item.module.id] === version.id ? "versionPill active" : "versionPill"}
+                              key={version.id}
+                              onClick={() => onSelectVersion(item.module.id, version.id)}
+                              type="button"
+                            >
+                              {version.label}
+                            </button>
+                          ))}
+                          <button className="inlineActionButton" onClick={() => onGenerateModule(activeImageGroup, item.module.id)} type="button">
+                            再生成一版
+                          </button>
+                        </span>
+                        <div className="editPromptRow">
+                          <input
+                            value={editDrafts[item.module.id] ?? ""}
+                            placeholder="输入微调指令"
+                            onChange={(event) => setEditDrafts((current) => ({ ...current, [item.module.id]: event.target.value }))}
+                          />
+                          <button
+                            className="inlineActionButton strong"
+                            onClick={() => onEditImage(item.module.id, item.url, editDrafts[item.module.id] ?? "")}
+                            type="button"
+                          >
+                            微调
+                          </button>
+                        </div>
+                      </div>
                     </section>
                   ))}
                 </div>
@@ -245,7 +319,7 @@ export function PreviewStep({
           <div className="directoryList">
             {visibleModules.map((module, index) => {
               const moduleUrl = generatedByModule.get(module.id);
-              const isCurrent = activeProgress.currentModuleId === module.id;
+              const isCurrent = (activeProgress.runningModuleIds ?? []).includes(module.id);
               return (
                 <div key={module.id}>
                   <span>{index + 1}</span>

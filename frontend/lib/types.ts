@@ -1,6 +1,8 @@
 export type StepId = "upload" | "style" | "review" | "modules" | "preview";
 
-export type UploadSlot = "product_image" | "reports" | "documents";
+export type UploadSlot = "product_image" | "style_reference" | "reports" | "documents";
+
+export type StyleSource = "preset" | "reference" | "ai_custom";
 
 export type StyleOption = {
   id: string;
@@ -8,9 +10,22 @@ export type StyleOption = {
   keywords: string[];
   primary_color: string;
   asset: string;
+  visual_direction?: string;
+  layout_guidance?: string;
+  reasoning?: string;
 };
 
 export type ImageGroup = "main" | "campaign" | "detail";
+
+export type CommercePlatformId = "tmall" | "jd" | "douyin" | "pdd" | "xiaohongshu_square" | "xiaohongshu_portrait";
+
+export type CommercePlatform = {
+  id: CommercePlatformId;
+  name: string;
+  mainSize: string;
+  detailWidth: number;
+  note: string;
+};
 
 export type ModuleConfig = {
   id: string;
@@ -44,6 +59,33 @@ export type UploadedFileInfo = {
   lastModified: number;
   dataUrl?: string;
   text?: string;
+};
+
+export type GeneratedImageVersion = {
+  id: string;
+  module_id: string;
+  url: string;
+  label: string;
+  source: string;
+  createdAt: number;
+  editInstruction?: string;
+};
+
+export type GeneratedImageVersionState = Record<string, GeneratedImageVersion[]>;
+
+export type ProjectTemplate = {
+  id: string;
+  name: string;
+  category: string;
+  styleId: string;
+  platformId: CommercePlatformId;
+  modules: Array<{ id: string; enabled: boolean; order: number }>;
+  source: "official" | "user";
+};
+
+export type BrandColorRecommendation = {
+  styleId: string;
+  distance: number;
 };
 
 export type MaterialPayload = {

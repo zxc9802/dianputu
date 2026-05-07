@@ -23,6 +23,7 @@ logger = logging.getLogger("detail_image_generation")
 MODEL_GATEWAY_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
 WHITE_BACKGROUND_MODULE_IDS = {"main_white_bg", "campaign_white_bg"}
 COMPOSE_JOBS: dict[str, dict[str, Any]] = {}
+WHITE_BACKGROUND_REFERENCE_REQUIRED_ERROR = "白底图需要先上传产品图，系统会直接复用上传图以避免模型重绘导致包装、Logo 或瓶身变形。"
 
 
 @dataclass(frozen=True)
@@ -162,6 +163,66 @@ def normalize_product_info_from_model(raw: str) -> dict[str, Any]:
     }
 
 
+def normalize_style_plan_from_model(raw: str) -> dict[str, Any]:
+    data = _extract_json_object(raw) or {}
+    keywords = _string_list(data.get("keywords"), [])
+    return {
+        "id": "ai_custom",
+        "name": str(data.get("name") or "AI 自定义风格").strip() or "AI 自定义风格",
+        "primary_color": str(data.get("primary_color") or "#1F8C43").strip() or "#1F8C43",
+        "keywords": keywords[:6] or ["产品定制", "电商高级", "统一视觉"],
+        "asset": "",
+        "visual_direction": str(data.get("visual_direction") or "根据产品定位生成统一视觉方向").strip(),
+        "layout_guidance": str(data.get("layout_guidance") or "主图突出产品，详情页按模块建立统一版式系统").strip(),
+        "reasoning": str(data.get("reasoning") or "基于产品信息、品类和包装色规划").strip(),
+    }
+
+
+def build_style_planning_messages(product_info: dict[str, Any] | None, category: str | None, brand_colors: list[str] | None) -> list[dict[str, Any]]:
+    info = product_info or {}
+    prompt = "\n".join(
+        [
+            "你是资深电商美术指导。请基于产品资料规划一个全新的电商视觉风格。",
+            "不要从现有三套预设风格里选择，也不要只输出绿色修护、蓝色补水、金色抗老这类模板名。",
+            "必须只输出 JSON，不要输出解释文字。",
+            "JSON 字段：name, primary_color, keywords, visual_direction, layout_guidance, reasoning。",
+            "要求：name 是 6-12 个中文字符的风格名；primary_color 是十六进制颜色；keywords 是 3-6 个短词。",
+            "visual_direction 写清楚色调、材质、光影、氛围；layout_guidance 写清楚主图和详情页如何保持统一但模块差异化。",
+            "避免医疗化、绝对化功效，不编造品牌授权或真实机构背书。",
+            f"品类：{category or info.get('category') or '护肤品'}",
+            f"产品信息 JSON：{json.dumps(info, ensure_ascii=False)}",
+            f"产品包装主色：{', '.join(brand_colors or []) or '未提取到主色'}",
+        ]
+    )
+    return [{"role": "user", "content": prompt}]
+
+
+def _plain_text(value: Any, fallback: str) -> str:
+    cleaned = str(value or "").strip()
+    return cleaned or fallback
+
+
+def build_custom_style_sample_prompt(style: dict[str, Any], product_info: dict[str, Any] | None) -> str:
+    info = product_info or {}
+    keywords = " / ".join(_string_list(style.get("keywords"), [])) or "高级 / 干净 / 统一"
+    return "\n".join(
+        [
+            "请生成 1 张中文电商护肤视觉风格样例图，用来预览 AI 规划的风格方向。",
+            "这不是最终商品图，不需要完全复刻用户产品包装，也不要生成真实品牌 Logo、可识别商标或可读包装小字。",
+            "画面可以使用无品牌护肤瓶/面霜罐/精华瓶作为通用占位产品，重点展示色调、材质、光影、氛围和版式。",
+            f"- 参考产品：{_plain_text(info.get('product_name'), '护肤品')}",
+            f"- 品类：{_plain_text(info.get('category'), '护肤品')}",
+            f"- 风格名称：{_plain_text(style.get('name'), 'AI 自定义风格')}",
+            f"- 主色：{_plain_text(style.get('primary_color'), '#F4F1EC')}",
+            f"- 视觉关键词：{keywords}",
+            f"- 视觉方向：{_plain_text(style.get('visual_direction'), '高级、干净、统一')}",
+            f"- 版式方向：{_plain_text(style.get('layout_guidance'), '主图突出产品，详情页模块化')}",
+            "构图要求：16:10 横向风格卡片封面，中央或偏左放通用护肤品占位，背景呈现规划风格的材质与光影。",
+            "文字要求：最多只放 2-4 个大的中文风格关键词，不能出现乱码、密集小字、水印或平台 UI。",
+        ]
+    )
+
+
 def create_demo_project() -> dict[str, Any]:
     now = datetime.now(UTC).isoformat()
     return {
@@ -207,38 +268,73 @@ async def analyze_uploaded_materials(materials: list[UploadedMaterial]) -> dict[
     return {"source": "model", "product_info": normalize_product_info_from_model(content), "raw": content}
 
 
+async def plan_custom_style(product_info: dict[str, Any] | None, category: str | None = None, brand_colors: list[str] | None = None) -> dict[str, Any]:
+    settings = get_model_settings()
+    if not settings.text.api_key:
+        return {"source": "error", "error": "text model is not configured"}
+
+    try:
+        content = await call_text_model(settings.text, build_style_planning_messages(product_info, category, brand_colors))
+    except Exception as exc:
+        return {"source": "error", "error": str(exc)}
+    if not content:
+        return {"source": "error", "error": "text model returned empty content"}
+
+    style = normalize_style_plan_from_model(content)
+    warnings: list[str] = []
+    if settings.image.api_key:
+        try:
+            sample_urls = await call_image_model(settings.image, build_custom_style_sample_prompt(style, product_info))
+            if sample_urls:
+                style["asset"] = sample_urls[0]
+        except Exception as exc:
+            warnings.append(f"style sample generation failed: {exc}")
+    else:
+        warnings.append("image model is not configured")
+
+    return {"source": "model", "style": style, "raw": content, "warnings": warnings}
+
+
 async def _generate_module_image(
     *,
     settings: Any,
     product_info: dict[str, Any] | None,
     reference_images: list[str] | None,
+    style_reference_images: list[str] | None,
     promotion_info: str | None,
     style: dict[str, Any],
+    custom_style: dict[str, Any] | None,
     module: dict[str, Any],
     module_index: int,
     total_modules: int,
+    platform_size: str | None = None,
 ) -> tuple[dict[str, str] | None, str | None]:
     logger.info("detail image generation start %s/%s module=%s", module_index, total_modules, module["id"])
     module_id = str(module["id"])
     if module_id in WHITE_BACKGROUND_MODULE_IDS and reference_images:
         return {"module_id": module_id, "url": reference_images[0]}, None
+    model_reference_images = [
+        *(reference_images or []),
+        *(style_reference_images or []),
+    ]
 
     prompt = build_module_image_prompt(
         product_info=product_info,
-        style=style,
+        style=custom_style or style,
         module=module,
         module_index=module_index,
         total_modules=total_modules,
         promotion_info=promotion_info,
+        has_style_reference=bool(style_reference_images),
     )
     try:
-        urls = await call_image_model(settings.image, prompt, image=reference_images)
+        urls = await call_image_model(settings.image, prompt, image=model_reference_images or None, size=platform_size)
     except Exception as primary_exc:
         logger.warning("primary image generation failed %s/%s module=%s error=%s", module_index, total_modules, module["id"], primary_exc)
         if not settings.fallback_image.api_key:
             return None, f"{module['id']}: {primary_exc}"
         try:
-            urls = await call_image_model(settings.fallback_image, prompt, image=reference_images)
+            urls = await call_image_model(settings.fallback_image, prompt, image=model_reference_images or None, size=platform_size)
         except Exception as fallback_exc:
             logger.warning("fallback image generation failed %s/%s module=%s error=%s", module_index, total_modules, module["id"], fallback_exc)
             return None, f"{module['id']}: primary failed: {primary_exc}; fallback failed: {fallback_exc}"
@@ -254,11 +350,23 @@ async def generate_detail_images(
     style_id: str,
     product_info: dict[str, Any] | None = None,
     reference_images: list[str] | None = None,
+    style_reference_images: list[str] | None = None,
+    custom_style: dict[str, Any] | None = None,
     promotion_info: str | None = None,
+    platform_size: str | None = None,
 ) -> dict[str, Any]:
     settings = get_model_settings()
     enabled_modules = [module for module in DEFAULT_MODULES if module["id"] in module_ids]
     style = next((item for item in STYLE_OPTIONS if item["id"] == style_id), STYLE_OPTIONS[0])
+    missing_white_background_reference = [
+        module for module in enabled_modules if str(module["id"]) in WHITE_BACKGROUND_MODULE_IDS and not reference_images
+    ]
+    if missing_white_background_reference:
+        return {
+            "source": "error",
+            "images": [],
+            "errors": [f"{module['id']}: {WHITE_BACKGROUND_REFERENCE_REQUIRED_ERROR}" for module in missing_white_background_reference],
+        }
 
     generated_images: list[dict[str, str]] = []
     errors: list[str] = []
@@ -270,11 +378,14 @@ async def generate_detail_images(
                     settings=settings,
                     product_info=product_info,
                     reference_images=reference_images,
+                    style_reference_images=style_reference_images,
                     promotion_info=promotion_info,
                     style=style,
+                    custom_style=custom_style,
                     module=module,
                     module_index=index,
                     total_modules=total_modules,
+                    platform_size=platform_size,
                 )
                 for index, module in enumerate(enabled_modules, start=1)
             )
@@ -300,6 +411,45 @@ async def generate_detail_images(
         "images": [{"module_id": module["id"], "url": DEMO_IMAGE_URLS[module["id"]]} for module in enabled_modules],
         "errors": errors,
     }
+
+
+def build_image_edit_prompt(instruction: str) -> str:
+    return "\n".join(
+        [
+            "你是电商商品图后期微调模型。请基于用户提供的原图做局部编辑。",
+            "必须尽量保持产品外观、包装文字、Logo、主体比例和整体构图稳定，只修改用户明确提出的细节。",
+            "不要新增医疗化功效、虚假品牌、乱码文字或水印。",
+            f"用户微调指令：{instruction.strip()}",
+        ]
+    )
+
+
+async def edit_generated_image(image_url: str, instruction: str, platform_size: str | None = None) -> dict[str, Any]:
+    cleaned_instruction = instruction.strip()
+    if not image_url:
+        return {"source": "error", "error": "image_url is required"}
+    if not cleaned_instruction:
+        return {"source": "error", "error": "instruction is required"}
+
+    settings = get_model_settings()
+    if not settings.image.api_key and not settings.fallback_image.api_key:
+        return {"source": "error", "error": "image model is not configured"}
+
+    prompt = build_image_edit_prompt(cleaned_instruction)
+    try:
+        urls = await call_image_model(settings.image, prompt, image=[image_url], size=platform_size)
+    except Exception as primary_exc:
+        logger.warning("primary image edit failed error=%s", primary_exc)
+        if not settings.fallback_image.api_key:
+            return {"source": "error", "error": str(primary_exc)}
+        try:
+            urls = await call_image_model(settings.fallback_image, prompt, image=[image_url], size=platform_size)
+        except Exception as fallback_exc:
+            return {"source": "error", "error": f"primary failed: {primary_exc}; fallback failed: {fallback_exc}"}
+
+    if not urls:
+        return {"source": "error", "error": "image model returned empty content"}
+    return {"source": "model", "url": urls[0]}
 
 
 async def _read_image_bytes(url: str) -> bytes:
@@ -386,7 +536,20 @@ try:
         style_id: str = "green_repair"
         product_info: dict[str, Any] | None = None
         reference_images: list[str] = Field(default_factory=list)
+        style_reference_images: list[str] = Field(default_factory=list)
+        custom_style: dict[str, Any] | None = None
         promotion_info: str | None = None
+        platform_size: str | None = None
+
+    class PlanStyleRequest(BaseModel):
+        product_info: dict[str, Any] | None = None
+        category: str | None = None
+        brand_colors: list[str] = Field(default_factory=list)
+
+    class EditImageRequest(BaseModel):
+        image_url: str
+        instruction: str
+        platform_size: str | None = None
 
     class ComposeImageItem(BaseModel):
         module_id: str
@@ -413,6 +576,10 @@ try:
         materials = [uploaded_material_from_payload(payload) for payload in request.materials[:8]]
         return await analyze_uploaded_materials(materials)
 
+    @router.post("/plan-style")
+    async def plan_project_style(request: PlanStyleRequest) -> dict[str, Any]:
+        return await plan_custom_style(request.product_info, request.category, request.brand_colors[:8])
+
     @router.post("/generate")
     async def generate_project(request: GenerateRequest) -> dict[str, Any]:
         return await generate_detail_images(
@@ -420,8 +587,15 @@ try:
             request.style_id,
             product_info=request.product_info,
             reference_images=request.reference_images,
+            style_reference_images=request.style_reference_images,
+            custom_style=request.custom_style,
             promotion_info=request.promotion_info,
+            platform_size=request.platform_size,
         )
+
+    @router.post("/edit-image")
+    async def edit_project_image(request: EditImageRequest) -> dict[str, Any]:
+        return await edit_generated_image(request.image_url, request.instruction, platform_size=request.platform_size)
 
     @router.post("/compose-long-image")
     async def compose_project_long_image(request: ComposeLongImageRequest) -> Response:

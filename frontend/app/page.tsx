@@ -8,8 +8,8 @@ import { ReviewStep } from "@/components/ReviewStep";
 import { Stepper } from "@/components/Stepper";
 import { StyleStep } from "@/components/StyleStep";
 import { UploadStep } from "@/components/UploadStep";
-import { DEMO_MODEL_CONFIG } from "@/lib/constants";
-import { analyzeUploadedMaterials, fetchModelConfig, fetchProjectDefaults, generateImages } from "@/lib/api";
+import { COMMERCE_PLATFORMS, DEMO_MODEL_CONFIG, OFFICIAL_PROJECT_TEMPLATES } from "@/lib/constants";
+import { analyzeUploadedMaterials, editGeneratedImage, fetchModelConfig, fetchProjectDefaults, generateImages, planAiCustomStyle } from "@/lib/api";
 import {
   applyProductInfoDraft,
   createEmptyProductInfo,
@@ -17,10 +17,35 @@ import {
   productInfoDraftHasValue,
   type ProductInfoFieldKey
 } from "@/lib/productInfo";
-import type { ImageGroup, MaterialPayload, ModuleConfig, ProductInfo, PublicModelConfig, StepId, StyleOption, UploadedFileInfo, UploadSlot } from "@/lib/types";
+import {
+  appendImageVersions,
+  applyTemplateToModules,
+  createTemplateFromProject,
+  extractDominantColorsFromRgba,
+  getSelectedGeneratedImages,
+  recommendStyleFromBrandColors,
+  runParallelImageGeneration,
+  selectImageVersion
+} from "@/lib/projectEnhancements";
+import type {
+  CommercePlatformId,
+  GeneratedImageVersionState,
+  ImageGroup,
+  MaterialPayload,
+  ModuleConfig,
+  ProductInfo,
+  ProjectTemplate,
+  PublicModelConfig,
+  StepId,
+  StyleOption,
+  StyleSource,
+  UploadedFileInfo,
+  UploadSlot
+} from "@/lib/types";
 
 const order: StepId[] = ["upload", "review", "style", "modules", "preview"];
 const PROJECT_STATE_STORAGE_KEY = "detail-image-agent-project-state-v1";
+const WHITE_BACKGROUND_MODULE_IDS = new Set(["main_white_bg", "campaign_white_bg"]);
 
 const groupLabel: Record<ImageGroup, string> = {
   main: "主图",
@@ -29,26 +54,38 @@ const groupLabel: Record<ImageGroup, string> = {
 };
 
 type GeneratedImage = { module_id: string; url: string };
-type GenerationProgress = { isGenerating: boolean; completed: number; total: number; currentModuleId: string; errorCount: number };
+type GenerationProgress = { isGenerating: boolean; completed: number; total: number; runningModuleIds: string[]; errorCount: number };
 type GenerationProgressMap = Record<ImageGroup, GenerationProgress>;
+type ImageVersionStore = { versions: GeneratedImageVersionState; selectedVersionIds: Record<string, string> };
 
 type PersistedProjectState = {
   productInfo: ProductInfo | null;
   hasAiProductInfo: boolean;
   selectedStyleId: string;
+  customStyle: StyleOption | null;
+  styleSource: StyleSource;
   selectedCategory: string;
+  selectedPlatformId: CommercePlatformId;
   activeImageGroup: ImageGroup;
   promotionInfo: string;
   modules: ModuleConfig[];
   generatedImages: GeneratedImage[];
+  generatedImageVersions: GeneratedImageVersionState;
+  selectedVersionIds: Record<string, string>;
+  userTemplates: ProjectTemplate[];
+  brandColors: string[];
   statusText: string;
 };
 
+function createEmptyImageVersionStore(): ImageVersionStore {
+  return { versions: {}, selectedVersionIds: {} };
+}
+
 function createIdleGenerationProgress(): GenerationProgressMap {
   return {
-    main: { isGenerating: false, completed: 0, total: 0, currentModuleId: "", errorCount: 0 },
-    campaign: { isGenerating: false, completed: 0, total: 0, currentModuleId: "", errorCount: 0 },
-    detail: { isGenerating: false, completed: 0, total: 0, currentModuleId: "", errorCount: 0 }
+    main: { isGenerating: false, completed: 0, total: 0, runningModuleIds: [], errorCount: 0 },
+    campaign: { isGenerating: false, completed: 0, total: 0, runningModuleIds: [], errorCount: 0 },
+    detail: { isGenerating: false, completed: 0, total: 0, runningModuleIds: [], errorCount: 0 }
   };
 }
 
@@ -71,15 +108,23 @@ function readPersistedProjectState(): PersistedProjectState | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<PersistedProjectState>;
     const activeImageGroup = ["main", "campaign", "detail"].includes(parsed.activeImageGroup ?? "") ? (parsed.activeImageGroup as ImageGroup) : "main";
+    const styleSource: StyleSource = parsed.styleSource === "reference" || parsed.styleSource === "ai_custom" ? parsed.styleSource : "preset";
     return {
       productInfo: parsed.productInfo ?? null,
       hasAiProductInfo: Boolean(parsed.hasAiProductInfo && parsed.productInfo),
       selectedStyleId: parsed.selectedStyleId || "green_repair",
+      customStyle: parsed.customStyle && typeof parsed.customStyle === "object" ? (parsed.customStyle as StyleOption) : null,
+      styleSource,
       selectedCategory: parsed.selectedCategory || "护肤精华",
       activeImageGroup,
+      selectedPlatformId: COMMERCE_PLATFORMS.some((platform) => platform.id === parsed.selectedPlatformId) ? (parsed.selectedPlatformId as CommercePlatformId) : "tmall",
       promotionInfo: parsed.promotionInfo || "",
       modules: Array.isArray(parsed.modules) ? parsed.modules : [],
       generatedImages: Array.isArray(parsed.generatedImages) ? parsed.generatedImages : [],
+      generatedImageVersions: parsed.generatedImageVersions && typeof parsed.generatedImageVersions === "object" ? parsed.generatedImageVersions : {},
+      selectedVersionIds: parsed.selectedVersionIds && typeof parsed.selectedVersionIds === "object" ? parsed.selectedVersionIds : {},
+      userTemplates: Array.isArray(parsed.userTemplates) ? parsed.userTemplates : [],
+      brandColors: Array.isArray(parsed.brandColors) ? parsed.brandColors.filter((color): color is string => typeof color === "string") : [],
       statusText: parsed.statusText || "原型预览"
     };
   } catch {
@@ -93,12 +138,6 @@ function mergeRestoredModules(defaultModules: ModuleConfig[], restoredModules: M
     const restored = restoredById.get(module.id);
     return restored ? { ...module, enabled: restored.enabled, order: restored.order ?? module.order } : module;
   });
-}
-
-function upsertGeneratedImages(current: GeneratedImage[], nextImages: GeneratedImage[]) {
-  const nextById = new Map(current.map((image) => [image.module_id, image]));
-  nextImages.forEach((image) => nextById.set(image.module_id, image));
-  return Array.from(nextById.values());
 }
 
 function persistProjectState(state: PersistedProjectState) {
@@ -116,6 +155,29 @@ function fileToDataUrl(file: File) {
     reader.onload = () => resolve(String(reader.result ?? ""));
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
+  });
+}
+
+function extractColorsFromImageDataUrl(dataUrl: string) {
+  return new Promise<string[]>((resolve) => {
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      const maxSide = 96;
+      const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const context = canvas.getContext("2d", { willReadFrequently: true });
+      if (!context) {
+        resolve([]);
+        return;
+      }
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      resolve(extractDominantColorsFromRgba(imageData.data));
+    };
+    image.onerror = () => resolve([]);
+    image.src = dataUrl;
   });
 }
 
@@ -143,9 +205,15 @@ export default function Home() {
   const [activeImageGroup, setActiveImageGroup] = useState<ImageGroup>("main");
   const [promotionInfo, setPromotionInfo] = useState("");
   const [selectedStyleId, setSelectedStyleId] = useState("green_repair");
+  const [customStyle, setCustomStyle] = useState<StyleOption | null>(null);
+  const [styleSource, setStyleSource] = useState<StyleSource>("preset");
+  const [isPlanningCustomStyle, setIsPlanningCustomStyle] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("护肤精华");
+  const [selectedPlatformId, setSelectedPlatformId] = useState<CommercePlatformId>("tmall");
   const [modelConfig, setModelConfig] = useState<PublicModelConfig>(DEMO_MODEL_CONFIG);
-  const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
+  const [imageVersionStore, setImageVersionStore] = useState<ImageVersionStore>(() => createEmptyImageVersionStore());
+  const [userTemplates, setUserTemplates] = useState<ProjectTemplate[]>([]);
+  const [brandColors, setBrandColors] = useState<string[]>([]);
   const [generationProgress, setGenerationProgress] = useState<GenerationProgressMap>(() => createIdleGenerationProgress());
   const [statusText, setStatusText] = useState("原型预览");
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFileInfo[]>([]);
@@ -164,12 +232,21 @@ export default function Home() {
         setProductInfo(restored.productInfo);
         setHasAiProductInfo(restored.hasAiProductInfo);
         setSelectedStyleId(restored.selectedStyleId);
+        setCustomStyle(restored.customStyle);
+        setStyleSource(restored.styleSource);
         setSelectedCategory(restored.selectedCategory);
+        setSelectedPlatformId(restored.selectedPlatformId);
         setActiveImageGroup(restored.activeImageGroup);
         setPromotionInfo(restored.promotionInfo);
         setModules(mergeRestoredModules(defaults.modules, restored.modules));
-        setGeneratedImages(restored.generatedImages);
-        setStatusText(restored.generatedImages.length ? "已恢复生成结果" : restored.statusText);
+        if (Object.keys(restored.generatedImageVersions).length) {
+          setImageVersionStore({ versions: restored.generatedImageVersions, selectedVersionIds: restored.selectedVersionIds });
+        } else if (restored.generatedImages.length) {
+          setImageVersionStore(appendImageVersions(createEmptyImageVersionStore(), restored.generatedImages, "restored", Date.now()));
+        }
+        setUserTemplates(restored.userTemplates);
+        setBrandColors(restored.brandColors);
+        setStatusText(restored.generatedImages.length || Object.keys(restored.generatedImageVersions).length ? "已恢复生成结果" : restored.statusText);
       } else {
         setModules(defaults.modules);
       }
@@ -184,14 +261,21 @@ export default function Home() {
       productInfo,
       hasAiProductInfo,
       selectedStyleId,
+      customStyle,
+      styleSource,
       selectedCategory,
+      selectedPlatformId,
       activeImageGroup,
       promotionInfo,
       modules,
-      generatedImages,
+      generatedImages: getSelectedGeneratedImages(imageVersionStore.versions, imageVersionStore.selectedVersionIds),
+      generatedImageVersions: imageVersionStore.versions,
+      selectedVersionIds: imageVersionStore.selectedVersionIds,
+      userTemplates,
+      brandColors,
       statusText
     });
-  }, [activeImageGroup, generatedImages, hasAiProductInfo, hasRestoredProjectState, modules, productInfo, promotionInfo, selectedCategory, selectedStyleId, statusText]);
+  }, [activeImageGroup, brandColors, customStyle, hasAiProductInfo, hasRestoredProjectState, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedPlatformId, selectedStyleId, statusText, styleSource, userTemplates]);
 
   useEffect(() => {
     function syncStepFromHash() {
@@ -208,6 +292,16 @@ export default function Home() {
     () => styles.find((style) => style.id === selectedStyleId) ?? styles[0],
     [selectedStyleId, styles]
   );
+  const selectedPlatform = useMemo(
+    () => COMMERCE_PLATFORMS.find((platform) => platform.id === selectedPlatformId) ?? COMMERCE_PLATFORMS[0],
+    [selectedPlatformId]
+  );
+  const generatedImages = useMemo(
+    () => getSelectedGeneratedImages(imageVersionStore.versions, imageVersionStore.selectedVersionIds),
+    [imageVersionStore]
+  );
+  const styleRecommendation = useMemo(() => recommendStyleFromBrandColors(brandColors), [brandColors]);
+  const allTemplates = useMemo(() => [...OFFICIAL_PROJECT_TEMPLATES, ...userTemplates], [userTemplates]);
 
   function go(step: StepId) {
     setActiveStep(step);
@@ -227,12 +321,126 @@ export default function Home() {
     setStatusText("读取上传文件");
     const nextFiles = await Promise.all(files.map((file) => fileToUploadInfo(slot, file)));
     setUploadedFiles((current) => [...current, ...nextFiles]);
+    if (slot === "product_image") {
+      const firstImage = nextFiles.find((file) => file.type.startsWith("image/") && file.dataUrl);
+      if (firstImage?.dataUrl) {
+        const colors = await extractColorsFromImageDataUrl(firstImage.dataUrl);
+        if (colors.length) {
+          setBrandColors(colors);
+          const recommendation = recommendStyleFromBrandColors(colors);
+          if (recommendation) {
+            setSelectedStyleId(recommendation.styleId);
+            setStatusText("已提取品牌色并推荐风格");
+            return;
+          }
+        }
+      }
+    }
     setStatusText("资料已加入");
+  }
+
+  function applyProjectTemplate(template: ProjectTemplate) {
+    setSelectedCategory(template.category);
+    setSelectedStyleId(template.styleId);
+    setStyleSource("preset");
+    setSelectedPlatformId(template.platformId);
+    setModules((current) => applyTemplateToModules(current, template));
+    setStatusText(`已套用模板：${template.name}`);
+  }
+
+  function saveCurrentTemplate() {
+    const template = createTemplateFromProject({
+      id: `template-${Date.now()}`,
+      name: `${selectedCategory || "项目"}模板 ${userTemplates.length + 1}`,
+      category: selectedCategory,
+      styleId: selectedStyleId,
+      platformId: selectedPlatformId,
+      modules
+    });
+    setUserTemplates((current) => [template, ...current].slice(0, 8));
+    setStatusText("已保存为模板");
+  }
+
+  function duplicateProjectForNewProduct() {
+    setProductInfo(null);
+    setHasAiProductInfo(false);
+    setUploadedFiles([]);
+    setManualFieldKeys([]);
+    setAnalysisSource("");
+    setImageVersionStore(createEmptyImageVersionStore());
+    setGenerationProgress(createIdleGenerationProgress());
+    setStatusText("已复制配置，请替换新产品资料");
+    go("upload");
+  }
+
+  function selectVersion(moduleId: string, versionId: string) {
+    setImageVersionStore((current) => ({
+      ...current,
+      selectedVersionIds: selectImageVersion(current.selectedVersionIds, moduleId, versionId)
+    }));
+  }
+
+  async function handleEditImage(moduleId: string, imageUrl: string, instruction: string) {
+    const trimmed = instruction.trim();
+    if (!trimmed) {
+      setStatusText("请先填写微调指令");
+      return;
+    }
+    setStatusText("AI 微调中");
+    const result = await editGeneratedImage(imageUrl, trimmed, selectedPlatform.mainSize);
+    if (result.source === "model" && result.url) {
+      setImageVersionStore((current) =>
+        appendImageVersions(current, [{ module_id: moduleId, url: result.url as string }], "edit", Date.now(), trimmed)
+      );
+      setStatusText("微调完成，已加入新版本");
+    } else {
+      setStatusText(`微调失败：${result.error ?? "模型未返回图片"}`);
+    }
   }
 
   function updateCategory(category: string) {
     setSelectedCategory(category);
     setProductInfo((current) => (current ? { ...current, category } : current));
+  }
+
+  function selectPresetStyle(styleId: string) {
+    setSelectedStyleId(styleId);
+    setStyleSource("preset");
+  }
+
+  function selectStyleReference() {
+    setStyleSource("reference");
+  }
+
+  function selectAiCustomStyle() {
+    if (!customStyle) {
+      setStatusText("请先点击让 AI 规划风格");
+      return;
+    }
+    setStyleSource("ai_custom");
+  }
+
+  async function handlePlanAiCustomStyle() {
+    if (isPlanningCustomStyle) return;
+    if (!productInfo || !hasAiProductInfo) {
+      setStatusText("请先用 AI 解析产品信息");
+      go("upload");
+      return;
+    }
+    setIsPlanningCustomStyle(true);
+    setStatusText("Gemini 3.1 Pro 正在规划风格");
+    try {
+      const result = await planAiCustomStyle(productInfo, selectedCategory, brandColors);
+      if (result.source === "model" && result.style) {
+        setCustomStyle(result.style);
+        setStyleSource("ai_custom");
+        setStatusText(`已生成 AI 自定义风格：${result.style.name}`);
+      } else {
+        setStatusText(`AI 风格规划失败：${result.error ?? "模型未返回风格"}`);
+      }
+    } finally {
+      setIsPlanningCustomStyle(false);
+    }
   }
 
   function updateManualField(key: ProductInfoFieldKey, draft: string) {
@@ -307,6 +515,24 @@ export default function Home() {
       .filter((file) => file.slot === "product_image" && file.type.startsWith("image/") && file.dataUrl)
       .map((file) => file.dataUrl as string)
       .slice(0, 4);
+    const styleReferenceImages = uploadedFiles
+      .filter((file) => file.slot === "style_reference" && file.type.startsWith("image/") && file.dataUrl)
+      .map((file) => file.dataUrl as string)
+      .slice(0, 4);
+    const activeStyleReferenceImages = styleSource === "reference" ? styleReferenceImages : [];
+    const activeCustomStyle = styleSource === "ai_custom" && customStyle ? customStyle : undefined;
+    if (modulesToGenerate.some((module) => WHITE_BACKGROUND_MODULE_IDS.has(module.id)) && referenceImages.length === 0) {
+      setStatusText("白底图需要先上传产品图，避免 AI 重绘导致包装或 Logo 变形");
+      return;
+    }
+    if (styleSource === "reference" && activeStyleReferenceImages.length === 0) {
+      setStatusText("请先上传并选择风格参考图");
+      return;
+    }
+    if (styleSource === "ai_custom" && !activeCustomStyle) {
+      setStatusText("请先让 AI 规划自定义风格");
+      return;
+    }
 
     setGenerationProgress((current) => ({
       ...current,
@@ -314,40 +540,47 @@ export default function Home() {
         isGenerating: true,
         completed: 0,
         total: modulesToGenerate.length,
-        currentModuleId: modulesToGenerate[0]?.id ?? "",
+        runningModuleIds: modulesToGenerate.map((module) => module.id),
         errorCount: 0
       }
     }));
-    setStatusText(`${groupLabel[group]}生成中 0/${modulesToGenerate.length}`);
+    setStatusText(`${groupLabel[group]}并行生成中 0/${modulesToGenerate.length}`);
 
-    let errorCount = 0;
     try {
-      for (const [index, module] of modulesToGenerate.entries()) {
-        setGenerationProgress((current) => ({
-          ...current,
-          [group]: { ...current[group], currentModuleId: module.id }
-        }));
-        const result = await generateImages([module.id], selectedStyleId, productInfo, referenceImages, group === "campaign" ? promotionInfo : "");
-        errorCount += result.errors?.length ?? 0;
-        if (result.images.length) {
-          setGeneratedImages((current) => upsertGeneratedImages(current, result.images));
-        }
-        setGenerationProgress((current) => ({
-          ...current,
-          [group]: {
-            ...current[group],
-            completed: index + 1,
-            currentModuleId: modulesToGenerate[index + 1]?.id ?? "",
-            errorCount
+      const summary = await runParallelImageGeneration(
+        modulesToGenerate,
+        (module) =>
+          generateImages(
+            [module.id],
+            selectedStyleId,
+            productInfo,
+            referenceImages,
+            group === "campaign" ? promotionInfo : "",
+            selectedPlatform.mainSize,
+            activeStyleReferenceImages,
+            activeCustomStyle
+          ),
+        (module, result, progress) => {
+          if (result.images.length) {
+            setImageVersionStore((current) => appendImageVersions(current, result.images, result.source || "model"));
           }
-        }));
-        setStatusText(`${groupLabel[group]}生成中 ${index + 1}/${modulesToGenerate.length}`);
-      }
-      setStatusText(errorCount ? `${groupLabel[group]}已生成，部分图片使用兜底` : `${groupLabel[group]}已生成`);
+          setGenerationProgress((current) => ({
+            ...current,
+            [group]: {
+              ...current[group],
+              completed: progress.completed,
+              runningModuleIds: current[group].runningModuleIds.filter((moduleId) => moduleId !== module.id),
+              errorCount: progress.errorCount
+            }
+          }));
+          setStatusText(`${groupLabel[group]}并行生成中 ${progress.completed}/${progress.total}`);
+        }
+      );
+      setStatusText(summary.errorCount ? `${groupLabel[group]}已生成，部分图片使用兜底` : `${groupLabel[group]}已生成`);
     } finally {
       setGenerationProgress((current) => ({
         ...current,
-        [group]: { ...current[group], isGenerating: false, currentModuleId: "" }
+        [group]: { ...current[group], isGenerating: false, runningModuleIds: [] }
       }));
     }
   }
@@ -369,9 +602,14 @@ export default function Home() {
           返回项目
         </button>
         <h1>商品详情图生成智能体</h1>
-        <div className="statusBadge">
-          <span />
-          {statusText}
+        <div className="topbarActions">
+          <button className="backButton" onClick={duplicateProjectForNewProduct} type="button">
+            复制项目
+          </button>
+          <div className="statusBadge">
+            <span />
+            {statusText}
+          </div>
         </div>
       </header>
 
@@ -383,7 +621,7 @@ export default function Home() {
             uploadedFiles={uploadedFiles}
             productInfo={productInfo}
             productName={productInfo?.product_name ?? "待 AI 解析"}
-            selectedStyleName={selectedStyle.name}
+            selectedStyleName={styleSource === "reference" ? "风格参考图" : styleSource === "ai_custom" ? customStyle?.name ?? "AI 自定义风格" : selectedStyle.name}
             moduleCount={modules.filter((module) => module.enabled).length}
             manualFieldKeys={manualFieldKeys}
             isAnalyzing={isAnalyzing}
@@ -400,9 +638,20 @@ export default function Home() {
           <StyleStep
             styles={styles}
             category={selectedCategory}
+            styleSource={styleSource}
             selectedStyleId={selectedStyleId}
-            onSelect={setSelectedStyleId}
+            customStyle={customStyle}
+            isPlanningCustomStyle={isPlanningCustomStyle}
+            uploadedFiles={uploadedFiles}
+            brandColors={brandColors}
+            recommendedStyleId={styleRecommendation?.styleId ?? ""}
+            onSelect={selectPresetStyle}
+            onAiCustomStyleSelect={selectAiCustomStyle}
+            onPlanAiCustomStyle={handlePlanAiCustomStyle}
+            onStyleReferenceSelect={selectStyleReference}
             onCategoryChange={updateCategory}
+            onStyleFilesAdded={addUploadedFiles}
+            onStyleFileRemove={(id) => setUploadedFiles((current) => current.filter((file) => file.id !== id))}
             onBack={() => go(previousStep(activeStep))}
             onNext={() => go(nextStep(activeStep))}
           />
@@ -421,12 +670,19 @@ export default function Home() {
           <ModulesStep
             modules={modules}
             activeImageGroup={activeImageGroup}
-            selectedStyle={selectedStyle}
+            selectedStyle={styleSource === "ai_custom" && customStyle ? customStyle : selectedStyle}
+            styleSource={styleSource}
             modelConfig={modelConfig}
             generatedImages={generatedImages}
             generationProgress={generationProgress}
             promotionInfo={promotionInfo}
+            platforms={COMMERCE_PLATFORMS}
+            selectedPlatformId={selectedPlatformId}
+            templates={allTemplates}
             onPromotionInfoChange={setPromotionInfo}
+            onPlatformChange={setSelectedPlatformId}
+            onTemplateApply={applyProjectTemplate}
+            onTemplateSave={saveCurrentTemplate}
             onImageGroupChange={setActiveImageGroup}
             onToggleModule={toggleModule}
             onBack={() => go(previousStep(activeStep))}
@@ -439,8 +695,13 @@ export default function Home() {
             modules={modules}
             activeImageGroup={activeImageGroup}
             generatedImages={generatedImages}
+            imageVersions={imageVersionStore.versions}
+            selectedVersionIds={imageVersionStore.selectedVersionIds}
             generationProgress={generationProgress}
+            selectedPlatform={selectedPlatform}
             onGenerateModule={(group, moduleId) => handleGenerate(group, moduleId)}
+            onSelectVersion={selectVersion}
+            onEditImage={handleEditImage}
             onImageGroupChange={setActiveImageGroup}
             onBack={() => go(previousStep(activeStep))}
           />

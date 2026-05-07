@@ -47,6 +47,16 @@ class ModelPayloadTests(unittest.TestCase):
         self.assertEqual(payload["output_format"], "png")
         self.assertEqual(payload["response_format"], "b64_json")
 
+    def test_image_payload_allows_per_request_size_override(self):
+        payload = build_image_generation_payload(
+            prompt="生成抖音主图",
+            model="gpt-image-2",
+            size="600x600",
+            n=1,
+        )
+
+        self.assertEqual(payload["size"], "600x600")
+
     def test_environment_overrides_are_supported(self):
         settings = get_model_settings(
             {
