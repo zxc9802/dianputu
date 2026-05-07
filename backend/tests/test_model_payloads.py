@@ -16,6 +16,8 @@ class ModelPayloadTests(unittest.TestCase):
         self.assertEqual(settings.text.max_tokens, 4096)
         self.assertEqual(settings.fallback_text.base_url, "http://38.59.249.36:8080/v1")
         self.assertEqual(settings.fallback_text.model, "gpt-5.5")
+        self.assertEqual(settings.image.size, "2048x2048")
+        self.assertEqual(settings.fallback_image.size, "2048x2048")
 
     def test_text_payload_contains_messages_model_and_defaults(self):
         payload = build_chat_completion_payload(
@@ -34,7 +36,7 @@ class ModelPayloadTests(unittest.TestCase):
         payload = build_image_generation_payload(
             prompt="生成绿色修护风详情图",
             model="gpt-image-2",
-            size="1024x1024",
+            size="2048x2048",
             n=1,
             quality="high",
             output_format="png",
@@ -42,7 +44,7 @@ class ModelPayloadTests(unittest.TestCase):
         )
 
         self.assertEqual(payload["model"], "gpt-image-2")
-        self.assertEqual(payload["size"], "1024x1024")
+        self.assertEqual(payload["size"], "2048x2048")
         self.assertEqual(payload["n"], 1)
         self.assertEqual(payload["prompt"], "生成绿色修护风详情图")
         self.assertEqual(payload["quality"], "high")

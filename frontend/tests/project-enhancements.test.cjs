@@ -40,6 +40,7 @@ vm.runInNewContext(compiled, sandbox, { filename: sourcePath });
 const {
   appendImageVersions,
   applyTemplateToModules,
+  resolveReusableHistoryId,
   extractDominantColorsFromRgba,
   getSelectedGeneratedImages,
   recommendStyleFromBrandColors,
@@ -60,6 +61,10 @@ assert.equal(fourth.selectedVersionIds.hero, fourth.versions.hero[2].id);
 
 const selected = getSelectedGeneratedImages(fourth.versions, { hero: fourth.versions.hero[0].id });
 assert.deepEqual(JSON.parse(JSON.stringify(selected)), [{ module_id: "hero", url: "v2.png" }]);
+
+assert.equal(resolveReusableHistoryId(null, null), undefined);
+assert.equal(resolveReusableHistoryId(null, "history-1"), "history-1");
+assert.equal(resolveReusableHistoryId("history-1", "history-2"), "history-1");
 
 const dominant = extractDominantColorsFromRgba([
   31, 140, 67, 255,

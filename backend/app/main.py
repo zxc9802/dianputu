@@ -1,13 +1,24 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import models, projects
+from app.routers import history, models, projects
+from app.services.database import close_pool, ensure_tables
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup: ensure database tables exist.  Shutdown: close the pool."""
+    await ensure_tables()
+    yield
+    await close_pool()
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="商品详情图生成智能体 API", version="0.1.0")
+    app = FastAPI(title="商品详情图生成智能体 API", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
@@ -24,6 +35,8 @@ def create_app() -> FastAPI:
         app.include_router(models.router)
     if projects.router is not None:
         app.include_router(projects.router)
+    if history.router is not None:
+        app.include_router(history.router)
     return app
 
 

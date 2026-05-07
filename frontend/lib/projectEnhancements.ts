@@ -87,6 +87,10 @@ export function getSelectedGeneratedImages(versions: GeneratedImageVersionState,
     .filter((image): image is GeneratedImageInput => Boolean(image));
 }
 
+export function resolveReusableHistoryId(currentHistoryId: string | null, savedHistoryId: string | null) {
+  return currentHistoryId ?? savedHistoryId ?? undefined;
+}
+
 export async function runParallelImageGeneration<TModule extends { id: string }>(
   modules: TModule[],
   generateOne: (module: TModule) => Promise<ImageGenerationResult>,

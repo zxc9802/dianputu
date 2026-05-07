@@ -274,7 +274,7 @@ export function ModulesStep({
                 <code>{modelConfig.imageGeneration.model}</code>
               </header>
               <p>
-                优先使用主接口生成图片；当前平台请求尺寸 {selectedPlatform.mainSize}，默认尺寸 {modelConfig.imageGeneration.defaults.size}。
+                优先使用主接口生成图片；当前平台生成尺寸 {selectedPlatform.generationSize}，默认尺寸 {modelConfig.imageGeneration.defaults.size}。
               </p>
             </article>
           </div>

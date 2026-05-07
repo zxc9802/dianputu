@@ -118,7 +118,7 @@ def get_model_settings(env: Mapping[str, str] | None = None, env_file: Path | st
             api_key=_read(source, "IMAGE_GENERATION_API_KEY", ""),
             base_url=_read(source, "IMAGE_GENERATION_BASE_URL", "https://api-xai.ainaibahub.com/v1"),
             model=_read(source, "IMAGE_GENERATION_MODEL", "gpt-image-2"),
-            size=_read(source, "IMAGE_GENERATION_SIZE", "1024x1024"),
+            size=_read(source, "IMAGE_GENERATION_SIZE", "2048x2048"),
             n=int(_read(source, "IMAGE_GENERATION_N", "1")),
             quality=_read(source, "IMAGE_GENERATION_QUALITY", "high"),
             output_format=_read(source, "IMAGE_GENERATION_OUTPUT_FORMAT", "png"),
@@ -128,10 +128,19 @@ def get_model_settings(env: Mapping[str, str] | None = None, env_file: Path | st
             api_key=_read(source, "FALLBACK_IMAGE_GENERATION_API_KEY", _read(source, "LEGACY_IMAGE_GENERATION_API_KEY", "")),
             base_url=_read(source, "FALLBACK_IMAGE_GENERATION_BASE_URL", _read(source, "LEGACY_IMAGE_GENERATION_BASE_URL", "https://yunwu.ai/v1")),
             model=_read(source, "FALLBACK_IMAGE_GENERATION_MODEL", _read(source, "LEGACY_IMAGE_GENERATION_MODEL", "gpt-image-2-all")),
-            size=_read(source, "FALLBACK_IMAGE_GENERATION_SIZE", _read(source, "LEGACY_IMAGE_GENERATION_SIZE", "1024x1024")),
+            size=_read(source, "FALLBACK_IMAGE_GENERATION_SIZE", _read(source, "LEGACY_IMAGE_GENERATION_SIZE", "2048x2048")),
             n=int(_read(source, "FALLBACK_IMAGE_GENERATION_N", _read(source, "LEGACY_IMAGE_GENERATION_N", "1"))),
         ),
     )
+
+
+@dataclass(frozen=True)
+class DatabaseSettings:
+    url: str
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.url)
 
 
 def get_object_storage_settings(env: Mapping[str, str] | None = None, env_file: Path | str | None = None) -> ObjectStorageSettings:
@@ -145,4 +154,12 @@ def get_object_storage_settings(env: Mapping[str, str] | None = None, env_file: 
         region=_read(source, "R2_REGION", "auto"),
         public_base_url=_read(source, "R2_PUBLIC_BASE_URL", ""),
         key_prefix=_read(source, "R2_KEY_PREFIX", ""),
+    )
+
+
+def get_database_settings(env: Mapping[str, str] | None = None, env_file: Path | str | None = None) -> DatabaseSettings:
+    dotenv_values = _read_env_file(_project_env_path() if env is None and env_file is None else env_file)
+    source = _merge_env(dotenv_values, environ if env is None else env)
+    return DatabaseSettings(
+        url=_read(source, "DATABASE_URL", ""),
     )

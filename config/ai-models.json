@@ -17,7 +17,7 @@
     "endpoint": "/images/generations",
     "model": "gpt-image-2",
     "defaults": {
-      "size": "1024x1024",
+      "size": "2048x2048",
       "n": 1,
       "quality": "high",
       "output_format": "png",
@@ -30,7 +30,7 @@
       "endpoint": "/images/generations",
       "model": "gpt-image-2-all",
       "defaults": {
-        "size": "1024x1024",
+        "size": "2048x2048",
         "n": 1
       }
     }

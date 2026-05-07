@@ -45,12 +45,12 @@ export const DEFAULT_MODULES: ModuleConfig[] = [
 ];
 
 export const COMMERCE_PLATFORMS: CommercePlatform[] = [
-  { id: "tmall", name: "淘宝 / 天猫", mainSize: "800x800", detailWidth: 750, note: "标准平台主图，详情页宽 750px" },
-  { id: "jd", name: "京东", mainSize: "800x800", detailWidth: 750, note: "适合京东商品主图和 750px 详情图" },
-  { id: "douyin", name: "抖音电商", mainSize: "600x600", detailWidth: 750, note: "主图更轻量，适合短视频货架入口" },
-  { id: "pdd", name: "拼多多", mainSize: "750x750", detailWidth: 750, note: "主图和详情图都按 750px 复用" },
-  { id: "xiaohongshu_square", name: "小红书 1:1", mainSize: "1080x1080", detailWidth: 1080, note: "适合笔记封面和种草商品图" },
-  { id: "xiaohongshu_portrait", name: "小红书 3:4", mainSize: "1080x1440", detailWidth: 1080, note: "适合竖版种草封面" }
+  { id: "tmall", name: "淘宝 / 天猫", mainSize: "800x800", generationSize: "2048x2048", detailWidth: 1500, note: "按 2K 生成，发布前可压缩到平台规格" },
+  { id: "jd", name: "京东", mainSize: "800x800", generationSize: "2048x2048", detailWidth: 1500, note: "按 2K 生成，发布前可压缩到平台规格" },
+  { id: "douyin", name: "抖音电商", mainSize: "600x600", generationSize: "2048x2048", detailWidth: 1500, note: "按 2K 生成，发布前可压缩到平台规格" },
+  { id: "pdd", name: "拼多多", mainSize: "750x750", generationSize: "2048x2048", detailWidth: 1500, note: "按 2K 生成，发布前可压缩到平台规格" },
+  { id: "xiaohongshu_square", name: "小红书 1:1", mainSize: "1080x1080", generationSize: "2048x2048", detailWidth: 2048, note: "按 2K 方图生成，适合高清种草图" },
+  { id: "xiaohongshu_portrait", name: "小红书 3:4", mainSize: "1080x1440", generationSize: "1536x2048", detailWidth: 1536, note: "按 2K 竖图生成，适合高清种草封面" }
 ];
 
 export const OFFICIAL_PROJECT_TEMPLATES: ProjectTemplate[] = [
@@ -122,11 +122,11 @@ export const DEMO_MODEL_CONFIG = {
   imageGeneration: {
     model: "gpt-image-2",
     configured: false,
-    defaults: { size: "1024x1024", n: 1, quality: "high", output_format: "png", response_format: "b64_json" },
+    defaults: { size: "2048x2048", n: 1, quality: "high", output_format: "png", response_format: "b64_json" },
     fallback: {
       model: "gpt-image-2-all",
       configured: false,
-      defaults: { size: "1024x1024", n: 1 }
+      defaults: { size: "2048x2048", n: 1 }
     }
   }
 };

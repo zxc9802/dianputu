@@ -23,6 +23,7 @@ export type CommercePlatform = {
   id: CommercePlatformId;
   name: string;
   mainSize: string;
+  generationSize: string;
   detailWidth: number;
   note: string;
 };
@@ -125,3 +126,25 @@ export type PublicModelConfig = {
     };
   };
 };
+
+export type GeneratedImage = { module_id: string; url: string };
+
+export type PersistedProjectState = {
+  productInfo: ProductInfo | null;
+  hasAiProductInfo: boolean;
+  selectedStyleId: string;
+  customStyle: StyleOption | null;
+  styleSource: StyleSource;
+  selectedCategory: string;
+  selectedPlatformId: CommercePlatformId;
+  activeImageGroup: ImageGroup;
+  promotionInfo: string;
+  modules: ModuleConfig[];
+  generatedImages: GeneratedImage[];
+  generatedImageVersions: GeneratedImageVersionState;
+  selectedVersionIds: Record<string, string>;
+  userTemplates: ProjectTemplate[];
+  brandColors: string[];
+  statusText: string;
+};
+

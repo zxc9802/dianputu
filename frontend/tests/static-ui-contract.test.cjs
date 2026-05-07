@@ -36,6 +36,14 @@ assertIncludes("lib/api.ts", "http://127.0.0.1:8000", "frontend API should defau
 assertIncludes("lib/api.ts", "AbortController", "frontend API requests must time out instead of leaving the app loading forever");
 assertIncludes("lib/api.ts", "timeoutMs: 600000", "image generation must keep the request open long enough for real model output");
 assertIncludes("lib/api.ts", "timeoutMs: 180000", "material analysis must keep the request open long enough for model output");
+assertIncludes("lib/constants.ts", 'defaults: { size: "2048x2048"', "frontend demo model config must reflect 2K image generation defaults");
+assertIncludes("app/page.tsx", "selectedPlatform.generationSize", "page image generation requests must use the 2K generation size");
+assertIncludes("app/page.tsx", "editGeneratedImage(imageUrl, trimmed, selectedPlatform.generationSize)", "image edits must keep the selected platform 2K generation size");
+assert.ok(!fs.existsSync(path.join(root, "lib/autoGenerate.ts")), "lib/autoGenerate.ts: full auto generation flow should be removed");
+assert.ok(!fs.existsSync(path.join(root, "components/AutoUploadStep.tsx")), "components/AutoUploadStep.tsx: full auto upload step should be removed");
+assert.ok(!fs.existsSync(path.join(root, "components/AutoProgressStep.tsx")), "components/AutoProgressStep.tsx: full auto progress step should be removed");
+assert.ok(!fs.existsSync(path.join(root, "components/AutoResultStep.tsx")), "components/AutoResultStep.tsx: full auto result step should be removed");
+assertIncludes("components/ModulesStep.tsx", "当前平台生成尺寸 {selectedPlatform.generationSize}", "model panel must show the actual 2K request size");
 
 assertIncludes("components/ReviewStep.tsx", "textarea", "review step must allow editing extracted fields");
 assertIncludes("components/ReviewStep.tsx", "onUpdateProductInfo", "review step must propagate edits to page state");
@@ -65,6 +73,9 @@ assertIncludes("app/page.tsx", "window.location.hash", "page must restore active
 assertIncludes("app/page.tsx", "hashchange", "page must stay in sync when the URL hash changes");
 assertIncludes("app/page.tsx", "generationProgress", "page must track generation progress by image group");
 assertIncludes("app/page.tsx", "promotionInfo", "page must persist campaign promotion text");
+assertIncludes("app/page.tsx", "currentHistoryId", "page must keep the saved history id for later autosaves");
+assertIncludes("app/page.tsx", "id: resolveReusableHistoryId(currentHistoryId, null)", "history autosave must reuse the current history id instead of inserting duplicates");
+assertIncludes("components/HistoryDrawer.tsx", "onRestore(detail.state, detail.id)", "restoring history must pass the record id back to the page for later reuse");
 assertIncludes("lib/api.ts", "promotion_info", "frontend API must send campaign promotion text to backend generation");
 assertIncludes("lib/api.ts", "style_reference_images", "frontend API must send uploaded style reference images separately");
 assertIncludes("app/page.tsx", 'file.slot === "style_reference"', "page generation handler must collect style reference uploads");

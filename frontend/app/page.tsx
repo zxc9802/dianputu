@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ArrowLeft, CheckCircle2, Clock } from "lucide-react";
+import { HistoryDrawer } from "@/components/HistoryDrawer";
 import { ModulesStep } from "@/components/ModulesStep";
 import { PreviewStep } from "@/components/PreviewStep";
 import { ReviewStep } from "@/components/ReviewStep";
@@ -18,6 +19,7 @@ import {
   generateImages,
   planAiCustomStyle
 } from "@/lib/api";
+import { saveHistory } from "@/lib/historyApi";
 import {
   applyProductInfoDraft,
   createEmptyProductInfo,
@@ -32,15 +34,18 @@ import {
   extractDominantColorsFromRgba,
   getSelectedGeneratedImages,
   recommendStyleFromBrandColors,
+  resolveReusableHistoryId,
   runParallelImageGeneration,
   selectImageVersion
 } from "@/lib/projectEnhancements";
 import type {
   CommercePlatformId,
+  GeneratedImage,
   GeneratedImageVersionState,
   ImageGroup,
   MaterialPayload,
   ModuleConfig,
+  PersistedProjectState,
   ProductInfo,
   ProjectTemplate,
   PublicModelConfig,
@@ -61,29 +66,11 @@ const groupLabel: Record<ImageGroup, string> = {
   detail: "详情图"
 };
 
-type GeneratedImage = { module_id: string; url: string };
 type GenerationProgress = { isGenerating: boolean; completed: number; total: number; runningModuleIds: string[]; errorCount: number };
 type GenerationProgressMap = Record<ImageGroup, GenerationProgress>;
 type ImageVersionStore = { versions: GeneratedImageVersionState; selectedVersionIds: Record<string, string> };
 
-type PersistedProjectState = {
-  productInfo: ProductInfo | null;
-  hasAiProductInfo: boolean;
-  selectedStyleId: string;
-  customStyle: StyleOption | null;
-  styleSource: StyleSource;
-  selectedCategory: string;
-  selectedPlatformId: CommercePlatformId;
-  activeImageGroup: ImageGroup;
-  promotionInfo: string;
-  modules: ModuleConfig[];
-  generatedImages: GeneratedImage[];
-  generatedImageVersions: GeneratedImageVersionState;
-  selectedVersionIds: Record<string, string>;
-  userTemplates: ProjectTemplate[];
-  brandColors: string[];
-  statusText: string;
-};
+
 
 function createEmptyImageVersionStore(): ImageVersionStore {
   return { versions: {}, selectedVersionIds: {} };
@@ -230,6 +217,8 @@ export default function Home() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisSource, setAnalysisSource] = useState("");
   const [hasRestoredProjectState, setHasRestoredProjectState] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadDefaults() {
@@ -371,6 +360,7 @@ export default function Home() {
   }
 
   function duplicateProjectForNewProduct() {
+    setCurrentHistoryId(null);
     setProductInfo(null);
     setHasAiProductInfo(false);
     setUploadedFiles([]);
@@ -396,7 +386,7 @@ export default function Home() {
       return;
     }
     setStatusText("AI 微调中");
-    const result = await editGeneratedImage(imageUrl, trimmed, selectedPlatform.mainSize);
+    const result = await editGeneratedImage(imageUrl, trimmed, selectedPlatform.generationSize);
     if (result.source === "model" && result.url) {
       setImageVersionStore((current) =>
         appendImageVersions(current, [{ module_id: moduleId, url: result.url as string }], "edit", Date.now(), trimmed)
@@ -587,7 +577,7 @@ export default function Home() {
             productInfo,
             referenceImages,
             group === "campaign" ? promotionInfo : "",
-            selectedPlatform.mainSize,
+            selectedPlatform.generationSize,
             activeStyleReferenceImages,
             activeCustomStyle
           ),
@@ -616,6 +606,78 @@ export default function Home() {
     }
   }
 
+  const saveToHistory = useCallback(async () => {
+    if (!productInfo || !hasAiProductInfo) return;
+    const currentImages = getSelectedGeneratedImages(imageVersionStore.versions, imageVersionStore.selectedVersionIds);
+    if (currentImages.length === 0) return;
+    const resolvedStyle = styleSource === "ai_custom" && customStyle ? customStyle : styles.find((s) => s.id === selectedStyleId);
+    const thumbnail = currentImages[0]?.url ?? "";
+    const saved = await saveHistory({
+      id: resolveReusableHistoryId(currentHistoryId, null),
+      product_name: productInfo.product_name || "未命名项目",
+      category: productInfo.category || selectedCategory,
+      style_id: selectedStyleId,
+      style_name: resolvedStyle?.name ?? selectedStyleId,
+      platform_id: selectedPlatformId,
+      thumbnail,
+      image_count: currentImages.length,
+      state: {
+        productInfo,
+        hasAiProductInfo,
+        selectedStyleId,
+        customStyle,
+        styleSource,
+        selectedCategory,
+        selectedPlatformId,
+        activeImageGroup,
+        promotionInfo,
+        modules,
+        generatedImages: currentImages,
+        generatedImageVersions: imageVersionStore.versions,
+        selectedVersionIds: imageVersionStore.selectedVersionIds,
+        userTemplates,
+        brandColors,
+        statusText: "已从历史恢复"
+      }
+    });
+    setCurrentHistoryId((existingId) => resolveReusableHistoryId(existingId, saved?.id ?? null) ?? null);
+  }, [activeImageGroup, brandColors, currentHistoryId, customStyle, hasAiProductInfo, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedPlatformId, selectedStyleId, statusText, styleSource, styles, userTemplates]);
+
+  // Auto-save to history when new images are generated
+  useEffect(() => {
+    const currentImages = getSelectedGeneratedImages(imageVersionStore.versions, imageVersionStore.selectedVersionIds);
+    const anyGenerating = Object.values(generationProgress).some((p) => p.isGenerating);
+    if (!anyGenerating && currentImages.length > 0 && hasAiProductInfo) {
+      const timer = window.setTimeout(() => void saveToHistory(), 2000);
+      return () => window.clearTimeout(timer);
+    }
+  }, [generationProgress, imageVersionStore, hasAiProductInfo, saveToHistory]);
+
+  function restoreFromHistory(state: PersistedProjectState, historyId?: string) {
+    setCurrentHistoryId(historyId ?? null);
+    setProductInfo(state.productInfo);
+    setHasAiProductInfo(state.hasAiProductInfo);
+    setSelectedStyleId(state.selectedStyleId);
+    setCustomStyle(state.customStyle);
+    setStyleSource(state.styleSource);
+    setSelectedCategory(state.selectedCategory);
+    setSelectedPlatformId(state.selectedPlatformId);
+    setActiveImageGroup(state.activeImageGroup);
+    setPromotionInfo(state.promotionInfo);
+    if (state.modules?.length) {
+      setModules((current) => mergeRestoredModules(current, state.modules));
+    }
+    if (Object.keys(state.generatedImageVersions || {}).length) {
+      setImageVersionStore({ versions: state.generatedImageVersions, selectedVersionIds: state.selectedVersionIds || {} });
+    } else if (state.generatedImages?.length) {
+      setImageVersionStore(appendImageVersions(createEmptyImageVersionStore(), state.generatedImages, "restored", Date.now()));
+    }
+    if (state.userTemplates?.length) setUserTemplates(state.userTemplates);
+    if (state.brandColors?.length) setBrandColors(state.brandColors);
+    setStatusText("已从历史记录恢复");
+    go("preview");
+  }
+
   if (!selectedStyle || modules.length === 0) {
     return (
       <main className="loading">
@@ -634,6 +696,10 @@ export default function Home() {
         </button>
         <h1>商品详情图生成智能体</h1>
         <div className="topbarActions">
+          <button className="historyButton" onClick={() => setIsHistoryOpen(true)} type="button">
+            <Clock size={16} />
+            历史记录
+          </button>
           <button className="backButton" onClick={duplicateProjectForNewProduct} type="button">
             复制项目
           </button>
@@ -740,6 +806,12 @@ export default function Home() {
           />
         ) : null}
       </div>
+
+      <HistoryDrawer
+        open={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        onRestore={restoreFromHistory}
+      />
     </main>
   );
 }
