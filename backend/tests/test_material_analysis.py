@@ -171,6 +171,7 @@ class AnalyzeUploadedMaterialsConfigTests(unittest.IsolatedAsyncioTestCase):
     async def test_analyze_uploaded_materials_reports_missing_text_model_key_separately(self):
         with patch("app.routers.projects.get_model_settings") as mocked_settings:
             mocked_settings.return_value.text.api_key = ""
+            mocked_settings.return_value.fallback_text.api_key = ""
 
             result = await analyze_uploaded_materials(
                 [UploadedMaterial(filename="test.txt", content_type="text/plain", data=b"product", text="product")]
@@ -200,6 +201,28 @@ class AnalyzeUploadedMaterialsConfigTests(unittest.IsolatedAsyncioTestCase):
         upload_mocked.assert_awaited_once()
         content = captured_messages[0]["content"]
         self.assertEqual(content[1]["image_url"]["url"], "https://img.example.com/prod/materials/main.png")
+
+    async def test_analyze_uploaded_materials_falls_back_to_secondary_text_model(self):
+        calls = []
+
+        async def fake_call_text_model(settings, messages):
+            calls.append(settings.model)
+            if settings.model == "gemini-3.1-pro-preview":
+                raise RuntimeError("primary unavailable")
+            return '{"product_name":"积雪草修护精华"}'
+
+        with patch("app.routers.projects.get_model_settings") as mocked_settings:
+            mocked_settings.return_value.text.api_key = "primary-key"
+            mocked_settings.return_value.text.model = "gemini-3.1-pro-preview"
+            mocked_settings.return_value.fallback_text.api_key = "fallback-key"
+            mocked_settings.return_value.fallback_text.model = "gpt-5.5"
+            with patch("app.routers.projects.call_text_model", new=fake_call_text_model):
+                result = await analyze_uploaded_materials(
+                    [UploadedMaterial(filename="test.txt", content_type="text/plain", data=b"product", text="product")]
+                )
+
+        self.assertEqual(result["source"], "model")
+        self.assertEqual(calls, ["gemini-3.1-pro-preview", "gpt-5.5"])
 
     async def test_plan_custom_style_calls_text_model_and_returns_style(self):
         with patch("app.routers.projects.get_model_settings") as mocked_settings:

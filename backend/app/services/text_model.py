@@ -49,4 +49,7 @@ async def call_text_model(settings: TextAnalysisSettings, messages: list[Message
         )
         response.raise_for_status()
         data = response.json()
-        return data["choices"][0]["message"].get("content", "")
+        choices = data.get("choices") or []
+        if not choices:
+            return ""
+        return choices[0].get("message", {}).get("content", "")

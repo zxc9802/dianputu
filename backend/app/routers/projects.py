@@ -56,6 +56,31 @@ async def upload_material_image_if_configured(material: UploadedMaterial) -> str
     return await upload_image_url_if_configured(data_url, "materials")
 
 
+async def call_text_model_with_fallback(settings: Any, messages: list[dict[str, Any]]) -> str:
+    primary_error: Exception | None = None
+    if settings.text.api_key:
+        try:
+            content = await call_text_model(settings.text, messages)
+            if content:
+                return content
+        except Exception as exc:
+            primary_error = exc
+            logger.warning("primary text model failed model=%s error=%s", settings.text.model, exc)
+
+    fallback = getattr(settings, "fallback_text", None)
+    if fallback and fallback.api_key:
+        try:
+            return await call_text_model(fallback, messages)
+        except Exception as exc:
+            if primary_error:
+                raise RuntimeError(f"primary failed: {primary_error}; fallback failed: {exc}") from exc
+            raise
+
+    if primary_error:
+        raise primary_error
+    return ""
+
+
 @dataclass(frozen=True)
 class UploadedMaterial:
     filename: str
@@ -268,14 +293,14 @@ def create_demo_project() -> dict[str, Any]:
 
 async def analyze_product_materials(raw_text: str | None = None) -> dict[str, Any]:
     settings = get_model_settings()
-    if settings.text.api_key and raw_text:
+    if (settings.text.api_key or settings.fallback_text.api_key) and raw_text:
         prompt = (
             "你是电商护肤详情页产品经理。请从资料中提炼商品信息，"
             "输出 JSON 字段：product_name, category, core_selling_points, functions, "
             "ingredients, target_users, usage_method, authority_assets, effect_claims。"
             f"\n资料：{raw_text}"
         )
-        content = await call_text_model(settings.text, [{"role": "user", "content": prompt}])
+        content = await call_text_model_with_fallback(settings, [{"role": "user", "content": prompt}])
         if content:
             return {"source": "model", "raw": content, "product_info": normalize_product_info_from_model(content)}
     return {"source": "error", "error": "text model is not configured or no raw text was provided"}
@@ -285,7 +310,7 @@ async def analyze_uploaded_materials(materials: list[UploadedMaterial]) -> dict[
     settings = get_model_settings()
     if not materials:
         return {"source": "error", "error": "no materials were uploaded"}
-    if not settings.text.api_key:
+    if not settings.text.api_key and not settings.fallback_text.api_key:
         return {"source": "error", "error": "text model is not configured"}
 
     try:
@@ -305,7 +330,7 @@ async def analyze_uploaded_materials(materials: list[UploadedMaterial]) -> dict[
                 )
             else:
                 model_materials.append(material)
-        content = await call_text_model(settings.text, build_material_analysis_messages(model_materials))
+        content = await call_text_model_with_fallback(settings, build_material_analysis_messages(model_materials))
     except Exception as exc:
         return {"source": "error", "error": str(exc)}
     if not content:
@@ -316,11 +341,11 @@ async def analyze_uploaded_materials(materials: list[UploadedMaterial]) -> dict[
 
 async def plan_custom_style(product_info: dict[str, Any] | None, category: str | None = None, brand_colors: list[str] | None = None) -> dict[str, Any]:
     settings = get_model_settings()
-    if not settings.text.api_key:
+    if not settings.text.api_key and not settings.fallback_text.api_key:
         return {"source": "error", "error": "text model is not configured"}
 
     try:
-        content = await call_text_model(settings.text, build_style_planning_messages(product_info, category, brand_colors))
+        content = await call_text_model_with_fallback(settings, build_style_planning_messages(product_info, category, brand_colors))
     except Exception as exc:
         return {"source": "error", "error": str(exc)}
     if not content:

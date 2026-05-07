@@ -38,6 +38,7 @@ class ImageGenerationSettings:
 @dataclass(frozen=True)
 class ModelSettings:
     text: TextAnalysisSettings
+    fallback_text: TextAnalysisSettings
     image: ImageGenerationSettings
     fallback_image: ImageGenerationSettings
 
@@ -105,6 +106,13 @@ def get_model_settings(env: Mapping[str, str] | None = None, env_file: Path | st
             model=_read(source, "TEXT_ANALYSIS_MODEL", "gemini-3.1-pro-preview"),
             max_tokens=int(_read(source, "TEXT_ANALYSIS_MAX_TOKENS", "4096")),
             temperature=float(_read(source, "TEXT_ANALYSIS_TEMPERATURE", "0.2")),
+        ),
+        fallback_text=TextAnalysisSettings(
+            api_key=_read(source, "FALLBACK_TEXT_ANALYSIS_API_KEY", ""),
+            base_url=_read(source, "FALLBACK_TEXT_ANALYSIS_BASE_URL", "http://38.59.249.36:8080/v1"),
+            model=_read(source, "FALLBACK_TEXT_ANALYSIS_MODEL", "gpt-5.5"),
+            max_tokens=int(_read(source, "FALLBACK_TEXT_ANALYSIS_MAX_TOKENS", _read(source, "TEXT_ANALYSIS_MAX_TOKENS", "4096"))),
+            temperature=float(_read(source, "FALLBACK_TEXT_ANALYSIS_TEMPERATURE", _read(source, "TEXT_ANALYSIS_TEMPERATURE", "0.2"))),
         ),
         image=ImageGenerationSettings(
             api_key=_read(source, "IMAGE_GENERATION_API_KEY", ""),

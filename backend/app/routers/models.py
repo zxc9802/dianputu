@@ -17,6 +17,16 @@ def build_public_model_config() -> dict[str, Any]:
                 "temperature": settings.text.temperature,
             },
             "configured": bool(settings.text.api_key),
+            "fallback": {
+                "baseUrl": settings.fallback_text.base_url,
+                "endpoint": "/chat/completions",
+                "model": settings.fallback_text.model,
+                "defaults": {
+                    "max_tokens": settings.fallback_text.max_tokens,
+                    "temperature": settings.fallback_text.temperature,
+                },
+                "configured": bool(settings.fallback_text.api_key),
+            },
         },
         "imageGeneration": {
             "baseUrl": settings.image.base_url,

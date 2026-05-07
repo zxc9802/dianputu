@@ -14,6 +14,8 @@ class ModelPayloadTests(unittest.TestCase):
 
         self.assertEqual(settings.text.model, "gemini-3.1-pro-preview")
         self.assertEqual(settings.text.max_tokens, 4096)
+        self.assertEqual(settings.fallback_text.base_url, "http://38.59.249.36:8080/v1")
+        self.assertEqual(settings.fallback_text.model, "gpt-5.5")
 
     def test_text_payload_contains_messages_model_and_defaults(self):
         payload = build_chat_completion_payload(
@@ -65,12 +67,14 @@ class ModelPayloadTests(unittest.TestCase):
                 "IMAGE_GENERATION_MODEL": "custom-image",
                 "IMAGE_GENERATION_SIZE": "1536x1024",
                 "IMAGE_GENERATION_QUALITY": "medium",
+                "FALLBACK_TEXT_ANALYSIS_MODEL": "custom-fallback-text",
                 "FALLBACK_IMAGE_GENERATION_MODEL": "custom-fallback",
             }
         )
 
         self.assertEqual(settings.text.model, "custom-text")
         self.assertEqual(settings.text.max_tokens, 8192)
+        self.assertEqual(settings.fallback_text.model, "custom-fallback-text")
         self.assertEqual(settings.image.model, "custom-image")
         self.assertEqual(settings.image.size, "1536x1024")
         self.assertEqual(settings.image.quality, "medium")
