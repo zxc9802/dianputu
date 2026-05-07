@@ -352,18 +352,24 @@ async def plan_custom_style(product_info: dict[str, Any] | None, category: str |
         return {"source": "error", "error": "text model returned empty content"}
 
     style = normalize_style_plan_from_model(content)
-    warnings: list[str] = []
-    if settings.image.api_key:
-        try:
-            sample_urls = await call_image_model(settings.image, build_custom_style_sample_prompt(style, product_info))
-            if sample_urls:
-                style["asset"] = sample_urls[0]
-        except Exception as exc:
-            warnings.append(f"style sample generation failed: {exc}")
-    else:
-        warnings.append("image model is not configured")
+    return {"source": "model", "style": style, "raw": content, "warnings": []}
 
-    return {"source": "model", "style": style, "raw": content, "warnings": warnings}
+
+async def generate_custom_style_sample(style: dict[str, Any], product_info: dict[str, Any] | None = None) -> dict[str, Any]:
+    settings = get_model_settings()
+    warnings: list[str] = []
+    if not settings.image.api_key:
+        return {"source": "error", "error": "image model is not configured", "warnings": ["image model is not configured"]}
+
+    try:
+        sample_urls = await call_image_model(settings.image, build_custom_style_sample_prompt(style, product_info))
+        if sample_urls:
+            updated_style = {**style, "asset": sample_urls[0]}
+            return {"source": "model", "style": updated_style, "warnings": warnings}
+    except Exception as exc:
+        return {"source": "error", "error": str(exc), "warnings": [f"style sample generation failed: {exc}"]}
+
+    return {"source": "error", "error": "image model returned empty content", "warnings": warnings}
 
 
 async def _generate_module_image(
@@ -619,6 +625,10 @@ try:
         category: str | None = None
         brand_colors: list[str] = Field(default_factory=list)
 
+    class PlanStyleSampleRequest(BaseModel):
+        style: dict[str, Any]
+        product_info: dict[str, Any] | None = None
+
     class EditImageRequest(BaseModel):
         image_url: str
         instruction: str
@@ -652,6 +662,10 @@ try:
     @router.post("/plan-style")
     async def plan_project_style(request: PlanStyleRequest) -> dict[str, Any]:
         return await plan_custom_style(request.product_info, request.category, request.brand_colors[:8])
+
+    @router.post("/plan-style-sample")
+    async def plan_project_style_sample(request: PlanStyleSampleRequest) -> dict[str, Any]:
+        return await generate_custom_style_sample(request.style, request.product_info)
 
     @router.post("/generate")
     async def generate_project(request: GenerateRequest) -> dict[str, Any]:

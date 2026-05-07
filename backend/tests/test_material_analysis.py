@@ -9,6 +9,7 @@ from app.routers.projects import (
     build_custom_style_sample_prompt,
     build_material_analysis_messages,
     build_style_planning_messages,
+    generate_custom_style_sample,
     generate_detail_images,
     normalize_product_info_from_model,
     normalize_style_plan_from_model,
@@ -224,7 +225,7 @@ class AnalyzeUploadedMaterialsConfigTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["source"], "model")
         self.assertEqual(calls, ["gemini-3.1-pro-preview", "gpt-5.5"])
 
-    async def test_plan_custom_style_calls_text_model_and_returns_style(self):
+    async def test_plan_custom_style_calls_text_model_and_returns_style_without_generating_sample(self):
         with patch("app.routers.projects.get_model_settings") as mocked_settings:
             mocked_settings.return_value.text.api_key = "text-key"
             mocked_settings.return_value.image.api_key = "image-key"
@@ -245,8 +246,30 @@ class AnalyzeUploadedMaterialsConfigTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["style"]["id"], "ai_custom")
         self.assertEqual(result["style"]["name"], "微晶冻感修护风")
         self.assertIn("清透冷感", result["style"]["visual_direction"])
-        self.assertEqual(result["style"]["asset"], "https://example.com/style-sample.png")
+        self.assertEqual(result["style"]["asset"], "")
         self.assertIn("积雪草修护精华", text_mocked.call_args.args[1][0]["content"])
+        image_mocked.assert_not_called()
+
+    async def test_generate_custom_style_sample_uses_image_model_and_returns_asset(self):
+        style = {
+            "id": "ai_custom",
+            "name": "微晶冻感修护风",
+            "primary_color": "#8ECFE6",
+            "keywords": ["微晶", "冻感"],
+            "asset": "",
+            "visual_direction": "清透冷感",
+            "layout_guidance": "主图留白，详情页卡片化",
+        }
+        with patch("app.routers.projects.get_model_settings") as mocked_settings:
+            mocked_settings.return_value.image.api_key = "image-key"
+            with patch("app.routers.projects.call_image_model", new=AsyncMock(return_value=["https://example.com/style-sample.png"])) as image_mocked:
+                result = await generate_custom_style_sample(
+                    style=style,
+                    product_info={"product_name": "积雪草修护精华", "category": "护肤精华"},
+                )
+
+        self.assertEqual(result["source"], "model")
+        self.assertEqual(result["style"]["asset"], "https://example.com/style-sample.png")
         self.assertIn("风格样例图", image_mocked.call_args.args[1])
 
     def test_custom_style_sample_prompt_uses_style_and_product_context(self):

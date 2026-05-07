@@ -17,12 +17,14 @@ export function StyleStep({
   selectedStyleId,
   customStyle,
   isPlanningCustomStyle,
+  isGeneratingStyleSample,
   uploadedFiles,
   brandColors,
   recommendedStyleId,
   onSelect,
   onAiCustomStyleSelect,
   onPlanAiCustomStyle,
+  onGenerateAiStyleSample,
   onStyleReferenceSelect,
   onCategoryChange,
   onStyleFilesAdded,
@@ -36,12 +38,14 @@ export function StyleStep({
   selectedStyleId: string;
   customStyle: StyleOption | null;
   isPlanningCustomStyle: boolean;
+  isGeneratingStyleSample: boolean;
   uploadedFiles: UploadedFileInfo[];
   brandColors: string[];
   recommendedStyleId: string;
   onSelect: (id: string) => void;
   onAiCustomStyleSelect: () => void;
   onPlanAiCustomStyle: () => void;
+  onGenerateAiStyleSample: () => void;
   onStyleReferenceSelect: () => void;
   onCategoryChange: (category: string) => void;
   onStyleFilesAdded: (slot: UploadSlot, files: File[]) => void;
@@ -123,10 +127,13 @@ export function StyleStep({
                 <button className="outlineButton fullWidth" onClick={onAiCustomStyleSelect}>
                   {styleSource === "ai_custom" ? "已选择" : "选择此风格"}
                 </button>
+                <button className="outlineButton fullWidth" type="button" onClick={onGenerateAiStyleSample} disabled={isGeneratingStyleSample}>
+                  {isGeneratingStyleSample ? "样例图生成中..." : customStyle.asset ? "重新生成样例图" : "生成样例图"}
+                </button>
               </>
             ) : null}
             <button className="primaryButton fullWidth" type="button" onClick={onPlanAiCustomStyle} disabled={isPlanningCustomStyle}>
-              {isPlanningCustomStyle ? "AI 规划并生成样例中..." : customStyle ? "重新规划并生成样例" : "让 AI 规划并生成样例"}
+              {isPlanningCustomStyle ? "AI 规划中..." : customStyle ? "重新规划风格" : "让 AI 规划风格"}
             </button>
           </article>
           {styles.map((style) => {

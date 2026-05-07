@@ -9,7 +9,15 @@ import { Stepper } from "@/components/Stepper";
 import { StyleStep } from "@/components/StyleStep";
 import { UploadStep } from "@/components/UploadStep";
 import { COMMERCE_PLATFORMS, DEMO_MODEL_CONFIG, OFFICIAL_PROJECT_TEMPLATES } from "@/lib/constants";
-import { analyzeUploadedMaterials, editGeneratedImage, fetchModelConfig, fetchProjectDefaults, generateImages, planAiCustomStyle } from "@/lib/api";
+import {
+  analyzeUploadedMaterials,
+  editGeneratedImage,
+  fetchModelConfig,
+  fetchProjectDefaults,
+  generateAiCustomStyleSample,
+  generateImages,
+  planAiCustomStyle
+} from "@/lib/api";
 import {
   applyProductInfoDraft,
   createEmptyProductInfo,
@@ -208,6 +216,7 @@ export default function Home() {
   const [customStyle, setCustomStyle] = useState<StyleOption | null>(null);
   const [styleSource, setStyleSource] = useState<StyleSource>("preset");
   const [isPlanningCustomStyle, setIsPlanningCustomStyle] = useState(false);
+  const [isGeneratingStyleSample, setIsGeneratingStyleSample] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState("护肤精华");
   const [selectedPlatformId, setSelectedPlatformId] = useState<CommercePlatformId>("tmall");
   const [modelConfig, setModelConfig] = useState<PublicModelConfig>(DEMO_MODEL_CONFIG);
@@ -434,12 +443,34 @@ export default function Home() {
       if (result.source === "model" && result.style) {
         setCustomStyle(result.style);
         setStyleSource("ai_custom");
-        setStatusText(`已生成 AI 自定义风格：${result.style.name}`);
+        setStatusText(`已规划 AI 自定义风格：${result.style.name}`);
       } else {
         setStatusText(`AI 风格规划失败：${result.error ?? "模型未返回风格"}`);
       }
     } finally {
       setIsPlanningCustomStyle(false);
+    }
+  }
+
+  async function handleGenerateAiStyleSample() {
+    if (isGeneratingStyleSample) return;
+    if (!customStyle) {
+      setStatusText("请先让 AI 规划自定义风格");
+      return;
+    }
+    setIsGeneratingStyleSample(true);
+    setStatusText("AI 风格样例图生成中");
+    try {
+      const result = await generateAiCustomStyleSample(customStyle, productInfo ?? undefined);
+      if (result.source === "model" && result.style) {
+        setCustomStyle(result.style);
+        setStyleSource("ai_custom");
+        setStatusText(`已生成风格样例图：${result.style.name}`);
+      } else {
+        setStatusText(`风格样例图生成失败：${result.error ?? "模型未返回图片"}`);
+      }
+    } finally {
+      setIsGeneratingStyleSample(false);
     }
   }
 
@@ -642,12 +673,14 @@ export default function Home() {
             selectedStyleId={selectedStyleId}
             customStyle={customStyle}
             isPlanningCustomStyle={isPlanningCustomStyle}
+            isGeneratingStyleSample={isGeneratingStyleSample}
             uploadedFiles={uploadedFiles}
             brandColors={brandColors}
             recommendedStyleId={styleRecommendation?.styleId ?? ""}
             onSelect={selectPresetStyle}
             onAiCustomStyleSelect={selectAiCustomStyle}
             onPlanAiCustomStyle={handlePlanAiCustomStyle}
+            onGenerateAiStyleSample={handleGenerateAiStyleSample}
             onStyleReferenceSelect={selectStyleReference}
             onCategoryChange={updateCategory}
             onStyleFilesAdded={addUploadedFiles}

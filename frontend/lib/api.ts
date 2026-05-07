@@ -115,6 +115,24 @@ export async function planAiCustomStyle(productInfo?: ProductInfo, category = ""
   }
 }
 
+export async function generateAiCustomStyleSample(style: StyleOption, productInfo?: ProductInfo) {
+  try {
+    return await requestJson<{ source: string; style?: StyleOption; error?: string }>("/api/projects/plan-style-sample", {
+      method: "POST",
+      body: JSON.stringify({
+        style,
+        product_info: productInfo
+      }),
+      timeoutMs: 600000
+    });
+  } catch (error) {
+    return {
+      source: "error",
+      error: error instanceof Error ? error.message : "AI 风格样例图请求失败"
+    };
+  }
+}
+
 export async function editGeneratedImage(imageUrl: string, instruction: string, platformSize = "") {
   try {
     return await requestJson<{ source: string; url?: string; error?: string }>("/api/projects/edit-image", {
