@@ -13,6 +13,7 @@ from app.routers.projects import (
     normalize_product_info_from_model,
     normalize_style_plan_from_model,
     plan_custom_style,
+    run_compose_job,
 )
 from app.services.prompt_builder import build_module_image_prompt
 
@@ -449,6 +450,74 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(calls, ["gpt-image-2", "gpt-image-2-all", "gpt-image-2"])
         self.assertIn("gpt-image-2-all", result["images"][0]["url"])
         self.assertIn("gpt-image-2", result["images"][1]["url"])
+
+    async def test_generated_data_urls_are_uploaded_to_object_storage(self):
+        previous_key = environ.get("IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        try:
+            with (
+                patch("app.routers.projects.call_image_model", new=AsyncMock(return_value=["data:image/png;base64,aGVsbG8="])),
+                patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(return_value="https://img.example.com/prod/generated/hero.png")) as upload_mocked,
+            ):
+                result = await generate_detail_images(
+                    ["main_ingredient"],
+                    "green_repair",
+                    product_info={"product_name": "积雪草修护精华"},
+                )
+        finally:
+            if previous_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_key
+
+        self.assertEqual(result["source"], "model")
+        self.assertEqual(result["images"], [{"module_id": "main_ingredient", "url": "https://img.example.com/prod/generated/hero.png"}])
+        upload_mocked.assert_awaited_once()
+
+    async def test_edited_data_url_is_uploaded_to_object_storage(self):
+        previous_key = environ.get("IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        try:
+            with (
+                patch("app.routers.projects.call_image_model", new=AsyncMock(return_value=["data:image/png;base64,aGVsbG8="])),
+                patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(return_value="https://img.example.com/prod/edited/image.png")),
+            ):
+                from app.routers.projects import edit_generated_image
+
+                result = await edit_generated_image("https://example.com/source.png", "加一点水光")
+        finally:
+            if previous_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_key
+
+        self.assertEqual(result, {"source": "model", "url": "https://img.example.com/prod/edited/image.png"})
+
+    async def test_compose_job_uploads_finished_jpeg_to_object_storage(self):
+        from app.routers import projects
+
+        projects.COMPOSE_JOBS["compose_test"] = {
+            "status": "pending",
+            "stage": "pending",
+            "current": 0,
+            "total": 1,
+            "message": "等待开始合成",
+            "content": b"",
+            "created_at": "2026-05-07T00:00:00+00:00",
+        }
+        try:
+            with (
+                patch("app.routers.projects.compose_long_jpeg", new=AsyncMock(return_value=b"jpeg-bytes")),
+                patch("app.routers.projects.upload_bytes_if_configured", new=AsyncMock(return_value="https://img.example.com/prod/composed/full-detail.jpg")),
+            ):
+                await run_compose_job("compose_test", ["data:image/png;base64,aGVsbG8="])
+
+            job = projects.COMPOSE_JOBS["compose_test"]
+            self.assertEqual(job["status"], "done")
+            self.assertEqual(job["url"], "https://img.example.com/prod/composed/full-detail.jpg")
+            self.assertEqual(job["content"], b"")
+        finally:
+            projects.COMPOSE_JOBS.pop("compose_test", None)
 
 
 if __name__ == "__main__":

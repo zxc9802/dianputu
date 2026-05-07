@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Download, FileImage, Monitor, Smartphone } from "lucide-react";
-import { createComposeLongImageJob, downloadComposeLongImageJob, fetchComposeLongImageJob } from "@/lib/api";
+import { createComposeLongImageJob, fetchComposeLongImageDownload, fetchComposeLongImageJob } from "@/lib/api";
 import type { CommercePlatform, GeneratedImageVersionState, ImageGroup, ModuleConfig } from "@/lib/types";
 
 type GeneratedImage = { module_id: string; url: string };
@@ -117,8 +117,12 @@ export function PreviewStep({
         const status = await fetchComposeLongImageJob(jobId);
         setComposeStatus(status.message || "正在合成 JPG");
         if (status.status === "done") {
-          const blob = await downloadComposeLongImageJob(jobId);
-          downloadBlob(blob, "full-detail.jpg");
+          const download = await fetchComposeLongImageDownload(jobId);
+          if ("url" in download) {
+            window.location.href = download.url;
+          } else {
+            downloadBlob(download.blob, "full-detail.jpg");
+          }
           setComposeStatus("合成完成");
           return;
         }

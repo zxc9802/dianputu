@@ -15,6 +15,7 @@ from uuid import uuid4
 from app.core.config import get_model_settings
 from app.demo_data import DEFAULT_MODULES, DEMO_IMAGE_URLS, STYLE_OPTIONS
 from app.services.image_model import call_image_model
+from app.services.object_storage import upload_bytes_to_object_storage, upload_data_url_to_object_storage
 from app.services.prompt_builder import build_module_image_prompt
 from app.services.text_model import call_text_model
 
@@ -24,6 +25,30 @@ MODEL_GATEWAY_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKi
 WHITE_BACKGROUND_MODULE_IDS = {"main_white_bg", "campaign_white_bg"}
 COMPOSE_JOBS: dict[str, dict[str, Any]] = {}
 WHITE_BACKGROUND_REFERENCE_REQUIRED_ERROR = "白底图需要先上传产品图，系统会直接复用上传图以避免模型重绘导致包装、Logo 或瓶身变形。"
+
+
+async def upload_image_url_if_configured(url: str, folder: str) -> str:
+    if not url.startswith("data:"):
+        return url
+    try:
+        uploaded_url = await upload_data_url_to_object_storage(url, folder=folder)
+    except Exception as exc:
+        logger.warning("object storage image upload failed folder=%s error=%s", folder, exc)
+        return url
+    return uploaded_url or url
+
+
+async def upload_bytes_if_configured(content: bytes, *, content_type: str, folder: str, extension: str) -> str:
+    try:
+        return await upload_bytes_to_object_storage(
+            content,
+            content_type=content_type,
+            folder=folder,
+            extension=extension,
+        )
+    except Exception as exc:
+        logger.warning("object storage bytes upload failed folder=%s error=%s", folder, exc)
+        return ""
 
 
 @dataclass(frozen=True)
@@ -340,8 +365,9 @@ async def _generate_module_image(
             return None, f"{module['id']}: primary failed: {primary_exc}; fallback failed: {fallback_exc}"
 
     if urls:
+        image_url = await upload_image_url_if_configured(urls[0], f"generated/{module_id}")
         logger.info("detail image generation done %s/%s module=%s", module_index, total_modules, module["id"])
-        return {"module_id": module["id"], "url": urls[0]}, None
+        return {"module_id": module["id"], "url": image_url}, None
     return None, None
 
 
@@ -449,7 +475,8 @@ async def edit_generated_image(image_url: str, instruction: str, platform_size: 
 
     if not urls:
         return {"source": "error", "error": "image model returned empty content"}
-    return {"source": "model", "url": urls[0]}
+    url = await upload_image_url_if_configured(urls[0], "edited")
+    return {"source": "model", "url": url}
 
 
 async def _read_image_bytes(url: str) -> bytes:
@@ -624,6 +651,12 @@ try:
         try:
             COMPOSE_JOBS[job_id].update({"status": "running", "stage": "starting", "message": "正在准备合成"})
             jpeg = await compose_long_jpeg(image_urls, on_progress=update_progress)
+            uploaded_url = await upload_bytes_if_configured(
+                jpeg,
+                content_type="image/jpeg",
+                folder="composed",
+                extension="jpg",
+            )
             COMPOSE_JOBS[job_id].update(
                 {
                     "status": "done",
@@ -631,7 +664,8 @@ try:
                     "current": len(image_urls[:20]),
                     "total": len(image_urls[:20]),
                     "message": "合成完成，正在下载",
-                    "content": jpeg,
+                    "content": b"" if uploaded_url else jpeg,
+                    "url": uploaded_url,
                 }
             )
         except Exception as exc:
@@ -661,13 +695,15 @@ try:
             raise HTTPException(status_code=404, detail="compose job not found")
         return {key: value for key, value in job.items() if key != "content"}
 
-    @router.get("/compose-long-image/jobs/{job_id}/download")
-    async def download_compose_project_long_image_job(job_id: str) -> Response:
+    @router.get("/compose-long-image/jobs/{job_id}/download", response_model=None)
+    async def download_compose_project_long_image_job(job_id: str) -> Response | dict[str, str]:
         job = COMPOSE_JOBS.get(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="compose job not found")
-        if job.get("status") != "done" or not job.get("content"):
+        if job.get("status") != "done" or (not job.get("content") and not job.get("url")):
             raise HTTPException(status_code=409, detail="compose job is not ready")
+        if job.get("url"):
+            return {"url": str(job["url"])}
         return Response(
             content=job["content"],
             media_type="image/jpeg",

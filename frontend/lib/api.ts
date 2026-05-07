@@ -187,3 +187,15 @@ export async function fetchComposeLongImageJob(jobId: string) {
 export async function downloadComposeLongImageJob(jobId: string) {
   return requestBlob(`/api/projects/compose-long-image/jobs/${jobId}/download`, { timeoutMs: 600000 });
 }
+
+export async function fetchComposeLongImageDownload(jobId: string) {
+  const response = await fetch(`${API_BASE_URL}/api/projects/compose-long-image/jobs/${jobId}/download`);
+  if (!response.ok) {
+    throw new Error(`API request failed: ${response.status}`);
+  }
+  const contentType = response.headers.get("Content-Type") ?? "";
+  if (contentType.includes("application/json")) {
+    return response.json() as Promise<{ url: string }>;
+  }
+  return { blob: await response.blob() };
+}

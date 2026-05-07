@@ -42,6 +42,21 @@ class ModelSettings:
     fallback_image: ImageGenerationSettings
 
 
+@dataclass(frozen=True)
+class ObjectStorageSettings:
+    endpoint: str
+    access_key_id: str
+    secret_access_key: str
+    bucket: str
+    region: str
+    public_base_url: str
+    key_prefix: str
+
+    @property
+    def configured(self) -> bool:
+        return bool(self.endpoint and self.access_key_id and self.secret_access_key and self.bucket and self.public_base_url)
+
+
 def _read(env: Mapping[str, str], key: str, default: str) -> str:
     value = env.get(key)
     return value if value not in (None, "") else default
@@ -108,4 +123,18 @@ def get_model_settings(env: Mapping[str, str] | None = None, env_file: Path | st
             size=_read(source, "FALLBACK_IMAGE_GENERATION_SIZE", _read(source, "LEGACY_IMAGE_GENERATION_SIZE", "1024x1024")),
             n=int(_read(source, "FALLBACK_IMAGE_GENERATION_N", _read(source, "LEGACY_IMAGE_GENERATION_N", "1"))),
         ),
+    )
+
+
+def get_object_storage_settings(env: Mapping[str, str] | None = None, env_file: Path | str | None = None) -> ObjectStorageSettings:
+    dotenv_values = _read_env_file(_project_env_path() if env is None and env_file is None else env_file)
+    source = _merge_env(dotenv_values, environ if env is None else env)
+    return ObjectStorageSettings(
+        endpoint=_read(source, "R2_ENDPOINT", ""),
+        access_key_id=_read(source, "R2_ACCESS_KEY_ID", ""),
+        secret_access_key=_read(source, "R2_SECRET_ACCESS_KEY", ""),
+        bucket=_read(source, "R2_BUCKET", ""),
+        region=_read(source, "R2_REGION", "auto"),
+        public_base_url=_read(source, "R2_PUBLIC_BASE_URL", ""),
+        key_prefix=_read(source, "R2_KEY_PREFIX", ""),
     )
