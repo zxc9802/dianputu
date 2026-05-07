@@ -51,6 +51,11 @@ async def upload_bytes_if_configured(content: bytes, *, content_type: str, folde
         return ""
 
 
+async def upload_material_image_if_configured(material: UploadedMaterial) -> str:
+    data_url = _data_uri(material)
+    return await upload_image_url_if_configured(data_url, "materials")
+
+
 @dataclass(frozen=True)
 class UploadedMaterial:
     filename: str
@@ -284,7 +289,23 @@ async def analyze_uploaded_materials(materials: list[UploadedMaterial]) -> dict[
         return {"source": "error", "error": "text model is not configured"}
 
     try:
-        content = await call_text_model(settings.text, build_material_analysis_messages(materials))
+        model_materials: list[UploadedMaterial] = []
+        for material in materials:
+            if material.content_type.startswith("image/") and material.data:
+                image_url = await upload_material_image_if_configured(material)
+                model_materials.append(
+                    UploadedMaterial(
+                        filename=material.filename,
+                        content_type=material.content_type,
+                        data=material.data,
+                        slot=material.slot,
+                        text=material.text,
+                        data_url=image_url,
+                    )
+                )
+            else:
+                model_materials.append(material)
+        content = await call_text_model(settings.text, build_material_analysis_messages(model_materials))
     except Exception as exc:
         return {"source": "error", "error": str(exc)}
     if not content:

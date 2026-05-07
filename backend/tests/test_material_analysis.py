@@ -179,6 +179,28 @@ class AnalyzeUploadedMaterialsConfigTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["source"], "error")
         self.assertEqual(result["error"], "text model is not configured")
 
+    async def test_analyze_uploaded_materials_uses_r2_urls_for_uploaded_images(self):
+        captured_messages = []
+
+        async def fake_call_text_model(settings, messages):
+            captured_messages.extend(messages)
+            return '{"product_name":"积雪草修护精华"}'
+
+        with patch("app.routers.projects.get_model_settings") as mocked_settings:
+            mocked_settings.return_value.text.api_key = "text-key"
+            with (
+                patch("app.routers.projects.upload_material_image_if_configured", new=AsyncMock(return_value="https://img.example.com/prod/materials/main.png")) as upload_mocked,
+                patch("app.routers.projects.call_text_model", new=fake_call_text_model),
+            ):
+                result = await analyze_uploaded_materials(
+                    [UploadedMaterial(filename="main.png", content_type="image/png", data=b"\x89PNG\r\n")]
+                )
+
+        self.assertEqual(result["source"], "model")
+        upload_mocked.assert_awaited_once()
+        content = captured_messages[0]["content"]
+        self.assertEqual(content[1]["image_url"]["url"], "https://img.example.com/prod/materials/main.png")
+
     async def test_plan_custom_style_calls_text_model_and_returns_style(self):
         with patch("app.routers.projects.get_model_settings") as mocked_settings:
             mocked_settings.return_value.text.api_key = "text-key"
