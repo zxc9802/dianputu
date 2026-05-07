@@ -4,9 +4,11 @@
 .superpowers/
 .runtime/
 .claude/
+.DS_Store
 node_modules/
 .next/
 __pycache__/
 *.pyc
 frontend/node_modules/
 frontend/.next/
+frontend/tsconfig.tsbuildinfo

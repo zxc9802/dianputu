@@ -1,0 +1,14 @@
+.git
+.DS_Store
+.env
+.env.*
+!.env.example
+.runtime
+.superpowers
+.claude
+node_modules
+frontend/node_modules
+frontend/.next
+frontend/tsconfig.tsbuildinfo
+__pycache__
+*.pyc
