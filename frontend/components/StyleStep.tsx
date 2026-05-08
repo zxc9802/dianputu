@@ -5,7 +5,6 @@ import type { StyleOption, StyleSource } from "@/lib/types";
 
 export function StyleStep({
   styles,
-  category,
   styleSource,
   selectedStyleId,
   customStyle,
@@ -16,12 +15,10 @@ export function StyleStep({
   onAiCustomStyleSelect,
   onPlanAiCustomStyle,
   onGenerateAiStyleSample,
-  onCategoryChange,
   onBack,
   onNext
 }: {
   styles: StyleOption[];
-  category: string;
   styleSource: StyleSource;
   selectedStyleId: string;
   customStyle: StyleOption | null;
@@ -32,7 +29,6 @@ export function StyleStep({
   onAiCustomStyleSelect: () => void;
   onPlanAiCustomStyle: () => void;
   onGenerateAiStyleSample: () => void;
-  onCategoryChange: (category: string) => void;
   onBack: () => void;
   onNext: () => void;
 }) {
@@ -42,19 +38,10 @@ export function StyleStep({
         <div className="sectionTitle">
           <span>2</span>
           <div>
-            <h2>选择品类和风格</h2>
-            <p>可选择固定风格，也可以让 Gemini 3.1 Pro 根据产品规划独立视觉风格。</p>
+            <h2>选择风格</h2>
+            <p>品类由 AI 根据上传资料识别，可选择固定风格，也可以让 Gemini 3.1 Pro 根据产品规划独立视觉风格。</p>
           </div>
         </div>
-
-        <label className="fieldLabel" htmlFor="category">
-          品类
-        </label>
-        <select id="category" className="select" value={category} onChange={(event) => onCategoryChange(event.target.value)}>
-          <option>护肤精华</option>
-          <option>面霜乳液</option>
-          <option>清洁洗护</option>
-        </select>
 
         <h3 className="subheading">风格</h3>
         <div className="styleGrid">

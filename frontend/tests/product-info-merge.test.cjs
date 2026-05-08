@@ -26,7 +26,9 @@ const sandbox = {
 sandbox.exports = sandbox.module.exports;
 vm.runInNewContext(compiled, sandbox, { filename: sourcePath });
 
-const { applyProductInfoDraft, mergeProductInfoWithManualPriority } = sandbox.module.exports;
+const { applyProductInfoDraft, createEmptyProductInfo, mergeProductInfoWithManualPriority } = sandbox.module.exports;
+
+assert.equal(createEmptyProductInfo().category, "", "empty product info must not assume a fixed skincare category");
 
 const current = {
   product_name: "手填精华名称",

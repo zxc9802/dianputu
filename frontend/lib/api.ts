@@ -177,13 +177,12 @@ export async function pollGenerateImageJob(jobId: string, timeoutMs = 600000) {
   throw new Error("图片生成任务超时，请稍后重试");
 }
 
-export async function planAiCustomStyle(productInfo?: ProductInfo, category = "", productImages: MaterialPayload[] = []) {
+export async function planAiCustomStyle(productInfo?: ProductInfo, productImages: MaterialPayload[] = []) {
   try {
     return await requestJson<{ source: string; style?: StyleOption; error?: string }>("/api/projects/plan-style", {
       method: "POST",
       body: JSON.stringify({
         product_info: productInfo,
-        category,
         product_images: productImages
       }),
       timeoutMs: 180000

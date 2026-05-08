@@ -280,7 +280,7 @@ def build_style_planning_messages(
     category_line = (
         f"品类：{info['category']}"
         if str(info.get("category", "")).strip()
-        else "请自行识别产品品类，不要套用页面当前选择的类目。"
+        else "请自行识别产品品类，不要套用任何前端默认类目。"
     )
     prompt = "\n".join(
         [

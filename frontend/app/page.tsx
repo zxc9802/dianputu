@@ -59,7 +59,7 @@ import type {
 const order: StepId[] = ["upload", "review", "style", "modules", "preview"];
 const PROJECT_STATE_STORAGE_KEY = "detail-image-agent-project-state-v1";
 const WHITE_BACKGROUND_MODULE_IDS = new Set(["main_white_bg", "campaign_white_bg"]);
-const DEFAULT_CATEGORY = "护肤精华";
+const DEFAULT_CATEGORY = "";
 const DEFAULT_STYLE_ID = "green_repair";
 const DEFAULT_PLATFORM_ID: CommercePlatformId = "tmall";
 
@@ -456,11 +456,6 @@ export default function Home() {
     }
   }
 
-  function updateCategory(category: string) {
-    setSelectedCategory(category);
-    setProductInfo((current) => (current ? { ...current, category } : current));
-  }
-
   function selectPresetStyle(styleId: string) {
     setSelectedStyleId(styleId);
     setStyleSource("preset");
@@ -492,7 +487,7 @@ export default function Home() {
           content_type: file.type,
           data_url: file.dataUrl
         }));
-      const result = await planAiCustomStyle(productInfo, selectedCategory, productImages);
+      const result = await planAiCustomStyle(productInfo, productImages);
       if (result.source === "model" && result.style) {
         setCustomStyle(result.style);
         setStyleSource("ai_custom");
@@ -672,7 +667,7 @@ export default function Home() {
     const saved = await saveHistory({
       id: resolveReusableHistoryId(currentHistoryId, null),
       product_name: productInfo.product_name || "未命名项目",
-      category: productInfo.category || selectedCategory,
+      category: productInfo.category || "",
       style_id: selectedStyleId,
       style_name: resolvedStyle?.name ?? selectedStyleId,
       platform_id: selectedPlatformId,
@@ -808,7 +803,6 @@ export default function Home() {
         {activeStep === "style" ? (
           <StyleStep
             styles={styles}
-            category={selectedCategory}
             styleSource={styleSource}
             selectedStyleId={selectedStyleId}
             customStyle={customStyle}
@@ -819,7 +813,6 @@ export default function Home() {
             onAiCustomStyleSelect={selectAiCustomStyle}
             onPlanAiCustomStyle={handlePlanAiCustomStyle}
             onGenerateAiStyleSample={handleGenerateAiStyleSample}
-            onCategoryChange={updateCategory}
             onBack={() => go(previousStep(activeStep))}
             onNext={() => go(nextStep(activeStep))}
           />

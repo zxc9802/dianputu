@@ -12,7 +12,7 @@ export const PRODUCT_INFO_FIELD_KEYS = [
 
 export type ProductInfoFieldKey = (typeof PRODUCT_INFO_FIELD_KEYS)[number];
 
-export function createEmptyProductInfo(category = "护肤精华"): ProductInfo {
+export function createEmptyProductInfo(category = ""): ProductInfo {
   return {
     product_name: "",
     category,

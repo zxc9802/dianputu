@@ -26,6 +26,8 @@ assertIncludes("components/UploadStep.tsx", "onAnalyze", "upload step must trigg
 assertIncludes("components/UploadStep.tsx", "手动补充信息（可不填）", "upload sidebar must expose optional manual product fields");
 assertIncludes("components/UploadStep.tsx", "onManualFieldChange", "upload sidebar must propagate manual field edits");
 assertIncludes("components/UploadStep.tsx", "manualFieldKeys", "upload sidebar must show which fields are manually prioritized");
+assertNotIncludes("components/StyleStep.tsx", 'id="category"', "style step must not expose a manual category selector");
+assertNotIncludes("components/StyleStep.tsx", "onCategoryChange", "style step must not wire manual category changes");
 assertNotIncludes("components/StyleStep.tsx", "风格参考图", "style reference image section should be removed from style selection");
 assertNotIncludes("components/StyleStep.tsx", "style-reference-upload", "style step should not expose style reference uploads");
 assertNotIncludes("components/UploadStep.tsx", "风格参考", "upload summary should not show the removed style reference count");
@@ -123,6 +125,9 @@ assertNotIncludes("components/StyleStep.tsx", "styleSource === \"reference\"", "
 assertNotIncludes("components/StyleStep.tsx", "onStyleReferenceSelect", "style step should not expose removed reference style handler");
 assertIncludes("lib/api.ts", "planAiCustomStyle", "frontend API must expose Gemini custom style planning");
 assertIncludes("lib/api.ts", "/api/projects/plan-style", "frontend API must call the backend style planning endpoint");
+assertNotIncludes("lib/api.ts", "category,", "custom style planning must not send a manually selected category");
+assertNotIncludes("app/page.tsx", "planAiCustomStyle(productInfo, selectedCategory", "custom style planning must rely on AI product_info category");
+assertNotIncludes("app/page.tsx", "productInfo.category || selectedCategory", "history records must not fall back to a manually selected category");
 assertIncludes("lib/api.ts", "product_images: productImages", "custom style planning must send product images directly to Gemini");
 assertIncludes("lib/api.ts", "generateAiCustomStyleSample", "frontend API must expose custom style sample generation");
 assertIncludes("lib/api.ts", "/api/projects/plan-style-sample", "frontend API must call the style sample endpoint separately");
