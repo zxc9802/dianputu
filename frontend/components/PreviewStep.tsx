@@ -27,13 +27,17 @@ function wait(ms: number) {
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
+  downloadUrl(url, filename);
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function downloadUrl(url: string, filename: string) {
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
   document.body.appendChild(link);
   link.click();
   link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function moduleGroup(module: ModuleConfig): ImageGroup {
@@ -104,6 +108,16 @@ export function PreviewStep({
     url: item.url
   }));
   const manifestHref = `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(detailManifest, null, 2))}`;
+  const batchDownloadLabel = activeImageGroup === "campaign" ? "活动主图" : "主图";
+
+  function handleDownloadVisibleBatch() {
+    if (activeImageGroup === "detail" || visibleItems.length === 0) return;
+    visibleItems.forEach((item, index) => {
+      window.setTimeout(() => {
+        downloadUrl(item.url, `${activeImageGroup}-${String(index + 1).padStart(2, "0")}-${item.module.id}.png`);
+      }, index * 120);
+    });
+  }
 
   async function handleDownloadLongJpg() {
     if (isComposing || groupedItems.detail.length === 0) return;
@@ -351,16 +365,25 @@ export function PreviewStep({
             })}
           </div>
           <div className="exportActions">
-            <button className="primaryButton" onClick={handleDownloadLongJpg} disabled={groupedItems.detail.length === 0 || isComposing}>
-              <Download size={20} />
-              {isComposing ? composeStatus || "正在合成 JPG" : groupedItems.detail.length ? "合成并下载详情 JPG 长图" : "暂无详情长图可导出"}
-            </button>
-            <a className="ghostButton" href={manifestHref} download="split-images-manifest.json">
-              <Download size={20} />
-              导出 {groupedItems.detail.length} 张详情分图清单
-            </a>
-            {composeStatus && !composeError ? <p className="composeStatus">{composeStatus}</p> : null}
-            {composeError ? <p className="composeError">{composeError}</p> : null}
+            {activeImageGroup === "detail" ? (
+              <>
+                <button className="primaryButton" onClick={handleDownloadLongJpg} disabled={groupedItems.detail.length === 0 || isComposing}>
+                  <Download size={20} />
+                  {isComposing ? composeStatus || "正在合成 JPG" : groupedItems.detail.length ? `合成并下载 ${groupedItems.detail.length} 张详情图为 JPG 长图` : "暂无详情长图可导出"}
+                </button>
+                <a className="ghostButton" href={manifestHref} download="split-images-manifest.json">
+                  <Download size={20} />
+                  导出 {groupedItems.detail.length} 张详情分图清单
+                </a>
+                {composeStatus && !composeError ? <p className="composeStatus">{composeStatus}</p> : null}
+                {composeError ? <p className="composeError">{composeError}</p> : null}
+              </>
+            ) : (
+              <button className="primaryButton" onClick={handleDownloadVisibleBatch} disabled={visibleItems.length === 0} type="button">
+                <Download size={20} />
+                {visibleItems.length ? `批量下载 ${visibleItems.length} 张${batchDownloadLabel}` : "暂无可批量下载图片"}
+              </button>
+            )}
           </div>
         </aside>
       </div>

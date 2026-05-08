@@ -81,6 +81,10 @@ assertIncludes("components/PreviewStep.tsx", "fetchComposeLongImageJob", "previe
 assertIncludes("components/PreviewStep.tsx", "composeStatus", "preview step must show backend progress during composition");
 assertIncludes("components/PreviewStep.tsx", "full-detail.jpg", "full long image export must download a JPG file");
 assertNotIncludes("components/PreviewStep.tsx", "full-detail.svg", "full long image export must not download SVG");
+assertIncludes("components/PreviewStep.tsx", "handleDownloadVisibleBatch", "preview directory must expose batch download for the active main/campaign group");
+assertIncludes("components/PreviewStep.tsx", "visibleItems.forEach", "batch download must only download currently generated images in the active directory");
+assertIncludes("components/PreviewStep.tsx", 'activeImageGroup === "detail"', "detail directory must keep compose download separate from main/campaign batch download");
+assertIncludes("components/PreviewStep.tsx", "批量下载", "main and campaign directories must show a batch download action");
 assertIncludes("lib/api.ts", "/api/projects/compose-long-image", "frontend API must expose backend long image composition");
 assertIncludes("lib/api.ts", "/api/projects/compose-long-image/prepare", "frontend API must expose backend compose source preparation");
 assertIncludes("app/page.tsx", "PROJECT_STATE_STORAGE_KEY", "page must define a storage key for preserving generated results");
