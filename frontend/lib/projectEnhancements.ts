@@ -6,6 +6,8 @@ import type {
 } from "@/lib/types";
 
 const MAX_IMAGE_VERSIONS = 3;
+const DEFAULT_IMAGE_GENERATION_CONCURRENCY_LIMIT = 2;
+const MAX_IMAGE_GENERATION_CONCURRENCY_LIMIT = 20;
 
 type GeneratedImageInput = { module_id: string; url: string };
 type ImageGenerationResult = { source: string; images: GeneratedImageInput[]; errors?: string[] };
@@ -63,11 +65,21 @@ export function resolveReusableHistoryId(currentHistoryId: string | null, savedH
   return currentHistoryId ?? savedHistoryId ?? undefined;
 }
 
+export function resolveImageGenerationConcurrencyLimit(
+  rawValue = process.env.NEXT_PUBLIC_IMAGE_GENERATION_CONCURRENCY
+) {
+  const parsed = Number.parseInt(String(rawValue ?? ""), 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return DEFAULT_IMAGE_GENERATION_CONCURRENCY_LIMIT;
+  }
+  return Math.min(parsed, MAX_IMAGE_GENERATION_CONCURRENCY_LIMIT);
+}
+
 export async function runParallelImageGeneration<TModule extends { id: string }>(
   modules: TModule[],
   generateOne: (module: TModule) => Promise<ImageGenerationResult>,
   onComplete: (module: TModule, result: ImageGenerationResult, progress: ParallelGenerationProgress) => void,
-  concurrencyLimit = 2
+  concurrencyLimit = resolveImageGenerationConcurrencyLimit()
 ) {
   let completed = 0;
   let errorCount = 0;

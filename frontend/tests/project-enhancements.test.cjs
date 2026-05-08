@@ -18,6 +18,7 @@ const compiled = ts.transpileModule(source, {
 const sandbox = {
   exports: {},
   module: { exports: {} },
+  process: { env: {} },
   require(request) {
     if (request === "@/lib/types") return {};
     throw new Error(`Unexpected require: ${request}`);
@@ -34,6 +35,7 @@ const {
   enableModuleForSingleGeneration,
   resolveReusableHistoryId,
   getSelectedGeneratedImages,
+  resolveImageGenerationConcurrencyLimit,
   runParallelImageGeneration
 } = sandbox.module.exports;
 
@@ -55,6 +57,12 @@ assert.deepEqual(JSON.parse(JSON.stringify(selected)), [{ module_id: "hero", url
 assert.equal(resolveReusableHistoryId(null, null), undefined);
 assert.equal(resolveReusableHistoryId(null, "history-1"), "history-1");
 assert.equal(resolveReusableHistoryId("history-1", "history-2"), "history-1");
+assert.equal(resolveImageGenerationConcurrencyLimit(), 2);
+sandbox.process.env.NEXT_PUBLIC_IMAGE_GENERATION_CONCURRENCY = "7";
+assert.equal(resolveImageGenerationConcurrencyLimit(), 7);
+sandbox.process.env.NEXT_PUBLIC_IMAGE_GENERATION_CONCURRENCY = "invalid";
+assert.equal(resolveImageGenerationConcurrencyLimit(), 2);
+delete sandbox.process.env.NEXT_PUBLIC_IMAGE_GENERATION_CONCURRENCY;
 
 const modules = [
   { id: "hero", name: "详情首图", description: "", enabled: false, order: 9, image_group: "detail" },
