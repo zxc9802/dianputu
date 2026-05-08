@@ -66,20 +66,27 @@ export function resolveReusableHistoryId(currentHistoryId: string | null, savedH
 export async function runParallelImageGeneration<TModule extends { id: string }>(
   modules: TModule[],
   generateOne: (module: TModule) => Promise<ImageGenerationResult>,
-  onComplete: (module: TModule, result: ImageGenerationResult, progress: ParallelGenerationProgress) => void
+  onComplete: (module: TModule, result: ImageGenerationResult, progress: ParallelGenerationProgress) => void,
+  concurrencyLimit = 2
 ) {
   let completed = 0;
   let errorCount = 0;
   const total = modules.length;
+  const limit = Math.max(1, Math.min(concurrencyLimit, total || 1));
+  let nextIndex = 0;
 
-  await Promise.all(
-    modules.map(async (module) => {
+  async function worker() {
+    while (nextIndex < modules.length) {
+      const module = modules[nextIndex];
+      nextIndex += 1;
       const result = await generateOne(module);
       completed += 1;
       errorCount += result.errors?.length ?? 0;
       onComplete(module, result, { completed, total, errorCount });
-    })
-  );
+    }
+  }
+
+  await Promise.all(Array.from({ length: limit }, () => worker()));
 
   return { completed, total, errorCount };
 }

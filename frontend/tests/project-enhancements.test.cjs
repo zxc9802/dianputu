@@ -99,21 +99,27 @@ assert.equal(singleGenerateModules.find((module) => module.id === "campaign_effe
 assert.equal(singleGenerateModules.find((module) => module.id === "pain_scene").enabled, false);
 
 async function runAsyncChecks() {
-  let release;
-  const releasePromise = new Promise((resolve) => {
-    release = resolve;
-  });
+  const releaseById = new Map();
   const started = [];
   const completed = [];
+  let active = 0;
+  let maxActive = 0;
 
   const generationPromise = runParallelImageGeneration(
     [
       { id: "hero" },
-      { id: "usage" }
+      { id: "usage" },
+      { id: "pain" },
+      { id: "effect" }
     ],
     async (module) => {
       started.push(module.id);
-      await releasePromise;
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => {
+        releaseById.set(module.id, resolve);
+      });
+      active -= 1;
       return {
         source: "model",
         images: [{ module_id: module.id, url: `${module.id}.png` }],
@@ -132,11 +138,18 @@ async function runAsyncChecks() {
 
   await Promise.resolve();
   assert.deepEqual([...started], ["hero", "usage"]);
-  release();
+  assert.equal(maxActive, 2);
+  releaseById.get("hero")();
+  releaseById.get("usage")();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual([...started], ["hero", "usage", "pain", "effect"]);
+  assert.equal(maxActive, 2);
+  releaseById.get("pain")();
+  releaseById.get("effect")();
   const summary = await generationPromise;
-  assert.equal(summary.completed, 2);
+  assert.equal(summary.completed, 4);
   assert.equal(summary.errorCount, 1);
-  assert.equal(completed.length, 2);
+  assert.equal(completed.length, 4);
 }
 
 runAsyncChecks()
