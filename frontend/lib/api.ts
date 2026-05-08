@@ -104,9 +104,9 @@ export async function generateImages(
   } catch (error) {
     rethrowMainAppRedirect(error);
     return {
-      source: "demo",
-      images: moduleIds.map((moduleId) => ({ module_id: moduleId, url: "/assets/generated-cica-asset-sheet.png" })),
-      errors: ["前端请求后端生成接口失败，已使用本地演示图兜底。"]
+      source: "error",
+      images: [],
+      errors: [error instanceof Error ? error.message : "前端请求后端生成接口失败。"]
     };
   }
 }

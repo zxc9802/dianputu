@@ -556,17 +556,12 @@ async def generate_detail_images(
     if len(generated_images) == len(enabled_modules):
         return {"source": "model", "images": generated_images, "errors": errors}
     if generated_images:
-        image_urls_by_module = {image["module_id"]: image["url"] for image in generated_images}
-        ordered_images = [
-            {"module_id": module["id"], "url": image_urls_by_module.get(module["id"], DEMO_IMAGE_URLS[module["id"]])}
-            for module in enabled_modules
-        ]
-        return {"source": "mixed", "images": ordered_images, "errors": errors}
+        return {"source": "mixed", "images": generated_images, "errors": errors}
 
     return {
-        "source": "demo",
-        "images": [{"module_id": module["id"], "url": DEMO_IMAGE_URLS[module["id"]]} for module in enabled_modules],
-        "errors": errors,
+        "source": "error",
+        "images": [],
+        "errors": errors or ["image model returned empty content"],
     }
 
 

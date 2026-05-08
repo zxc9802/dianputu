@@ -82,7 +82,7 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
-    async def test_generation_uses_demo_image_when_primary_and_fallback_fail(self):
+    async def test_generation_returns_errors_without_demo_images_when_primary_and_fallback_fail(self):
         async def fake_call_image_model(settings, prompt, image=None, size=None):
             if "详情首图" in prompt:
                 raise RuntimeError("boom")
@@ -106,9 +106,33 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
                 environ["FALLBACK_IMAGE_GENERATION_API_KEY"] = previous_fallback_key
 
         self.assertEqual(result["source"], "mixed")
-        self.assertEqual(result["images"][0]["module_id"], "hero")
-        self.assertTrue(result["images"][0]["url"].startswith("/assets/"))
-        self.assertEqual(result["images"][1], {"module_id": "usage", "url": "https://example.com/usage.png"})
+        self.assertEqual(result["images"], [{"module_id": "usage", "url": "https://example.com/usage.png"}])
+        self.assertTrue(result["errors"])
+
+    async def test_generation_does_not_return_fixed_demo_image_when_all_models_fail(self):
+        async def fake_call_image_model(settings, prompt, image=None, size=None):
+            raise RuntimeError("boom")
+
+        previous_primary_key = environ.get("IMAGE_GENERATION_API_KEY")
+        previous_fallback_key = environ.get("FALLBACK_IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        environ["FALLBACK_IMAGE_GENERATION_API_KEY"] = "fallback-key"
+        try:
+            with patch("app.routers.projects.call_image_model", new=fake_call_image_model):
+                result = await generate_detail_images(["hero", "usage"], "green_repair")
+        finally:
+            if previous_primary_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_primary_key
+            if previous_fallback_key is None:
+                environ.pop("FALLBACK_IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["FALLBACK_IMAGE_GENERATION_API_KEY"] = previous_fallback_key
+
+        self.assertEqual(result["source"], "error")
+        self.assertEqual(result["images"], [])
+        self.assertEqual(len(result["errors"]), 2)
 
     async def test_generation_accepts_single_module_for_regeneration(self):
         previous_key = environ.get("IMAGE_GENERATION_API_KEY")

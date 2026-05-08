@@ -659,7 +659,13 @@ export default function Home() {
           setStatusText(`${groupLabel[group]}并行生成中 ${progress.completed}/${progress.total}`);
         }
       );
-      setStatusText(summary.errorCount ? `${groupLabel[group]}已生成，部分图片使用兜底` : `${groupLabel[group]}已生成`);
+      if (summary.completed === summary.errorCount) {
+        setStatusText(`${groupLabel[group]}生成失败，请查看 Zeabur 后端日志`);
+      } else if (summary.errorCount) {
+        setStatusText(`${groupLabel[group]}部分生成失败：${summary.errorCount}/${summary.total}`);
+      } else {
+        setStatusText(`${groupLabel[group]}已生成`);
+      }
     } finally {
       setGenerationProgress((current) => ({
         ...current,

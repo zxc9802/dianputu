@@ -55,6 +55,8 @@ assertIncludes("app/page.tsx", "selectedPlatform.generationSize", "page image ge
 assertIncludes("app/page.tsx", "editGeneratedImage(imageUrl, trimmed, selectedPlatform.generationSize, selectedImageModelId)", "image edits must keep the selected platform 2K generation size and selected image model");
 assertIncludes("components/ModulesStep.tsx", "选择图片模型", "modules step must expose the image model selector");
 assertIncludes("lib/api.ts", "image_model_id: imageModelId", "frontend generation/edit requests must send the selected image model id");
+assertNotIncludes("lib/api.ts", 'source: "demo"', "frontend must not convert failed image generation into fixed demo images");
+assertNotIncludes("lib/api.ts", "/assets/generated-cica-asset-sheet.png", "frontend must not mark fixed demo images as generated output");
 assert.ok(!fs.existsSync(path.join(root, "lib/autoGenerate.ts")), "lib/autoGenerate.ts: full auto generation flow should be removed");
 assert.ok(!fs.existsSync(path.join(root, "components/AutoUploadStep.tsx")), "components/AutoUploadStep.tsx: full auto upload step should be removed");
 assert.ok(!fs.existsSync(path.join(root, "components/AutoProgressStep.tsx")), "components/AutoProgressStep.tsx: full auto progress step should be removed");
