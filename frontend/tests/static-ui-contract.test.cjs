@@ -88,7 +88,8 @@ assertNotIncludes("components/PreviewStep.tsx", "full-detail.svg", "full long im
 assertNotIncludes("components/PreviewStep.tsx", "window.open", "image downloads must not open popup tabs when direct fetch fails");
 assertNotIncludes("components/PreviewStep.tsx", "window.location.href = download.url", "long image downloads must not navigate to remote image URLs");
 assertIncludes("components/PreviewStep.tsx", "isDirectDownloadUrl", "public image URLs should download directly without backend proxying");
-assertIncludes("components/PreviewStep.tsx", "downloadUrl(url, filename)", "public image downloads should avoid the slow backend download-image round trip");
+assertIncludes("components/PreviewStep.tsx", "fetch(url)", "public image downloads should fetch R2 images in-browser before creating a download blob");
+assertNotIncludes("components/PreviewStep.tsx", "downloadUrl(url, filename)", "cross-origin public image downloads must not use direct anchor URLs because browsers may open them");
 assertIncludes("components/PreviewStep.tsx", "handleDownloadVisibleBatch", "preview directory must expose batch download for the active main/campaign group");
 assertIncludes("components/PreviewStep.tsx", "index < visibleItems.length", "batch download must only download currently generated images in the active directory");
 assertIncludes("components/PreviewStep.tsx", 'activeImageGroup === "detail"', "detail directory must keep compose download separate from main/campaign batch download");

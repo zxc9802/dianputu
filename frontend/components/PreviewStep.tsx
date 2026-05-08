@@ -35,9 +35,9 @@ function downloadUrl(url: string, filename: string) {
 }
 
 function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  downloadUrl(url, filename);
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  const objectUrl = URL.createObjectURL(blob);
+  downloadUrl(objectUrl, filename);
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }
 
 function isDirectDownloadUrl(url: string) {
@@ -46,8 +46,16 @@ function isDirectDownloadUrl(url: string) {
 
 async function fetchAndDownload(url: string, filename: string) {
   if (isDirectDownloadUrl(url)) {
-    downloadUrl(url, filename);
-    return;
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`Image fetch failed: ${response.status}`);
+      downloadBlob(await response.blob(), filename);
+      return;
+    } catch {
+      const blob = await downloadImage(url, filename);
+      downloadBlob(blob, filename);
+      return;
+    }
   }
   const blob = await downloadImage(url, filename);
   downloadBlob(blob, filename);
