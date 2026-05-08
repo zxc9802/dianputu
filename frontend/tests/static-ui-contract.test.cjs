@@ -40,6 +40,7 @@ assertIncludes("app/page.tsx", "mergeProductInfoWithManualPriority", "page must 
 assertIncludes("lib/api.ts", "http://127.0.0.1:8000", "frontend API should default to the backend bind address");
 assertIncludes("lib/api.ts", 'credentials: "include"', "frontend API requests must include the SSO session cookie");
 assertIncludes("lib/api.ts", "redirectToMainAppIfNeeded", "frontend API requests must redirect to the main site on SSO 401 responses");
+assertIncludes("middleware.ts", "ssoError", "middleware must tell the main site when ticket exchange fails");
 assertIncludes("lib/api.ts", "AbortController", "frontend API requests must time out instead of leaving the app loading forever");
 assertIncludes("lib/api.ts", "timeoutMs: 600000", "image generation must keep the request open long enough for real model output");
 assertIncludes("lib/api.ts", "timeoutMs: 180000", "material analysis must keep the request open long enough for model output");

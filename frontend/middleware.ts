@@ -39,7 +39,9 @@ export async function middleware(request: NextRequest) {
     } catch (error) {
       console.error("[detail-image-agent-sso] Ticket exchange failed:", error);
 
-      const response = NextResponse.redirect(buildMainAppEntryUrl(requestedMainAppUrl), 302);
+      const mainEntryUrl = new URL(buildMainAppEntryUrl(requestedMainAppUrl));
+      mainEntryUrl.searchParams.set("ssoError", "ticket_exchange_failed");
+      const response = NextResponse.redirect(mainEntryUrl, 302);
       response.cookies.set(buildClearedSessionCookie());
       return response;
     }
