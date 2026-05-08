@@ -29,10 +29,13 @@ class ImageGenerationSettings:
     quality: str = ""
     output_format: str = ""
     response_format: str = ""
+    id: str = "primary"
+    label: str = "GPT Image 2"
+    endpoint_path: str = "/images/generations"
 
     @property
     def endpoint_url(self) -> str:
-        return self.base_url.rstrip("/") + "/images/generations"
+        return self.base_url.rstrip("/") + self.endpoint_path
 
 
 @dataclass(frozen=True)
@@ -40,6 +43,7 @@ class ModelSettings:
     text: TextAnalysisSettings
     image: ImageGenerationSettings
     fallback_image: ImageGenerationSettings
+    image_options: dict[str, ImageGenerationSettings]
 
 
 @dataclass(frozen=True)
@@ -98,6 +102,40 @@ def _merge_env(dotenv_values: Mapping[str, str], env_values: Mapping[str, str]) 
 def get_model_settings(env: Mapping[str, str] | None = None, env_file: Path | str | None = None) -> ModelSettings:
     dotenv_values = _read_env_file(_project_env_path() if env is None and env_file is None else env_file)
     source = _merge_env(dotenv_values, environ if env is None else env)
+    primary_image = ImageGenerationSettings(
+        id="primary",
+        label=_read(source, "IMAGE_GENERATION_LABEL", "GPT Image 2"),
+        api_key=_read(source, "IMAGE_GENERATION_API_KEY", ""),
+        base_url=_read(source, "IMAGE_GENERATION_BASE_URL", "https://api-xai.ainaibahub.com/v1"),
+        endpoint_path=_read(source, "IMAGE_GENERATION_ENDPOINT_PATH", "/images/generations"),
+        model=_read(source, "IMAGE_GENERATION_MODEL", "gpt-image-2"),
+        size=_read(source, "IMAGE_GENERATION_SIZE", "2048x2048"),
+        n=int(_read(source, "IMAGE_GENERATION_N", "1")),
+        quality=_read(source, "IMAGE_GENERATION_QUALITY", "high"),
+        output_format=_read(source, "IMAGE_GENERATION_OUTPUT_FORMAT", "png"),
+        response_format=_read(source, "IMAGE_GENERATION_RESPONSE_FORMAT", "b64_json"),
+    )
+    fallback_image = ImageGenerationSettings(
+        id="fallback",
+        label=_read(source, "FALLBACK_IMAGE_GENERATION_LABEL", "GPT Image 2 All"),
+        api_key=_read(source, "FALLBACK_IMAGE_GENERATION_API_KEY", _read(source, "LEGACY_IMAGE_GENERATION_API_KEY", "")),
+        base_url=_read(source, "FALLBACK_IMAGE_GENERATION_BASE_URL", _read(source, "LEGACY_IMAGE_GENERATION_BASE_URL", "https://yunwu.ai/v1")),
+        endpoint_path=_read(source, "FALLBACK_IMAGE_GENERATION_ENDPOINT_PATH", "/images/generations"),
+        model=_read(source, "FALLBACK_IMAGE_GENERATION_MODEL", _read(source, "LEGACY_IMAGE_GENERATION_MODEL", "gpt-image-2-all")),
+        size=_read(source, "FALLBACK_IMAGE_GENERATION_SIZE", _read(source, "LEGACY_IMAGE_GENERATION_SIZE", "2048x2048")),
+        n=int(_read(source, "FALLBACK_IMAGE_GENERATION_N", _read(source, "LEGACY_IMAGE_GENERATION_N", "1"))),
+    )
+    gemini_flash_image = ImageGenerationSettings(
+        id="gemini_flash_image",
+        label=_read(source, "GEMINI_FLASH_IMAGE_LABEL", "Gemini 3.1 Flash Image Preview"),
+        api_key=_read(source, "GEMINI_FLASH_IMAGE_API_KEY", _read(source, "TEXT_ANALYSIS_API_KEY", "")),
+        base_url=_read(source, "GEMINI_FLASH_IMAGE_BASE_URL", "https://www.shanbaob.net/v1"),
+        endpoint_path=_read(source, "GEMINI_FLASH_IMAGE_ENDPOINT_PATH", "/chat/completions"),
+        model=_read(source, "GEMINI_FLASH_IMAGE_MODEL", "gemini-3.1-flash-image-preview"),
+        size=_read(source, "GEMINI_FLASH_IMAGE_SIZE", "2048x2048"),
+        n=int(_read(source, "GEMINI_FLASH_IMAGE_N", "1")),
+        response_format=_read(source, "GEMINI_FLASH_IMAGE_RESPONSE_FORMAT", "b64_json"),
+    )
     return ModelSettings(
         text=TextAnalysisSettings(
             api_key=_read(source, "TEXT_ANALYSIS_API_KEY", ""),
@@ -106,23 +144,12 @@ def get_model_settings(env: Mapping[str, str] | None = None, env_file: Path | st
             max_tokens=int(_read(source, "TEXT_ANALYSIS_MAX_TOKENS", "4096")),
             temperature=float(_read(source, "TEXT_ANALYSIS_TEMPERATURE", "0.7")),
         ),
-        image=ImageGenerationSettings(
-            api_key=_read(source, "IMAGE_GENERATION_API_KEY", ""),
-            base_url=_read(source, "IMAGE_GENERATION_BASE_URL", "https://api-xai.ainaibahub.com/v1"),
-            model=_read(source, "IMAGE_GENERATION_MODEL", "gpt-image-2"),
-            size=_read(source, "IMAGE_GENERATION_SIZE", "2048x2048"),
-            n=int(_read(source, "IMAGE_GENERATION_N", "1")),
-            quality=_read(source, "IMAGE_GENERATION_QUALITY", "high"),
-            output_format=_read(source, "IMAGE_GENERATION_OUTPUT_FORMAT", "png"),
-            response_format=_read(source, "IMAGE_GENERATION_RESPONSE_FORMAT", "b64_json"),
-        ),
-        fallback_image=ImageGenerationSettings(
-            api_key=_read(source, "FALLBACK_IMAGE_GENERATION_API_KEY", _read(source, "LEGACY_IMAGE_GENERATION_API_KEY", "")),
-            base_url=_read(source, "FALLBACK_IMAGE_GENERATION_BASE_URL", _read(source, "LEGACY_IMAGE_GENERATION_BASE_URL", "https://yunwu.ai/v1")),
-            model=_read(source, "FALLBACK_IMAGE_GENERATION_MODEL", _read(source, "LEGACY_IMAGE_GENERATION_MODEL", "gpt-image-2-all")),
-            size=_read(source, "FALLBACK_IMAGE_GENERATION_SIZE", _read(source, "LEGACY_IMAGE_GENERATION_SIZE", "2048x2048")),
-            n=int(_read(source, "FALLBACK_IMAGE_GENERATION_N", _read(source, "LEGACY_IMAGE_GENERATION_N", "1"))),
-        ),
+        image=primary_image,
+        fallback_image=fallback_image,
+        image_options={
+            primary_image.id: primary_image,
+            gemini_flash_image.id: gemini_flash_image,
+        },
     )
 
 

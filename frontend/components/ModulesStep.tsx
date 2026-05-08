@@ -51,8 +51,10 @@ export function ModulesStep({
   platforms,
   selectedPlatformId,
   templates,
+  selectedImageModelId,
   onPromotionInfoChange,
   onPlatformChange,
+  onImageModelChange,
   onTemplateApply,
   onTemplateSave,
   onImageGroupChange,
@@ -71,8 +73,10 @@ export function ModulesStep({
   platforms: CommercePlatform[];
   selectedPlatformId: CommercePlatformId;
   templates: ProjectTemplate[];
+  selectedImageModelId: string;
   onPromotionInfoChange: (value: string) => void;
   onPlatformChange: (id: CommercePlatformId) => void;
+  onImageModelChange: (id: string) => void;
   onTemplateApply: (template: ProjectTemplate) => void;
   onTemplateSave: () => void;
   onImageGroupChange: (group: ImageGroup) => void;
@@ -87,6 +91,18 @@ export function ModulesStep({
   const activeProgress = generationProgress[activeImageGroup];
   const copy = groupCopy[activeImageGroup];
   const selectedPlatform = platforms.find((platform) => platform.id === selectedPlatformId) ?? platforms[0];
+  const imageModelOptions = modelConfig.imageGeneration.options?.length
+    ? modelConfig.imageGeneration.options
+    : [
+        {
+          id: modelConfig.imageGeneration.defaultOptionId ?? "primary",
+          label: modelConfig.imageGeneration.model,
+          model: modelConfig.imageGeneration.model,
+          configured: modelConfig.imageGeneration.configured,
+          defaults: modelConfig.imageGeneration.defaults
+        }
+      ];
+  const selectedImageModel = imageModelOptions.find((option) => option.id === selectedImageModelId) ?? imageModelOptions[0];
 
   return (
     <>
@@ -272,10 +288,26 @@ export function ModulesStep({
             <article>
               <header>
                 <h3>图片生成模型</h3>
-                <code>{modelConfig.imageGeneration.model}</code>
+                <code>{selectedImageModel.model}</code>
               </header>
+              <label className="fieldLabel" htmlFor="image-model-select">
+                选择图片模型
+              </label>
+              <select
+                id="image-model-select"
+                className="selectInput"
+                value={selectedImageModel.id}
+                onChange={(event) => onImageModelChange(event.target.value)}
+                disabled={activeProgress.isGenerating}
+              >
+                {imageModelOptions.map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label} · {option.defaults.size}
+                  </option>
+                ))}
+              </select>
               <p>
-                优先使用主接口生成图片；当前平台生成尺寸 {selectedPlatform.generationSize}，默认尺寸 {modelConfig.imageGeneration.defaults.size}。
+                当前平台生成尺寸 {selectedPlatform.generationSize}，所选模型默认尺寸 {selectedImageModel.defaults.size}。
               </p>
             </article>
           </div>

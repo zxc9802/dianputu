@@ -4,7 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from app.core.config import get_model_settings
-from app.services.image_model import build_image_generation_payload
+from app.services.image_model import build_image_generation_payload, extract_image_urls_from_response
 from app.services.text_model import build_chat_completion_payload
 
 
@@ -17,6 +17,11 @@ class ModelPayloadTests(unittest.TestCase):
         self.assertFalse(hasattr(settings, "fallback_text"))
         self.assertEqual(settings.image.size, "2048x2048")
         self.assertEqual(settings.fallback_image.size, "2048x2048")
+        self.assertIn("gemini_flash_image", settings.image_options)
+        self.assertEqual(settings.image_options["gemini_flash_image"].model, "gemini-3.1-flash-image-preview")
+        self.assertEqual(settings.image_options["gemini_flash_image"].base_url, "https://www.shanbaob.net/v1")
+        self.assertEqual(settings.image_options["gemini_flash_image"].endpoint_path, "/chat/completions")
+        self.assertEqual(settings.image_options["gemini_flash_image"].size, "2048x2048")
 
     def test_text_payload_contains_messages_model_and_defaults(self):
         payload = build_chat_completion_payload(
@@ -59,6 +64,19 @@ class ModelPayloadTests(unittest.TestCase):
         )
 
         self.assertEqual(payload["size"], "600x600")
+
+    def test_extract_image_urls_accepts_chat_completion_markdown_data_url(self):
+        payload = {
+            "choices": [
+                {
+                    "message": {
+                        "content": "![image](data:image/jpeg;base64,abc123)"
+                    }
+                }
+            ]
+        }
+
+        self.assertEqual(extract_image_urls_from_response(payload, image_format="png"), ["data:image/jpeg;base64,abc123"])
 
     def test_environment_overrides_are_supported(self):
         settings = get_model_settings(

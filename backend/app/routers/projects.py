@@ -458,6 +458,7 @@ async def _generate_module_image(
     module_index: int,
     total_modules: int,
     platform_size: str | None = None,
+    image_model_id: str | None = None,
 ) -> tuple[dict[str, str] | None, str | None]:
     logger.info("detail image generation start %s/%s module=%s", module_index, total_modules, module["id"])
     module_id = str(module["id"])
@@ -477,11 +478,12 @@ async def _generate_module_image(
         promotion_info=promotion_info,
         has_style_reference=bool(style_reference_images),
     )
+    image_settings = settings.image_options.get(image_model_id or settings.image.id, settings.image)
     try:
-        urls = await call_image_model(settings.image, prompt, image=model_reference_images or None, size=platform_size)
+        urls = await call_image_model(image_settings, prompt, image=model_reference_images or None, size=platform_size)
     except Exception as primary_exc:
         logger.warning("primary image generation failed %s/%s module=%s error=%s", module_index, total_modules, module["id"], primary_exc)
-        if not settings.fallback_image.api_key:
+        if image_settings.id != settings.image.id or not settings.fallback_image.api_key:
             return None, f"{module['id']}: {primary_exc}"
         try:
             urls = await call_image_model(settings.fallback_image, prompt, image=model_reference_images or None, size=platform_size)
@@ -505,8 +507,10 @@ async def generate_detail_images(
     custom_style: dict[str, Any] | None = None,
     promotion_info: str | None = None,
     platform_size: str | None = None,
+    image_model_id: str | None = None,
 ) -> dict[str, Any]:
     settings = get_model_settings()
+    image_settings = settings.image_options.get(image_model_id or settings.image.id, settings.image)
     enabled_modules = [module for module in DEFAULT_MODULES if module["id"] in module_ids]
     style = next((item for item in STYLE_OPTIONS if item["id"] == style_id), STYLE_OPTIONS[0])
     missing_white_background_reference = [
@@ -521,7 +525,7 @@ async def generate_detail_images(
 
     generated_images: list[dict[str, str]] = []
     errors: list[str] = []
-    if settings.image.api_key or settings.fallback_image.api_key or (reference_images and any(str(module["id"]) in WHITE_BACKGROUND_MODULE_IDS for module in enabled_modules)):
+    if image_settings.api_key or settings.fallback_image.api_key or (reference_images and any(str(module["id"]) in WHITE_BACKGROUND_MODULE_IDS for module in enabled_modules)):
         total_modules = len(enabled_modules)
         results = await asyncio.gather(
             *(
@@ -537,6 +541,7 @@ async def generate_detail_images(
                     module_index=index,
                     total_modules=total_modules,
                     platform_size=platform_size,
+                    image_model_id=image_model_id,
                 )
                 for index, module in enumerate(enabled_modules, start=1)
             )
@@ -575,7 +580,7 @@ def build_image_edit_prompt(instruction: str) -> str:
     )
 
 
-async def edit_generated_image(image_url: str, instruction: str, platform_size: str | None = None) -> dict[str, Any]:
+async def edit_generated_image(image_url: str, instruction: str, platform_size: str | None = None, image_model_id: str | None = None) -> dict[str, Any]:
     cleaned_instruction = instruction.strip()
     if not image_url:
         return {"source": "error", "error": "image_url is required"}
@@ -583,7 +588,8 @@ async def edit_generated_image(image_url: str, instruction: str, platform_size: 
         return {"source": "error", "error": "instruction is required"}
 
     settings = get_model_settings()
-    if not settings.image.api_key and not settings.fallback_image.api_key:
+    image_settings = settings.image_options.get(image_model_id or settings.image.id, settings.image)
+    if not image_settings.api_key and not settings.fallback_image.api_key:
         return {"source": "error", "error": "image model is not configured"}
 
     prompt = build_image_edit_prompt(cleaned_instruction)
@@ -595,10 +601,10 @@ async def edit_generated_image(image_url: str, instruction: str, platform_size: 
         return {"source": "error", "error": f"failed to download source image: {exc}"}
 
     try:
-        urls = await call_image_edit_model(settings.image, prompt, image_bytes, size=platform_size)
+        urls = await call_image_edit_model(image_settings, prompt, image_bytes, size=platform_size)
     except Exception as primary_exc:
         logger.warning("primary image edit failed error=%s", primary_exc)
-        if not settings.fallback_image.api_key:
+        if image_settings.id != settings.image.id or not settings.fallback_image.api_key:
             return {"source": "error", "error": str(primary_exc)}
         try:
             urls = await call_image_edit_model(settings.fallback_image, prompt, image_bytes, size=platform_size)
@@ -701,6 +707,7 @@ try:
         custom_style: dict[str, Any] | None = None
         promotion_info: str | None = None
         platform_size: str | None = None
+        image_model_id: str | None = None
 
     def _generation_payload_from_request(request: GenerateRequest) -> dict[str, Any]:
         return {
@@ -712,6 +719,7 @@ try:
             "custom_style": request.custom_style,
             "promotion_info": request.promotion_info,
             "platform_size": request.platform_size,
+            "image_model_id": request.image_model_id,
         }
 
     async def run_generation_job(job_id: str, payload: dict[str, Any]) -> None:
@@ -739,6 +747,7 @@ try:
                 custom_style=payload.get("custom_style"),
                 promotion_info=payload.get("promotion_info"),
                 platform_size=payload.get("platform_size"),
+                image_model_id=payload.get("image_model_id"),
             )
             job.update(
                 {
@@ -765,6 +774,7 @@ try:
         image_url: str
         instruction: str
         platform_size: str | None = None
+        image_model_id: str | None = None
 
     class ComposeImageItem(BaseModel):
         module_id: str
@@ -814,6 +824,7 @@ try:
             custom_style=request.custom_style,
             promotion_info=request.promotion_info,
             platform_size=request.platform_size,
+            image_model_id=request.image_model_id,
         )
 
     @router.post("/generate/jobs")
@@ -841,7 +852,7 @@ try:
 
     @router.post("/edit-image")
     async def edit_project_image(request: EditImageRequest) -> dict[str, Any]:
-        return await edit_generated_image(request.image_url, request.instruction, platform_size=request.platform_size)
+        return await edit_generated_image(request.image_url, request.instruction, platform_size=request.platform_size, image_model_id=request.image_model_id)
 
     @router.post("/compose-long-image")
     async def compose_project_long_image(request: ComposeLongImageRequest) -> Response:

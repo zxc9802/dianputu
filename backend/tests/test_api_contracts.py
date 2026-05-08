@@ -50,6 +50,7 @@ class ApiContractTests(unittest.TestCase):
 
         self.assertIn("gemini-3.1-pro-preview", serialized)
         self.assertIn("gpt-image-2", serialized)
+        self.assertIn("gemini-3.1-flash-image-preview", serialized)
         self.assertIn("gpt-image-2-all", serialized)
         self.assertNotIn("api_key", serialized)
         self.assertNotIn("bearer", serialized)
@@ -141,18 +142,49 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["source"], "model")
         self.assertEqual(calls, ["600x600"])
 
+    async def test_generation_can_select_gemini_flash_image_model(self):
+        previous_key = environ.get("GEMINI_FLASH_IMAGE_API_KEY")
+        environ["GEMINI_FLASH_IMAGE_API_KEY"] = "test-key"
+        calls = []
+
+        async def fake_call_image_model(settings, prompt, image=None, size=None):
+            calls.append({"model": settings.model, "base_url": settings.base_url, "endpoint_path": settings.endpoint_path, "size": size})
+            return ["https://example.com/gemini.png"]
+
+        try:
+            with patch("app.routers.projects.call_image_model", new=fake_call_image_model):
+                result = await generate_detail_images(["main_effect"], "green_repair", platform_size="2048x2048", image_model_id="gemini_flash_image")
+        finally:
+            if previous_key is None:
+                environ.pop("GEMINI_FLASH_IMAGE_API_KEY", None)
+            else:
+                environ["GEMINI_FLASH_IMAGE_API_KEY"] = previous_key
+
+        self.assertEqual(result["source"], "model")
+        self.assertEqual(
+            calls,
+            [
+                {
+                    "model": "gemini-3.1-flash-image-preview",
+                    "base_url": "https://www.shanbaob.net/v1",
+                    "endpoint_path": "/chat/completions",
+                    "size": "2048x2048",
+                }
+            ],
+        )
+
     async def test_edit_generated_image_uses_instruction_and_original_image(self):
         previous_key = environ.get("IMAGE_GENERATION_API_KEY")
         environ["IMAGE_GENERATION_API_KEY"] = "test-key"
         calls = []
 
-        async def fake_call_image_model(settings, prompt, image=None, size=None):
-            calls.append({"prompt": prompt, "image": image, "size": size})
+        async def fake_call_image_edit_model(settings, prompt, image_bytes, size=None):
+            calls.append({"prompt": prompt, "image_bytes": image_bytes, "size": size})
             return ["https://example.com/edited.png"]
 
         try:
-            with patch("app.routers.projects.call_image_model", new=fake_call_image_model):
-                result = await edit_generated_image("data:image/png;base64,abc", "背景颜色改成深绿色", platform_size="800x800")
+            with patch("app.routers.projects.call_image_edit_model", new=fake_call_image_edit_model):
+                result = await edit_generated_image("data:image/png;base64,YWJj", "背景颜色改成深绿色", platform_size="800x800")
         finally:
             if previous_key is None:
                 environ.pop("IMAGE_GENERATION_API_KEY", None)
@@ -161,7 +193,7 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result, {"source": "model", "url": "https://example.com/edited.png"})
         self.assertIn("背景颜色改成深绿色", calls[0]["prompt"])
-        self.assertEqual(calls[0]["image"], ["data:image/png;base64,abc"])
+        self.assertEqual(calls[0]["image_bytes"], b"abc")
         self.assertEqual(calls[0]["size"], "800x800")
 
     async def test_compose_long_jpeg_stacks_images_vertically(self):

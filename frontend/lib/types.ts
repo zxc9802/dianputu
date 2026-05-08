@@ -104,6 +104,20 @@ export type PublicModelConfig = {
   imageGeneration: {
     model: string;
     configured: boolean;
+    defaultOptionId?: string;
+    options?: Array<{
+      id: string;
+      label: string;
+      model: string;
+      configured: boolean;
+      defaults: {
+        size: string;
+        n: number;
+        quality?: string;
+        output_format?: string;
+        response_format?: string;
+      };
+    }>;
     defaults: {
       size: string;
       n: number;
@@ -132,6 +146,7 @@ export type PersistedProjectState = {
   styleSource: StyleSource;
   selectedCategory: string;
   selectedPlatformId: CommercePlatformId;
+  selectedImageModelId?: string;
   activeImageGroup: ImageGroup;
   promotionInfo: string;
   modules: ModuleConfig[];

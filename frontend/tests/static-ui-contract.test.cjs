@@ -52,7 +52,9 @@ assertNotIncludes("lib/api.ts", "timeoutMs: 600000\n    });\n  } catch (error) {
 assertIncludes("lib/api.ts", "timeoutMs: 180000", "material analysis must keep the request open long enough for model output");
 assertIncludes("lib/constants.ts", 'defaults: { size: "2048x2048"', "frontend demo model config must reflect 2K image generation defaults");
 assertIncludes("app/page.tsx", "selectedPlatform.generationSize", "page image generation requests must use the 2K generation size");
-assertIncludes("app/page.tsx", "editGeneratedImage(imageUrl, trimmed, selectedPlatform.generationSize)", "image edits must keep the selected platform 2K generation size");
+assertIncludes("app/page.tsx", "editGeneratedImage(imageUrl, trimmed, selectedPlatform.generationSize, selectedImageModelId)", "image edits must keep the selected platform 2K generation size and selected image model");
+assertIncludes("components/ModulesStep.tsx", "选择图片模型", "modules step must expose the image model selector");
+assertIncludes("lib/api.ts", "image_model_id: imageModelId", "frontend generation/edit requests must send the selected image model id");
 assert.ok(!fs.existsSync(path.join(root, "lib/autoGenerate.ts")), "lib/autoGenerate.ts: full auto generation flow should be removed");
 assert.ok(!fs.existsSync(path.join(root, "components/AutoUploadStep.tsx")), "components/AutoUploadStep.tsx: full auto upload step should be removed");
 assert.ok(!fs.existsSync(path.join(root, "components/AutoProgressStep.tsx")), "components/AutoProgressStep.tsx: full auto progress step should be removed");
@@ -82,7 +84,7 @@ assertIncludes("components/PreviewStep.tsx", "composeStatus", "preview step must
 assertIncludes("components/PreviewStep.tsx", "full-detail.jpg", "full long image export must download a JPG file");
 assertNotIncludes("components/PreviewStep.tsx", "full-detail.svg", "full long image export must not download SVG");
 assertIncludes("components/PreviewStep.tsx", "handleDownloadVisibleBatch", "preview directory must expose batch download for the active main/campaign group");
-assertIncludes("components/PreviewStep.tsx", "visibleItems.forEach", "batch download must only download currently generated images in the active directory");
+assertIncludes("components/PreviewStep.tsx", "index < visibleItems.length", "batch download must only download currently generated images in the active directory");
 assertIncludes("components/PreviewStep.tsx", 'activeImageGroup === "detail"', "detail directory must keep compose download separate from main/campaign batch download");
 assertIncludes("components/PreviewStep.tsx", "批量下载", "main and campaign directories must show a batch download action");
 assertIncludes("lib/api.ts", "/api/projects/compose-long-image", "frontend API must expose backend long image composition");

@@ -23,6 +23,36 @@
       "output_format": "png",
       "response_format": "b64_json"
     },
+    "options": [
+      {
+        "id": "primary",
+        "label": "GPT Image 2",
+        "apiKeyEnv": "IMAGE_GENERATION_API_KEY",
+        "baseUrl": "https://api-xai.ainaibahub.com/v1",
+        "endpoint": "/images/generations",
+        "model": "gpt-image-2",
+        "defaults": {
+          "size": "2048x2048",
+          "n": 1,
+          "quality": "high",
+          "output_format": "png",
+          "response_format": "b64_json"
+        }
+      },
+      {
+        "id": "gemini_flash_image",
+        "label": "Gemini 3.1 Flash Image Preview",
+        "apiKeyEnv": "GEMINI_FLASH_IMAGE_API_KEY",
+        "baseUrl": "https://www.shanbaob.net/v1",
+        "endpoint": "/chat/completions",
+        "model": "gemini-3.1-flash-image-preview",
+        "defaults": {
+          "size": "2048x2048",
+          "n": 1,
+          "response_format": "b64_json"
+        }
+      }
+    ],
     "fallback": {
       "purpose": "Fallback image generation endpoint used only when the primary endpoint fails for the current image",
       "apiKeyEnv": "FALLBACK_IMAGE_GENERATION_API_KEY",

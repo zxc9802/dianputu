@@ -85,7 +85,8 @@ export async function generateImages(
   promotionInfo = "",
   platformSize = "",
   styleReferenceImages: string[] = [],
-  customStyle?: StyleOption
+  customStyle?: StyleOption,
+  imageModelId = ""
 ) {
   try {
     const { job_id: jobId } = await createGenerateImageJob(
@@ -96,7 +97,8 @@ export async function generateImages(
       promotionInfo,
       platformSize,
       styleReferenceImages,
-      customStyle
+      customStyle,
+      imageModelId
     );
     return await pollGenerateImageJob(jobId);
   } catch (error) {
@@ -137,7 +139,8 @@ export async function createGenerateImageJob(
   promotionInfo = "",
   platformSize = "",
   styleReferenceImages: string[] = [],
-  customStyle?: StyleOption
+  customStyle?: StyleOption,
+  imageModelId = ""
 ) {
   return requestJson<{ job_id: string }>("/api/projects/generate/jobs", {
     method: "POST",
@@ -149,7 +152,8 @@ export async function createGenerateImageJob(
       style_reference_images: styleReferenceImages,
       custom_style: customStyle,
       promotion_info: promotionInfo,
-      platform_size: platformSize
+      platform_size: platformSize,
+      image_model_id: imageModelId
     }),
     timeoutMs: 15000
   });
@@ -215,14 +219,15 @@ export async function generateAiCustomStyleSample(style: StyleOption, productInf
   }
 }
 
-export async function editGeneratedImage(imageUrl: string, instruction: string, platformSize = "") {
+export async function editGeneratedImage(imageUrl: string, instruction: string, platformSize = "", imageModelId = "") {
   try {
     return await requestJson<{ source: string; url?: string; error?: string }>("/api/projects/edit-image", {
       method: "POST",
       body: JSON.stringify({
         image_url: imageUrl,
         instruction,
-        platform_size: platformSize
+        platform_size: platformSize,
+        image_model_id: imageModelId
       }),
       timeoutMs: 600000
     });

@@ -7,6 +7,24 @@ from app.core.config import get_model_settings
 
 def build_public_model_config() -> dict[str, Any]:
     settings = get_model_settings()
+    image_options = [
+        {
+            "id": option.id,
+            "label": option.label,
+            "baseUrl": option.base_url,
+            "endpoint": option.endpoint_path,
+            "model": option.model,
+            "defaults": {
+                "size": option.size,
+                "n": option.n,
+                "quality": option.quality,
+                "output_format": option.output_format,
+                "response_format": option.response_format,
+            },
+            "configured": bool(option.api_key),
+        }
+        for option in settings.image_options.values()
+    ]
     return {
         "textAnalysis": {
             "baseUrl": settings.text.base_url,
@@ -20,7 +38,7 @@ def build_public_model_config() -> dict[str, Any]:
         },
         "imageGeneration": {
             "baseUrl": settings.image.base_url,
-            "endpoint": "/images/generations",
+            "endpoint": settings.image.endpoint_path,
             "model": settings.image.model,
             "defaults": {
                 "size": settings.image.size,
@@ -30,9 +48,11 @@ def build_public_model_config() -> dict[str, Any]:
                 "response_format": settings.image.response_format,
             },
             "configured": bool(settings.image.api_key),
+            "defaultOptionId": settings.image.id,
+            "options": image_options,
             "fallback": {
                 "baseUrl": settings.fallback_image.base_url,
-                "endpoint": "/images/generations",
+                "endpoint": settings.fallback_image.endpoint_path,
                 "model": settings.fallback_image.model,
                 "defaults": {
                     "size": settings.fallback_image.size,

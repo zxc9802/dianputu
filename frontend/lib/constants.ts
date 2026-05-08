@@ -122,6 +122,23 @@ export const DEMO_MODEL_CONFIG = {
   imageGeneration: {
     model: "gpt-image-2",
     configured: false,
+    defaultOptionId: "primary",
+    options: [
+      {
+        id: "primary",
+        label: "GPT Image 2",
+        model: "gpt-image-2",
+        configured: false,
+        defaults: { size: "2048x2048", n: 1, quality: "high", output_format: "png", response_format: "b64_json" }
+      },
+      {
+        id: "gemini_flash_image",
+        label: "Gemini 3.1 Flash Image Preview",
+        model: "gemini-3.1-flash-image-preview",
+        configured: false,
+        defaults: { size: "2048x2048", n: 1, response_format: "b64_json" }
+      }
+    ],
     defaults: { size: "2048x2048", n: 1, quality: "high", output_format: "png", response_format: "b64_json" },
     fallback: {
       model: "gpt-image-2-all",

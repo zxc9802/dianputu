@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from app.core.config import ImageGenerationSettings
 
 
 MODEL_GATEWAY_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
+DATA_IMAGE_RE = re.compile(r"data:image/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=_-]+")
 
 
 def build_image_generation_payload(
@@ -34,6 +36,28 @@ def build_image_generation_payload(
     if image:
         payload["image"] = image
     return payload
+
+
+def extract_image_urls_from_response(data: dict[str, Any], *, image_format: str = "png") -> list[str]:
+    urls: list[str] = []
+    for item in data.get("data", []):
+        if item.get("url"):
+            urls.append(item["url"])
+        elif item.get("b64_json"):
+            urls.append(f"data:image/{image_format};base64,{item['b64_json']}")
+
+    for choice in data.get("choices", []):
+        content = choice.get("message", {}).get("content", "")
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if isinstance(item, dict):
+                    parts.append(str(item.get("text") or item.get("image_url", {}).get("url") or ""))
+            content = "\n".join(parts)
+        if isinstance(content, str):
+            urls.extend(DATA_IMAGE_RE.findall(content))
+
+    return urls
 
 
 async def call_image_model(
@@ -70,14 +94,7 @@ async def call_image_model(
         )
         response.raise_for_status()
         data = response.json()
-        urls: list[str] = []
-        for item in data.get("data", []):
-            if item.get("url"):
-                urls.append(item["url"])
-            elif item.get("b64_json"):
-                image_format = settings.output_format or "png"
-                urls.append(f"data:image/{image_format};base64,{item['b64_json']}")
-        return urls
+        return extract_image_urls_from_response(data, image_format=settings.output_format or "png")
 
 
 def _detect_image_format(image_bytes: bytes) -> str:
@@ -138,11 +155,4 @@ async def call_image_edit_model(
         )
         response.raise_for_status()
         result = response.json()
-        urls: list[str] = []
-        for item in result.get("data", []):
-            if item.get("url"):
-                urls.append(item["url"])
-            elif item.get("b64_json"):
-                image_format = settings.output_format or "png"
-                urls.append(f"data:image/{image_format};base64,{item['b64_json']}")
-        return urls
+        return extract_image_urls_from_response(result, image_format=settings.output_format or "png")

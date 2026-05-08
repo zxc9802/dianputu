@@ -637,6 +637,17 @@ a {
   margin-bottom: 28px;
 }
 
+.selectInput {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #cfd8d3;
+  border-radius: 8px;
+  background: #fff;
+  padding: 0 12px;
+  color: #252d36;
+  font-size: 15px;
+}
+
 .styleGrid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

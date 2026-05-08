@@ -123,6 +123,7 @@ function readPersistedProjectState(): PersistedProjectState | null {
       selectedCategory: parsed.selectedCategory || DEFAULT_CATEGORY,
       activeImageGroup,
       selectedPlatformId: COMMERCE_PLATFORMS.some((platform) => platform.id === parsed.selectedPlatformId) ? (parsed.selectedPlatformId as CommercePlatformId) : DEFAULT_PLATFORM_ID,
+      selectedImageModelId: parsed.selectedImageModelId || "primary",
       promotionInfo: parsed.promotionInfo || "",
       modules: Array.isArray(parsed.modules) ? parsed.modules : [],
       generatedImages: Array.isArray(parsed.generatedImages) ? parsed.generatedImages : [],
@@ -161,6 +162,7 @@ function createProjectStateSnapshot(input: {
   styleSource: StyleSource;
   selectedCategory: string;
   selectedPlatformId: CommercePlatformId;
+  selectedImageModelId: string;
   activeImageGroup: ImageGroup;
   promotionInfo: string;
   modules: ModuleConfig[];
@@ -176,6 +178,7 @@ function createProjectStateSnapshot(input: {
     styleSource: input.styleSource,
     selectedCategory: input.selectedCategory,
     selectedPlatformId: input.selectedPlatformId,
+    selectedImageModelId: input.selectedImageModelId,
     activeImageGroup: input.activeImageGroup,
     promotionInfo: input.promotionInfo,
     modules: input.modules,
@@ -227,6 +230,7 @@ export default function Home() {
   const [isGeneratingStyleSample, setIsGeneratingStyleSample] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(DEFAULT_CATEGORY);
   const [selectedPlatformId, setSelectedPlatformId] = useState<CommercePlatformId>(DEFAULT_PLATFORM_ID);
+  const [selectedImageModelId, setSelectedImageModelId] = useState("primary");
   const [modelConfig, setModelConfig] = useState<PublicModelConfig>(DEMO_MODEL_CONFIG);
   const [imageVersionStore, setImageVersionStore] = useState<ImageVersionStore>(() => createEmptyImageVersionStore());
   const [userTemplates, setUserTemplates] = useState<ProjectTemplate[]>([]);
@@ -257,6 +261,7 @@ export default function Home() {
         setStyleSource(restored.styleSource);
         setSelectedCategory(restored.selectedCategory);
         setSelectedPlatformId(restored.selectedPlatformId);
+        setSelectedImageModelId(restored.selectedImageModelId || models.imageGeneration.defaultOptionId || "primary");
         setActiveImageGroup(restored.activeImageGroup);
         setPromotionInfo(restored.promotionInfo);
         setModules(mergeRestoredModules(defaults.modules, restored.modules));
@@ -285,6 +290,7 @@ export default function Home() {
       styleSource,
       selectedCategory,
       selectedPlatformId,
+      selectedImageModelId,
       activeImageGroup,
       promotionInfo,
       modules,
@@ -292,7 +298,7 @@ export default function Home() {
       userTemplates,
       statusText
     }));
-  }, [activeImageGroup, customStyle, hasAiProductInfo, hasRestoredProjectState, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedPlatformId, selectedStyleId, statusText, styleSource, userTemplates]);
+  }, [activeImageGroup, customStyle, hasAiProductInfo, hasRestoredProjectState, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedImageModelId, selectedPlatformId, selectedStyleId, statusText, styleSource, userTemplates]);
 
   useEffect(() => {
     function syncStepFromHash() {
@@ -329,6 +335,7 @@ export default function Home() {
       styleSource,
       selectedCategory,
       selectedPlatformId,
+      selectedImageModelId,
       activeImageGroup,
       promotionInfo,
       modules,
@@ -346,6 +353,7 @@ export default function Home() {
     setStyleSource(state.styleSource);
     setSelectedCategory(state.selectedCategory);
     setSelectedPlatformId(state.selectedPlatformId);
+    setSelectedImageModelId(state.selectedImageModelId || modelConfig.imageGeneration.defaultOptionId || "primary");
     setActiveImageGroup(state.activeImageGroup);
     setPromotionInfo(state.promotionInfo);
     if (state.modules?.length) {
@@ -420,6 +428,7 @@ export default function Home() {
     setStyleSource("preset");
     setSelectedCategory(DEFAULT_CATEGORY);
     setSelectedPlatformId("tmall");
+    setSelectedImageModelId(modelConfig.imageGeneration.defaultOptionId || "primary");
     setModules(defaultModules.map((module) => ({ ...module })));
     setImageVersionStore(createEmptyImageVersionStore());
     setGenerationProgress(createIdleGenerationProgress());
@@ -445,7 +454,7 @@ export default function Home() {
       return;
     }
     setStatusText("AI 微调中");
-    const result = await editGeneratedImage(imageUrl, trimmed, selectedPlatform.generationSize);
+    const result = await editGeneratedImage(imageUrl, trimmed, selectedPlatform.generationSize, selectedImageModelId);
     if (result.source === "model" && result.url) {
       setImageVersionStore((current) =>
         appendImageVersions(current, [{ module_id: moduleId, url: result.url as string }], "edit", Date.now(), trimmed)
@@ -631,7 +640,8 @@ export default function Home() {
             group === "campaign" ? promotionInfo : "",
             selectedPlatform.generationSize,
             [],
-            activeCustomStyle
+            activeCustomStyle,
+            selectedImageModelId
           ),
         (module, result, progress) => {
           if (result.images.length) {
@@ -681,6 +691,7 @@ export default function Home() {
         styleSource,
         selectedCategory,
         selectedPlatformId,
+        selectedImageModelId,
         activeImageGroup,
         promotionInfo,
         modules,
@@ -692,7 +703,7 @@ export default function Home() {
       }
     });
     setCurrentHistoryId((existingId) => resolveReusableHistoryId(existingId, saved?.id ?? null) ?? null);
-  }, [activeImageGroup, currentHistoryId, customStyle, hasAiProductInfo, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedPlatformId, selectedStyleId, statusText, styleSource, styles, userTemplates]);
+  }, [activeImageGroup, currentHistoryId, customStyle, hasAiProductInfo, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedImageModelId, selectedPlatformId, selectedStyleId, statusText, styleSource, styles, userTemplates]);
 
   // Auto-save to history when new images are generated
   useEffect(() => {
@@ -840,8 +851,10 @@ export default function Home() {
             platforms={COMMERCE_PLATFORMS}
             selectedPlatformId={selectedPlatformId}
             templates={allTemplates}
+            selectedImageModelId={selectedImageModelId}
             onPromotionInfoChange={setPromotionInfo}
             onPlatformChange={setSelectedPlatformId}
+            onImageModelChange={setSelectedImageModelId}
             onTemplateApply={applyProjectTemplate}
             onTemplateSave={saveCurrentTemplate}
             onImageGroupChange={setActiveImageGroup}
