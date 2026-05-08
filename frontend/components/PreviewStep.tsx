@@ -40,7 +40,15 @@ function downloadBlob(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function isDirectDownloadUrl(url: string) {
+  return /^https?:\/\//i.test(url);
+}
+
 async function fetchAndDownload(url: string, filename: string) {
+  if (isDirectDownloadUrl(url)) {
+    downloadUrl(url, filename);
+    return;
+  }
   const blob = await downloadImage(url, filename);
   downloadBlob(blob, filename);
 }
