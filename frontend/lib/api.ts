@@ -1,4 +1,5 @@
 import { DEFAULT_MODULES, DEMO_MODEL_CONFIG, STYLE_OPTIONS } from "./constants";
+import { MainAppRedirectError, extractApiErrorMessage, readJsonSafely, redirectToMainAppIfNeeded } from "./client/api-response";
 import type { MaterialPayload, ModuleConfig, ProductInfo, PublicModelConfig, StyleOption } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -10,15 +11,18 @@ async function requestJson<T>(path: string, init?: RequestInit & { timeoutMs?: n
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...fetchInit,
     signal: controller.signal,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {})
     }
   }).finally(() => window.clearTimeout(timeout));
+  const payload = await readJsonSafely<T>(response);
+  redirectToMainAppIfNeeded(response, payload);
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status}`);
+    throw new Error(extractApiErrorMessage(payload, `API request failed: ${response.status}`));
   }
-  return response.json() as Promise<T>;
+  return payload as T;
 }
 
 async function requestBlob(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<Blob> {
@@ -28,21 +32,31 @@ async function requestBlob(path: string, init?: RequestInit & { timeoutMs?: numb
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...fetchInit,
     signal: controller.signal,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {})
     }
   }).finally(() => window.clearTimeout(timeout));
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status}`);
+    const payload = await readJsonSafely(response);
+    redirectToMainAppIfNeeded(response, payload);
+    throw new Error(extractApiErrorMessage(payload, `API request failed: ${response.status}`));
   }
   return response.blob();
+}
+
+function rethrowMainAppRedirect(error: unknown) {
+  if (error instanceof MainAppRedirectError) {
+    throw error;
+  }
 }
 
 export async function fetchModelConfig(): Promise<PublicModelConfig> {
   try {
     return await requestJson<PublicModelConfig>("/api/models/config");
-  } catch {
+  } catch (error) {
+    rethrowMainAppRedirect(error);
     return DEMO_MODEL_CONFIG;
   }
 }
@@ -54,7 +68,8 @@ export async function fetchProjectDefaults(): Promise<{
 }> {
   try {
     return await requestJson("/api/projects/defaults");
-  } catch {
+  } catch (error) {
+    rethrowMainAppRedirect(error);
     return {
       styles: STYLE_OPTIONS,
       modules: DEFAULT_MODULES
@@ -87,7 +102,8 @@ export async function generateImages(
       }),
       timeoutMs: 600000
     });
-  } catch {
+  } catch (error) {
+    rethrowMainAppRedirect(error);
     return {
       source: "demo",
       images: moduleIds.map((moduleId) => ({ module_id: moduleId, url: "/assets/generated-cica-asset-sheet.png" })),
@@ -108,6 +124,7 @@ export async function planAiCustomStyle(productInfo?: ProductInfo, category = ""
       timeoutMs: 180000
     });
   } catch (error) {
+    rethrowMainAppRedirect(error);
     return {
       source: "error",
       error: error instanceof Error ? error.message : "AI 风格规划请求失败"
@@ -126,6 +143,7 @@ export async function generateAiCustomStyleSample(style: StyleOption, productInf
       timeoutMs: 600000
     });
   } catch (error) {
+    rethrowMainAppRedirect(error);
     return {
       source: "error",
       error: error instanceof Error ? error.message : "AI 风格样例图请求失败"
@@ -145,6 +163,7 @@ export async function editGeneratedImage(imageUrl: string, instruction: string, 
       timeoutMs: 600000
     });
   } catch (error) {
+    rethrowMainAppRedirect(error);
     return {
       source: "error",
       error: error instanceof Error ? error.message : "AI 微调请求失败"
@@ -163,6 +182,7 @@ export async function analyzeUploadedMaterials(materials: MaterialPayload[]) {
       }
     );
   } catch (error) {
+    rethrowMainAppRedirect(error);
     return {
       source: "error",
       error: error instanceof Error ? error.message : "AI 解析请求失败"
@@ -215,9 +235,13 @@ export async function downloadComposeLongImageJob(jobId: string) {
 }
 
 export async function fetchComposeLongImageDownload(jobId: string) {
-  const response = await fetch(`${API_BASE_URL}/api/projects/compose-long-image/jobs/${jobId}/download`);
+  const response = await fetch(`${API_BASE_URL}/api/projects/compose-long-image/jobs/${jobId}/download`, {
+    credentials: "include"
+  });
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status}`);
+    const payload = await readJsonSafely(response);
+    redirectToMainAppIfNeeded(response, payload);
+    throw new Error(extractApiErrorMessage(payload, `API request failed: ${response.status}`));
   }
   const contentType = response.headers.get("Content-Type") ?? "";
   if (contentType.includes("application/json")) {

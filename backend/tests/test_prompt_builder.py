@@ -52,6 +52,30 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertNotIn("样本 32 人", prompt)
         self.assertNotIn("SGS-CICA-2026-042", prompt)
 
+    def test_detail_prompts_keep_hidden_notes_out_of_visible_image_copy(self):
+        build_module_image_prompt = load_prompt_builder()
+        authority_module = next(module for module in DEFAULT_MODULES if module["id"] == "authority")
+
+        prompt = build_module_image_prompt(
+            product_info={
+                "product_name": "CICA 修护精华",
+                "authority_assets": ["实验室研发", "实验报告", "专研配方理念"],
+            },
+            style=STYLE_OPTIONS[0],
+            module=authority_module,
+            module_index=2,
+            total_modules=7,
+        )
+
+        self.assertIn("隐藏 brief、模块职责、资料项、来源类型、报告限制、合规提醒只作为生成依据", prompt)
+        self.assertIn("禁止把这些内容排版成图片里的说明框、段落、清单、脚注或底部文字区域", prompt)
+        self.assertIn("报告卡片只保留轮廓、图形和不可读占位纹理", prompt)
+        self.assertIn("仅短标题、极短标签、必要数值或步骤编号需要清晰可读", prompt)
+        self.assertNotIn("数据/说明区", prompt)
+        self.assertNotIn("底部补充区", prompt)
+        self.assertNotIn("1-2 句克制的权威背书短文案", prompt)
+        self.assertNotIn("说明文字清晰可读", prompt)
+
     def test_effect_prompt_contains_complete_metrics_sources_and_compliance_limits(self):
         build_module_image_prompt = load_prompt_builder()
         effect_module = next(module for module in DEFAULT_MODULES if module["id"] == "effect_comparison")

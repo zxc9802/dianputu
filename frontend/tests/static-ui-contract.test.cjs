@@ -38,6 +38,8 @@ assertNotIncludes("lib/api.ts", "/api/projects/analyze-product-visual", "fronten
 assertIncludes("lib/productInfo.ts", "mergeProductInfoWithManualPriority", "product info helper must preserve manual fields when AI returns data");
 assertIncludes("app/page.tsx", "mergeProductInfoWithManualPriority", "page must merge AI analysis results without overwriting manual fields");
 assertIncludes("lib/api.ts", "http://127.0.0.1:8000", "frontend API should default to the backend bind address");
+assertIncludes("lib/api.ts", 'credentials: "include"', "frontend API requests must include the SSO session cookie");
+assertIncludes("lib/api.ts", "redirectToMainAppIfNeeded", "frontend API requests must redirect to the main site on SSO 401 responses");
 assertIncludes("lib/api.ts", "AbortController", "frontend API requests must time out instead of leaving the app loading forever");
 assertIncludes("lib/api.ts", "timeoutMs: 600000", "image generation must keep the request open long enough for real model output");
 assertIncludes("lib/api.ts", "timeoutMs: 180000", "material analysis must keep the request open long enough for model output");
@@ -84,6 +86,9 @@ assertIncludes("app/page.tsx", "promotionInfo", "page must persist campaign prom
 assertIncludes("app/page.tsx", "currentHistoryId", "page must keep the saved history id for later autosaves");
 assertIncludes("app/page.tsx", "id: resolveReusableHistoryId(currentHistoryId, null)", "history autosave must reuse the current history id instead of inserting duplicates");
 assertIncludes("lib/historyApi.ts", "LOCAL_HISTORY_STORAGE_KEY", "history API must keep a local fallback when PostgreSQL is not configured");
+assertIncludes("lib/historyApi.ts", "getScopedLocalHistoryStorageKey", "history local fallback key must be scoped by session user");
+assertIncludes("lib/historyApi.ts", "detail-image-agent-history:", "history local fallback key must include the current user id");
+assertIncludes("lib/historyApi.ts", "fetchCurrentHistoryUserId", "history API must resolve the current SSO user before using local fallback history");
 assertIncludes("lib/historyApi.ts", "saveLocalHistory", "history save must persist locally when the backend save fails");
 assertIncludes("lib/historyApi.ts", "fetchLocalHistoryList", "history drawer must still show locally saved records when the backend list is empty");
 assertIncludes("app/page.tsx", "defaultModules", "page must keep the default module config for a full new-project reset");
@@ -97,6 +102,7 @@ assertNotIncludes("app/page.tsx", "duplicateProjectForNewProduct", "page must no
 assertIncludes("app/page.tsx", "新建项目", "topbar action must communicate a new project reset");
 assertNotIncludes("app/page.tsx", "复制项目", "topbar action must not describe the reset as copying");
 assertIncludes("app/page.tsx", "returnWorkspaceSnapshot", "page must keep a return snapshot before loading a history copy");
+assertIncludes("app/page.tsx", "useAppViewer", "page must load the SSO viewer before account-scoped history behavior");
 assertIncludes("app/page.tsx", "setCurrentHistoryId(null)", "loading a history copy must start a new autosave record instead of overwriting the source history");
 assertIncludes("app/page.tsx", "返回原工作区", "page must expose a way back to the original workspace after loading a history copy");
 assertIncludes("components/HistoryDrawer.tsx", "onRestoreCopy(detail.state, detail.id)", "history drawer must load records as copies rather than continuing the source history id");

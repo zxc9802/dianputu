@@ -1,7 +1,9 @@
 import type { PersistedProjectState } from "./types";
+import { MainAppRedirectError, extractApiErrorMessage, readJsonSafely, redirectToMainAppIfNeeded } from "./client/api-response";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 const LOCAL_HISTORY_STORAGE_KEY = "detail-image-agent-history";
+const LOCAL_DEV_HISTORY_USER_ID = "detail-image-agent-local-dev-user";
 
 export type HistoryMeta = {
   id: string;
@@ -22,20 +24,60 @@ export type HistoryDetail = HistoryMeta & {
 
 type LocalHistoryRecord = HistoryDetail;
 
-function readLocalHistory(): LocalHistoryRecord[] {
+let currentHistoryUserIdPromise: Promise<string> | null = null;
+
+export function getScopedLocalHistoryStorageKey(userId: string) {
+  return `detail-image-agent-history:${userId || LOCAL_DEV_HISTORY_USER_ID}`;
+}
+
+async function fetchCurrentHistoryUserId(): Promise<string> {
+  if (currentHistoryUserIdPromise) {
+    return currentHistoryUserIdPromise;
+  }
+
+  currentHistoryUserIdPromise = (async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/session`, {
+        method: "GET",
+        cache: "no-store",
+        credentials: "include"
+      });
+      const payload = await readJsonSafely<{
+        data?: { session?: { user?: { id?: unknown } | null } | null };
+      }>(response);
+      redirectToMainAppIfNeeded(response, payload);
+      if (!response.ok) {
+        throw new Error(extractApiErrorMessage(payload, "读取当前登录状态失败"));
+      }
+
+      const userId = payload?.data?.session?.user?.id;
+      return typeof userId === "string" && userId.trim() ? userId.trim() : LOCAL_DEV_HISTORY_USER_ID;
+    } catch (error) {
+      if (error instanceof MainAppRedirectError) {
+        throw error;
+      }
+      currentHistoryUserIdPromise = null;
+      return LOCAL_DEV_HISTORY_USER_ID;
+    }
+  })();
+
+  return currentHistoryUserIdPromise;
+}
+
+function readLocalHistory(userId: string): LocalHistoryRecord[] {
   if (typeof window === "undefined") return [];
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(LOCAL_HISTORY_STORAGE_KEY) ?? "[]");
+    const parsed = JSON.parse(window.localStorage.getItem(getScopedLocalHistoryStorageKey(userId)) ?? "[]");
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 }
 
-function writeLocalHistory(records: LocalHistoryRecord[]) {
+function writeLocalHistory(userId: string, records: LocalHistoryRecord[]) {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(LOCAL_HISTORY_STORAGE_KEY, JSON.stringify(records.slice(0, 50)));
+    window.localStorage.setItem(getScopedLocalHistoryStorageKey(userId), JSON.stringify(records.slice(0, 50)));
   } catch {
     // The main workspace still works if local persistence is unavailable.
   }
@@ -51,18 +93,18 @@ function historyMeta(record: HistoryDetail): HistoryMeta {
   return meta;
 }
 
-function fetchLocalHistoryList(limit = 30, offset = 0): HistoryMeta[] {
-  return readLocalHistory()
+function fetchLocalHistoryList(userId: string, limit = 30, offset = 0): HistoryMeta[] {
+  return readLocalHistory(userId)
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(offset, offset + limit)
     .map(historyMeta);
 }
 
-function getLocalHistoryDetail(id: string): HistoryDetail | null {
-  return readLocalHistory().find((record) => record.id === id) ?? null;
+function getLocalHistoryDetail(userId: string, id: string): HistoryDetail | null {
+  return readLocalHistory(userId).find((record) => record.id === id) ?? null;
 }
 
-function saveLocalHistory(record: {
+function saveLocalHistory(userId: string, record: {
   id?: string;
   product_name: string;
   category: string;
@@ -73,7 +115,7 @@ function saveLocalHistory(record: {
   image_count: number;
   state: PersistedProjectState;
 }): HistoryMeta {
-  const records = readLocalHistory();
+  const records = readLocalHistory(userId);
   const existing = record.id ? records.find((item) => item.id === record.id) : null;
   const now = new Date().toISOString();
   const saved: HistoryDetail = {
@@ -89,7 +131,7 @@ function saveLocalHistory(record: {
     created_at: existing?.created_at ?? now,
     updated_at: now
   };
-  writeLocalHistory([saved, ...records.filter((item) => item.id !== saved.id)]);
+  writeLocalHistory(userId, [saved, ...records.filter((item) => item.id !== saved.id)]);
   return historyMeta(saved);
 }
 
@@ -100,38 +142,49 @@ async function requestJson<T>(path: string, init?: RequestInit & { timeoutMs?: n
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...fetchInit,
     signal: controller.signal,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {})
     }
   }).finally(() => window.clearTimeout(timeout));
+  const payload = await readJsonSafely<T>(response);
+  redirectToMainAppIfNeeded(response, payload);
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status}`);
+    throw new Error(extractApiErrorMessage(payload, `API request failed: ${response.status}`));
   }
-  return response.json() as Promise<T>;
+  return payload as T;
 }
 
 export async function fetchHistoryList(limit = 30, offset = 0): Promise<HistoryMeta[]> {
-  const localItems = fetchLocalHistoryList(limit, offset);
+  const userId = await fetchCurrentHistoryUserId();
+  const localItems = fetchLocalHistoryList(userId, limit, offset);
   try {
     const result = await requestJson<{ items: HistoryMeta[] }>(
       `/api/history?limit=${limit}&offset=${offset}`
     );
     const localIds = new Set(localItems.map((item) => item.id));
     return [...localItems, ...result.items.filter((item) => !localIds.has(item.id))].slice(0, limit);
-  } catch {
+  } catch (error) {
+    if (error instanceof MainAppRedirectError) {
+      throw error;
+    }
     return localItems;
   }
 }
 
 export async function fetchHistoryDetail(id: string): Promise<HistoryDetail | null> {
+  const userId = await fetchCurrentHistoryUserId();
   if (id.startsWith("local-")) {
-    return getLocalHistoryDetail(id);
+    return getLocalHistoryDetail(userId, id);
   }
   try {
     return await requestJson<HistoryDetail>(`/api/history/${id}`);
-  } catch {
-    return getLocalHistoryDetail(id);
+  } catch (error) {
+    if (error instanceof MainAppRedirectError) {
+      throw error;
+    }
+    return getLocalHistoryDetail(userId, id);
   }
 }
 
@@ -146,20 +199,25 @@ export async function saveHistory(record: {
   image_count: number;
   state: PersistedProjectState;
 }): Promise<HistoryMeta | null> {
+  const userId = await fetchCurrentHistoryUserId();
   try {
     return await requestJson<HistoryMeta>("/api/history", {
       method: "POST",
       body: JSON.stringify(record),
       timeoutMs: 15000
     });
-  } catch {
-    return saveLocalHistory(record);
+  } catch (error) {
+    if (error instanceof MainAppRedirectError) {
+      throw error;
+    }
+    return saveLocalHistory(userId, record);
   }
 }
 
 export async function deleteHistoryRecord(id: string): Promise<boolean> {
+  const userId = await fetchCurrentHistoryUserId();
   if (id.startsWith("local-")) {
-    writeLocalHistory(readLocalHistory().filter((record) => record.id !== id));
+    writeLocalHistory(userId, readLocalHistory(userId).filter((record) => record.id !== id));
     return true;
   }
   try {
@@ -167,10 +225,13 @@ export async function deleteHistoryRecord(id: string): Promise<boolean> {
       method: "DELETE"
     });
     return true;
-  } catch {
-    const before = readLocalHistory();
+  } catch (error) {
+    if (error instanceof MainAppRedirectError) {
+      throw error;
+    }
+    const before = readLocalHistory(userId);
     const after = before.filter((record) => record.id !== id);
-    writeLocalHistory(after);
+    writeLocalHistory(userId, after);
     return after.length !== before.length;
   }
 }

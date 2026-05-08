@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from app.routers import history, models, projects
+from app.routers import history, models, projects, session
+from app.services.app_session import AppSessionUnauthorizedError, app_session_error_payload
 from app.services.database import close_pool, ensure_tables
 
 
@@ -31,6 +33,12 @@ def create_app() -> FastAPI:
     async def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.exception_handler(AppSessionUnauthorizedError)
+    async def app_session_exception_handler(request: Request, exc: AppSessionUnauthorizedError) -> JSONResponse:
+        return JSONResponse(app_session_error_payload(exc), status_code=exc.status_code)
+
+    if session.router is not None:
+        app.include_router(session.router)
     if models.router is not None:
         app.include_router(models.router)
     if projects.router is not None:

@@ -259,6 +259,17 @@ def _module_visual_constraints(module: dict[str, Any]) -> str:
     )
 
 
+def _detail_text_guardrails() -> str:
+    return "\n".join(
+        [
+            "【图片文字边界】",
+            "- 隐藏 brief、模块职责、资料项、来源类型、报告限制、合规提醒只作为生成依据，禁止把这些内容排版成图片里的说明框、段落、清单、脚注或底部文字区域。",
+            "- 图片上只允许短标题、极短标签、必要的指标数值或步骤编号；不要出现完整解释句、资料补充建议、字段名、AI 提炼、来源类型、免责声明或页面说明。",
+            "- 报告、图表、证书和卡片可以作为视觉元素，但正文必须是不可读占位纹理或极短泛化标签，不能生成可阅读的长句说明。",
+        ]
+    )
+
+
 def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | None) -> str:
     module_id = module.get("id")
     info = product_info or {}
@@ -341,10 +352,10 @@ def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | 
         "authority": [
             "画面只呈现权威资质展示，核心视觉为科学家/研究员在干净明亮实验室做护肤品研究的背景画面。",
             "人物需穿实验服或科研防护服，可出现显微镜、试管、培养皿、实验台、柔和玻璃器皿等专业但真实的科研元素。",
-            "报告只作为辅助视觉出现：用几张报告纸、图表轮廓、印章轮廓或证书卡片表达即可，文字要小且虚化/泛化，不写具体报告编号、样本编号、机构编号或可核验编号。",
+            "报告只作为辅助视觉出现：用几张报告纸、图表轮廓、印章轮廓或证书卡片表达即可；报告卡片只保留轮廓、图形和不可读占位纹理，文字要小且虚化/泛化，不写具体报告编号、样本编号、机构编号或可核验编号。",
             "必须参考以下权威资料方向，但不要把完整原文搬到画面上：",
             authority_report,
-            "版式建议：实验室科学家背景 + 半透明报告轮廓卡片 + 1-2 句克制的权威背书短文案。",
+            "版式建议：实验室科学家背景 + 半透明报告轮廓卡片 + 简洁模块标题；不做底部说明区、资料建议区或免责声明。",
         ],
         "pain_scene": [
             "画面只呈现目标人群的护肤痛点场景，突出困扰、情绪和产品解决方向。",
@@ -389,6 +400,11 @@ def build_module_image_prompt(
     is_main_image = group in {"main", "campaign"}
     is_campaign_image = group == "campaign"
     module_kind = "中文电商活动主图" if is_campaign_image else "中文电商商品主图" if is_main_image else "中文商品详情页单模块图片"
+    readable_text_rule = (
+        "- 字体层级清楚，标题短促有力，说明文字清晰可读，不出现乱码、水印、品牌侵权标识。"
+        if is_main_image
+        else "- 仅短标题、极短标签、必要数值或步骤编号需要清晰可读；不要生成说明文字、段落脚注、资料建议或免责声明，不出现乱码、水印、品牌侵权标识。"
+    )
     structure_lines = [
         f"- 当前模块：{_text(module.get('name'))}",
         f"- 模块序号：第 {module_index}/{total_modules} 张",
@@ -407,7 +423,7 @@ def build_module_image_prompt(
         structure_lines.extend(
             [
                 "- 只生成当前模块，不能新增一级模块，不能把其他模块的内容混入当前画面。",
-                "- 画面必须按模块结构组织：主标题区、核心视觉区、数据/说明区、底部补充区。",
+                "- 画面以核心视觉为主，可搭配短标题和少量视觉标签；不要做成带大段文字的说明板。",
             ]
         )
     # White background modules should NOT have style colors/keywords injected
@@ -428,7 +444,7 @@ def build_module_image_prompt(
                 "- 上传的风格参考图优先：只参考排版、色调、光影和氛围，不改变产品外观、包装和品牌信息。",
                 "- 不要混入预设风格名称、主色或关键词；风格只以已上传的风格参考图为准。",
                 "- 中文电商视觉，高级、干净、统一；产品外观如有产品参考图必须保持一致。",
-                "- 字体层级清楚，标题短促有力，说明文字清晰可读，不出现乱码、水印、品牌侵权标识。",
+                readable_text_rule,
                 "- 所有效果、权威、成分表达必须谨慎，不使用医疗化、绝对化承诺。",
             ]
         else:
@@ -446,11 +462,12 @@ def build_module_image_prompt(
                     else []
                 ),
                 "- 中文电商视觉，高级、干净、统一；产品外观如有参考图必须保持一致。",
-                "- 字体层级清楚，标题短促有力，说明文字清晰可读，不出现乱码、水印、品牌侵权标识。",
+                readable_text_rule,
                 "- 所有效果、权威、成分表达必须谨慎，不使用医疗化、绝对化承诺。",
             ]
 
     visual_constraints = _module_visual_constraints(module)
+    detail_text_guardrails = _detail_text_guardrails() if not is_main_image else ""
 
     return "\n".join(
         [
@@ -473,6 +490,7 @@ def build_module_image_prompt(
             "【当前模块内容要求】",
             _module_requirements(module, product_info),
             *(["", visual_constraints] if visual_constraints else []),
+            *(["", detail_text_guardrails] if detail_text_guardrails else []),
             "",
             *style_section,
         ]

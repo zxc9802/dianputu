@@ -177,7 +177,6 @@ class AnalyzeUploadedMaterialsConfigTests(unittest.IsolatedAsyncioTestCase):
     async def test_analyze_uploaded_materials_reports_missing_text_model_key_separately(self):
         with patch("app.routers.projects.get_model_settings") as mocked_settings:
             mocked_settings.return_value.text.api_key = ""
-            mocked_settings.return_value.fallback_text.api_key = ""
 
             result = await analyze_uploaded_materials(
                 [UploadedMaterial(filename="test.txt", content_type="text/plain", data=b"product", text="product")]
@@ -208,27 +207,33 @@ class AnalyzeUploadedMaterialsConfigTests(unittest.IsolatedAsyncioTestCase):
         content = captured_messages[0]["content"]
         self.assertEqual(content[1]["image_url"]["url"], "https://img.example.com/prod/materials/main.png")
 
-    async def test_analyze_uploaded_materials_falls_back_to_secondary_text_model(self):
+    async def test_analyze_uploaded_materials_retries_gemini_with_backoff(self):
         calls = []
+        sleeps = []
 
         async def fake_call_text_model(settings, messages):
             calls.append(settings.model)
-            if settings.model == "gemini-3.1-pro-preview":
+            if len(calls) < 6:
                 raise RuntimeError("primary unavailable")
             return '{"product_name":"积雪草修护精华"}'
+
+        async def fake_sleep(delay):
+            sleeps.append(delay)
 
         with patch("app.routers.projects.get_model_settings") as mocked_settings:
             mocked_settings.return_value.text.api_key = "primary-key"
             mocked_settings.return_value.text.model = "gemini-3.1-pro-preview"
-            mocked_settings.return_value.fallback_text.api_key = "fallback-key"
-            mocked_settings.return_value.fallback_text.model = "gpt-5.5"
-            with patch("app.routers.projects.call_text_model", new=fake_call_text_model):
+            with (
+                patch("app.routers.projects.call_text_model", new=fake_call_text_model),
+                patch("app.routers.projects.asyncio.sleep", new=fake_sleep),
+            ):
                 result = await analyze_uploaded_materials(
                     [UploadedMaterial(filename="test.txt", content_type="text/plain", data=b"product", text="product")]
                 )
 
         self.assertEqual(result["source"], "model")
-        self.assertEqual(calls, ["gemini-3.1-pro-preview", "gpt-5.5"])
+        self.assertEqual(calls, ["gemini-3.1-pro-preview"] * 6)
+        self.assertEqual(sleeps, [1, 2, 4, 8, 16])
 
     async def test_plan_custom_style_calls_text_model_and_returns_style_without_generating_sample(self):
         with patch("app.routers.projects.get_model_settings") as mocked_settings:
@@ -278,6 +283,7 @@ class AnalyzeUploadedMaterialsConfigTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["source"], "model")
         self.assertEqual(result["style"]["asset"], "https://example.com/style-sample.png")
         self.assertIn("风格样例图", image_mocked.call_args.args[1])
+        self.assertEqual(image_mocked.call_args.kwargs.get("size"), "1024x1024")
 
     def test_custom_style_sample_prompt_uses_style_and_product_context(self):
         prompt = build_custom_style_sample_prompt(

@@ -19,6 +19,7 @@ import {
   generateImages,
   planAiCustomStyle
 } from "@/lib/api";
+import { useAppViewer } from "@/lib/client/app-session";
 import { saveHistory } from "@/lib/historyApi";
 import {
   applyProductInfoDraft,
@@ -31,6 +32,7 @@ import {
   appendImageVersions,
   applyTemplateToModules,
   createTemplateFromProject,
+  enableModuleForSingleGeneration,
   getSelectedGeneratedImages,
   resolveReusableHistoryId,
   runParallelImageGeneration,
@@ -210,6 +212,7 @@ async function fileToUploadInfo(slot: UploadSlot, file: File): Promise<UploadedF
 }
 
 export default function Home() {
+  const { viewer: appViewer } = useAppViewer();
   const [activeStep, setActiveStep] = useState<StepId>("upload");
   const [productInfo, setProductInfo] = useState<ProductInfo | null>(null);
   const [hasAiProductInfo, setHasAiProductInfo] = useState(false);
@@ -310,6 +313,7 @@ export default function Home() {
     () => COMMERCE_PLATFORMS.find((platform) => platform.id === selectedPlatformId) ?? COMMERCE_PLATFORMS[0],
     [selectedPlatformId]
   );
+  const viewerLabel = appViewer?.nickname || appViewer?.account || "";
   const generatedImages = useMemo(
     () => getSelectedGeneratedImages(imageVersionStore.versions, imageVersionStore.selectedVersionIds),
     [imageVersionStore]
@@ -604,6 +608,9 @@ export default function Home() {
       setStatusText("请先让 AI 规划自定义风格");
       return;
     }
+    if (targetModule) {
+      setModules((current) => enableModuleForSingleGeneration(current, targetModule.id));
+    }
 
     setGenerationProgress((current) => ({
       ...current,
@@ -764,6 +771,12 @@ export default function Home() {
           <button className="backButton" onClick={startNewProject} type="button">
             新建项目
           </button>
+          {viewerLabel ? (
+            <div className="statusBadge">
+              <span />
+              {viewerLabel}
+            </div>
+          ) : null}
           <div className="statusBadge">
             <span />
             {statusText}

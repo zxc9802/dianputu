@@ -57,6 +57,8 @@ async def close_pool() -> None:
 _CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS project_history (
     id           TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL DEFAULT 'legacy-shared-user',
+    user_snapshot_json TEXT NOT NULL DEFAULT '{}',
     product_name TEXT NOT NULL DEFAULT '',
     category     TEXT NOT NULL DEFAULT '',
     style_id     TEXT NOT NULL DEFAULT '',
@@ -74,6 +76,16 @@ _CREATE_INDEX_SQL = """
 CREATE INDEX IF NOT EXISTS idx_history_created ON project_history (created_at DESC);
 """
 
+_ALTER_TABLE_SQL = """
+ALTER TABLE project_history
+    ADD COLUMN IF NOT EXISTS user_id TEXT NOT NULL DEFAULT 'legacy-shared-user',
+    ADD COLUMN IF NOT EXISTS user_snapshot_json TEXT NOT NULL DEFAULT '{}';
+"""
+
+_CREATE_USER_INDEX_SQL = """
+CREATE INDEX IF NOT EXISTS idx_history_user_created ON project_history (user_id, created_at DESC);
+"""
+
 
 async def ensure_tables() -> None:
     """Create the ``project_history`` table if it does not already exist."""
@@ -84,7 +96,9 @@ async def ensure_tables() -> None:
 
     async with pool.acquire() as conn:
         await conn.execute(_CREATE_TABLE_SQL)
+        await conn.execute(_ALTER_TABLE_SQL)
         await conn.execute(_CREATE_INDEX_SQL)
+        await conn.execute(_CREATE_USER_INDEX_SQL)
     logger.info("project_history table ensured")
 
 
@@ -92,7 +106,7 @@ async def ensure_tables() -> None:
 # CRUD helpers
 # ---------------------------------------------------------------------------
 
-async def list_history(limit: int = 30, offset: int = 0) -> list[dict[str, Any]]:
+async def list_history(user_id: str, limit: int = 30, offset: int = 0) -> list[dict[str, Any]]:
     """Return recent history entries (metadata only, no full state)."""
     pool = await _get_pool()
     if pool is None:
@@ -104,9 +118,11 @@ async def list_history(limit: int = 30, offset: int = 0) -> list[dict[str, Any]]
             SELECT id, product_name, category, style_id, style_name, platform_id,
                    thumbnail, image_count, created_at, updated_at
             FROM project_history
+            WHERE user_id = $1
             ORDER BY created_at DESC
-            LIMIT $1 OFFSET $2
+            LIMIT $2 OFFSET $3
             """,
+            user_id,
             limit,
             offset,
         )
@@ -127,7 +143,7 @@ async def list_history(limit: int = 30, offset: int = 0) -> list[dict[str, Any]]
     ]
 
 
-async def get_history(record_id: str) -> dict[str, Any] | None:
+async def get_history(user_id: str, record_id: str) -> dict[str, Any] | None:
     """Return a single history entry including the full state JSON."""
     pool = await _get_pool()
     if pool is None:
@@ -139,8 +155,9 @@ async def get_history(record_id: str) -> dict[str, Any] | None:
             SELECT id, product_name, category, style_id, style_name, platform_id,
                    thumbnail, image_count, state_json, created_at, updated_at
             FROM project_history
-            WHERE id = $1
+            WHERE user_id = $1 AND id = $2
             """,
+            user_id,
             record_id,
         )
     if row is None:
@@ -167,7 +184,7 @@ async def get_history(record_id: str) -> dict[str, Any] | None:
     }
 
 
-async def save_history(record: dict[str, Any]) -> dict[str, Any]:
+async def save_history(user_id: str, user_snapshot: dict[str, Any], record: dict[str, Any]) -> dict[str, Any]:
     """Insert or update a history record.  Returns the saved metadata."""
     pool = await _get_pool()
     if pool is None:
@@ -177,6 +194,7 @@ async def save_history(record: dict[str, Any]) -> dict[str, Any]:
     now = datetime.now(UTC)
     state = record.get("state") or {}
     state_json = json.dumps(state, ensure_ascii=False, default=str)
+    user_snapshot_json = json.dumps(user_snapshot or {}, ensure_ascii=False, default=str)
 
     product_name = record.get("product_name", "")
     category = record.get("category", "")
@@ -190,10 +208,11 @@ async def save_history(record: dict[str, Any]) -> dict[str, Any]:
         await conn.execute(
             """
             INSERT INTO project_history
-                (id, product_name, category, style_id, style_name, platform_id,
+                (id, user_id, user_snapshot_json, product_name, category, style_id, style_name, platform_id,
                  thumbnail, image_count, state_json, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             ON CONFLICT (id) DO UPDATE SET
+                user_snapshot_json = EXCLUDED.user_snapshot_json,
                 product_name = EXCLUDED.product_name,
                 category     = EXCLUDED.category,
                 style_id     = EXCLUDED.style_id,
@@ -203,8 +222,11 @@ async def save_history(record: dict[str, Any]) -> dict[str, Any]:
                 image_count  = EXCLUDED.image_count,
                 state_json   = EXCLUDED.state_json,
                 updated_at   = EXCLUDED.updated_at
+            WHERE project_history.user_id = EXCLUDED.user_id
             """,
             record_id,
+            user_id,
+            user_snapshot_json,
             product_name,
             category,
             style_id,
@@ -231,12 +253,16 @@ async def save_history(record: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def delete_history(record_id: str) -> bool:
+async def delete_history(user_id: str, record_id: str) -> bool:
     """Delete a history record by ID.  Returns ``True`` if a row was removed."""
     pool = await _get_pool()
     if pool is None:
         return False
 
     async with pool.acquire() as conn:
-        result = await conn.execute("DELETE FROM project_history WHERE id = $1", record_id)
+        result = await conn.execute(
+            "DELETE FROM project_history WHERE user_id = $1 AND id = $2",
+            user_id,
+            record_id,
+        )
     return result == "DELETE 1"

@@ -23,6 +23,7 @@ from app.services.text_model import call_text_model
 logger = logging.getLogger("detail_image_generation")
 MODEL_GATEWAY_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
 WHITE_BACKGROUND_MODULE_IDS = {"main_white_bg", "campaign_white_bg"}
+STYLE_SAMPLE_IMAGE_SIZE = "1024x1024"
 COMPOSE_JOBS: dict[str, dict[str, Any]] = {}
 COMPOSE_JOB_TTL_SECONDS = 600  # 10 minutes
 WHITE_BACKGROUND_REFERENCE_REQUIRED_ERROR = "白底图需要先上传产品图，系统会直接复用上传图以避免模型重绘导致包装、Logo 或瓶身变形。"
@@ -76,28 +77,31 @@ async def prepare_compose_image_urls(image_urls: list[str]) -> list[str]:
     return prepared
 
 
-async def call_text_model_with_fallback(settings: Any, messages: list[dict[str, Any]]) -> str:
-    primary_error: Exception | None = None
+TEXT_MODEL_RETRY_DELAYS = [1, 2, 4, 8, 16]
+
+
+async def call_text_model_with_retry(settings: Any, messages: list[dict[str, Any]]) -> str:
     if settings.text.api_key:
-        try:
-            content = await call_text_model(settings.text, messages)
-            if content:
-                return content
-        except Exception as exc:
-            primary_error = exc
-            logger.warning("primary text model failed model=%s error=%s", settings.text.model, exc)
-
-    fallback = getattr(settings, "fallback_text", None)
-    if fallback and fallback.api_key:
-        try:
-            return await call_text_model(fallback, messages)
-        except Exception as exc:
-            if primary_error:
-                raise RuntimeError(f"primary failed: {primary_error}; fallback failed: {exc}") from exc
-            raise
-
-    if primary_error:
-        raise primary_error
+        attempts = len(TEXT_MODEL_RETRY_DELAYS) + 1
+        last_error: Exception | None = None
+        for attempt_index in range(attempts):
+            try:
+                content = await call_text_model(settings.text, messages)
+                if content:
+                    return content
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "text model failed model=%s attempt=%s/%s error=%s",
+                    settings.text.model,
+                    attempt_index + 1,
+                    attempts,
+                    exc,
+                )
+            if attempt_index < len(TEXT_MODEL_RETRY_DELAYS):
+                await asyncio.sleep(TEXT_MODEL_RETRY_DELAYS[attempt_index])
+        if last_error:
+            raise last_error
     return ""
 
 
@@ -321,14 +325,14 @@ def create_demo_project() -> dict[str, Any]:
 
 async def analyze_product_materials(raw_text: str | None = None) -> dict[str, Any]:
     settings = get_model_settings()
-    if (settings.text.api_key or settings.fallback_text.api_key) and raw_text:
+    if settings.text.api_key and raw_text:
         prompt = (
             "你是电商护肤详情页产品经理。请从资料中提炼商品信息，"
             "输出 JSON 字段：product_name, category, core_selling_points, functions, "
             "ingredients, target_users, usage_method, authority_assets, effect_claims。"
             f"\n资料：{raw_text}"
         )
-        content = await call_text_model_with_fallback(settings, [{"role": "user", "content": prompt}])
+        content = await call_text_model_with_retry(settings, [{"role": "user", "content": prompt}])
         if content:
             return {"source": "model", "raw": content, "product_info": normalize_product_info_from_model(content)}
     return {"source": "error", "error": "text model is not configured or no raw text was provided"}
@@ -338,7 +342,7 @@ async def analyze_uploaded_materials(materials: list[UploadedMaterial]) -> dict[
     settings = get_model_settings()
     if not materials:
         return {"source": "error", "error": "no materials were uploaded"}
-    if not settings.text.api_key and not settings.fallback_text.api_key:
+    if not settings.text.api_key:
         return {"source": "error", "error": "text model is not configured"}
 
     try:
@@ -358,7 +362,7 @@ async def analyze_uploaded_materials(materials: list[UploadedMaterial]) -> dict[
                 )
             else:
                 model_materials.append(material)
-        content = await call_text_model_with_fallback(settings, build_material_analysis_messages(model_materials))
+        content = await call_text_model_with_retry(settings, build_material_analysis_messages(model_materials))
     except Exception as exc:
         return {"source": "error", "error": str(exc)}
     if not content:
@@ -373,7 +377,7 @@ async def plan_custom_style(
     product_images: list[UploadedMaterial] | None = None,
 ) -> dict[str, Any]:
     settings = get_model_settings()
-    if not settings.text.api_key and not settings.fallback_text.api_key:
+    if not settings.text.api_key:
         return {"source": "error", "error": "text model is not configured"}
 
     try:
@@ -391,7 +395,7 @@ async def plan_custom_style(
                         data_url=image_url,
                     )
                 )
-        content = await call_text_model_with_fallback(settings, build_style_planning_messages(product_info, category, model_images))
+        content = await call_text_model_with_retry(settings, build_style_planning_messages(product_info, category, model_images))
     except Exception as exc:
         return {"source": "error", "error": str(exc)}
     if not content:
@@ -408,7 +412,11 @@ async def generate_custom_style_sample(style: dict[str, Any], product_info: dict
         return {"source": "error", "error": "image model is not configured", "warnings": ["image model is not configured"]}
 
     try:
-        sample_urls = await call_image_model(settings.image, build_custom_style_sample_prompt(style, product_info))
+        sample_urls = await call_image_model(
+            settings.image,
+            build_custom_style_sample_prompt(style, product_info),
+            size=STYLE_SAMPLE_IMAGE_SIZE,
+        )
         if sample_urls:
             updated_style = {**style, "asset": sample_urls[0]}
             return {"source": "model", "style": updated_style, "warnings": warnings}
@@ -638,10 +646,12 @@ async def compose_long_jpeg(
 
 
 try:
-    from fastapi import APIRouter, BackgroundTasks, HTTPException, Response
+    from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
     from pydantic import BaseModel, Field
 
-    router = APIRouter(prefix="/api/projects", tags=["projects"])
+    from app.dependencies.auth import require_app_user
+
+    router = APIRouter(prefix="/api/projects", tags=["projects"], dependencies=[Depends(require_app_user)])
 
     class AnalyzeRequest(BaseModel):
         raw_text: str | None = None

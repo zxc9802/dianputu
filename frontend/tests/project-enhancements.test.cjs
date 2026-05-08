@@ -31,6 +31,7 @@ vm.runInNewContext(compiled, sandbox, { filename: sourcePath });
 const {
   appendImageVersions,
   applyTemplateToModules,
+  enableModuleForSingleGeneration,
   resolveReusableHistoryId,
   getSelectedGeneratedImages,
   runParallelImageGeneration
@@ -79,6 +80,23 @@ assert.deepEqual(
     { id: "usage", enabled: false, order: 2 }
   ]
 );
+
+const singleGenerateModules = [
+  { id: "main_ingredient", name: "次图-成分", description: "", enabled: false, order: 3, image_group: "main" },
+  { id: "campaign_effect", name: "活动次图-效果", description: "", enabled: false, order: 4, image_group: "campaign" },
+  { id: "pain_scene", name: "痛点场景", description: "", enabled: false, order: 3, image_group: "detail" },
+  { id: "usage", name: "使用方法", description: "", enabled: true, order: 7, image_group: "detail" }
+];
+const enabledMainSingle = enableModuleForSingleGeneration(singleGenerateModules, "main_ingredient");
+const enabledCampaignSingle = enableModuleForSingleGeneration(singleGenerateModules, "campaign_effect");
+const enabledDetailSingle = enableModuleForSingleGeneration(singleGenerateModules, "pain_scene");
+
+assert.equal(enabledMainSingle.find((module) => module.id === "main_ingredient").enabled, true);
+assert.equal(enabledCampaignSingle.find((module) => module.id === "campaign_effect").enabled, true);
+assert.equal(enabledDetailSingle.find((module) => module.id === "pain_scene").enabled, true);
+assert.equal(singleGenerateModules.find((module) => module.id === "main_ingredient").enabled, false);
+assert.equal(singleGenerateModules.find((module) => module.id === "campaign_effect").enabled, false);
+assert.equal(singleGenerateModules.find((module) => module.id === "pain_scene").enabled, false);
 
 async function runAsyncChecks() {
   let release;
