@@ -10,6 +10,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Callable
+from urllib.parse import quote
 from uuid import uuid4
 
 from app.core.config import get_model_settings
@@ -640,6 +641,50 @@ async def _read_image_bytes(url: str) -> bytes:
     raise ValueError("unsupported image URL")
 
 
+def _safe_attachment_filename(filename: str | None, fallback: str) -> str:
+    candidate = Path(filename or "").name.strip() or fallback
+    candidate = re.sub(r'[\r\n"/\\]+', "_", candidate).strip(" .") or fallback
+    return candidate[:180] or fallback
+
+
+def _attachment_headers(filename: str) -> dict[str, str]:
+    ascii_filename = filename.encode("ascii", "ignore").decode("ascii") or "download"
+    encoded_filename = quote(filename)
+    return {"Content-Disposition": f'attachment; filename="{ascii_filename}"; filename*=UTF-8\'\'{encoded_filename}'}
+
+
+def _image_media_type(content: bytes, filename: str = "") -> str:
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if content.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if content.startswith(b"RIFF") and content[8:12] == b"WEBP":
+        return "image/webp"
+    if content.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+
+    extension = Path(filename).suffix.lower()
+    if extension in {".jpg", ".jpeg"}:
+        return "image/jpeg"
+    if extension == ".png":
+        return "image/png"
+    if extension == ".webp":
+        return "image/webp"
+    if extension == ".gif":
+        return "image/gif"
+    return "application/octet-stream"
+
+
+async def build_image_download_response(url: str, filename: str) -> Response:
+    content = await _read_image_bytes(url)
+    safe_filename = _safe_attachment_filename(filename, "generated-image.png")
+    return Response(
+        content=content,
+        media_type=_image_media_type(content, safe_filename),
+        headers=_attachment_headers(safe_filename),
+    )
+
+
 async def compose_long_jpeg(
     image_urls: list[str],
     target_width: int = 750,
@@ -776,6 +821,10 @@ try:
         platform_size: str | None = None
         image_model_id: str | None = None
 
+    class DownloadImageRequest(BaseModel):
+        url: str
+        filename: str = "generated-image.png"
+
     class ComposeImageItem(BaseModel):
         module_id: str
         module_name: str = ""
@@ -854,6 +903,13 @@ try:
     async def edit_project_image(request: EditImageRequest) -> dict[str, Any]:
         return await edit_generated_image(request.image_url, request.instruction, platform_size=request.platform_size, image_model_id=request.image_model_id)
 
+    @router.post("/download-image")
+    async def download_project_image(request: DownloadImageRequest) -> Response:
+        try:
+            return await build_image_download_response(request.url, request.filename)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @router.post("/compose-long-image")
     async def compose_project_long_image(request: ComposeLongImageRequest) -> Response:
         try:
@@ -863,7 +919,7 @@ try:
         return Response(
             content=jpeg,
             media_type="image/jpeg",
-            headers={"Content-Disposition": 'attachment; filename="full-detail.jpg"'},
+            headers=_attachment_headers("full-detail.jpg"),
         )
 
     @router.post("/compose-long-image/prepare")
@@ -952,14 +1008,14 @@ try:
         if job.get("status") != "done" or (not job.get("content") and not job.get("url")):
             raise HTTPException(status_code=409, detail="compose job is not ready")
         if job.get("url"):
-            return {"url": str(job["url"])}
+            return await build_image_download_response(str(job["url"]), "full-detail.jpg")
         content = job["content"]
         # Free the binary content from memory after download
         job["content"] = b""
         return Response(
             content=content,
             media_type="image/jpeg",
-            headers={"Content-Disposition": 'attachment; filename="full-detail.jpg"'},
+            headers=_attachment_headers("full-detail.jpg"),
         )
 
 except ModuleNotFoundError:

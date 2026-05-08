@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Download, FileImage, Monitor, Smartphone } from "lucide-react";
-import { createComposeLongImageJob, fetchComposeLongImageDownload, fetchComposeLongImageJob, prepareComposeLongImageSources } from "@/lib/api";
+import { createComposeLongImageJob, downloadComposeLongImageJob, downloadImage, fetchComposeLongImageJob, prepareComposeLongImageSources } from "@/lib/api";
 import type { CommercePlatform, GeneratedImageVersionState, ImageGroup, ModuleConfig } from "@/lib/types";
 
 type GeneratedImage = { module_id: string; url: string };
@@ -41,14 +41,8 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 async function fetchAndDownload(url: string, filename: string) {
-  try {
-    const response = await fetch(url);
-    const blob = await response.blob();
-    downloadBlob(blob, filename);
-  } catch {
-    // Fallback: open in new tab if fetch fails (e.g. CORS)
-    window.open(url, "_blank");
-  }
+  const blob = await downloadImage(url, filename);
+  downloadBlob(blob, filename);
 }
 
 function moduleGroup(module: ModuleConfig): ImageGroup {
@@ -144,12 +138,8 @@ export function PreviewStep({
         const status = await fetchComposeLongImageJob(jobId);
         setComposeStatus(status.message || "正在合成 JPG");
         if (status.status === "done") {
-          const download = await fetchComposeLongImageDownload(jobId);
-          if ("url" in download) {
-            window.location.href = download.url;
-          } else {
-            downloadBlob(download.blob, "full-detail.jpg");
-          }
+          const blob = await downloadComposeLongImageJob(jobId);
+          downloadBlob(blob, "full-detail.jpg");
           setComposeStatus("合成完成");
           return;
         }

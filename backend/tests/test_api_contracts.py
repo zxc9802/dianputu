@@ -4,11 +4,15 @@ from io import BytesIO
 from os import environ
 from unittest.mock import AsyncMock, patch
 
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from PIL import Image
 
 from app.demo_data import DEFAULT_MODULES, DEFAULT_PRODUCT_INFO, DEMO_IMAGE_URLS, STYLE_OPTIONS
+from app.dependencies.auth import require_app_user
 from app.routers.models import build_public_model_config
-from app.routers.projects import compose_long_jpeg, edit_generated_image, generate_detail_images
+from app.routers.projects import COMPOSE_JOBS, compose_long_jpeg, edit_generated_image, generate_detail_images, router as projects_router
+from app.services.app_session import AppSessionUserSnapshot
 
 
 class ApiContractTests(unittest.TestCase):
@@ -209,6 +213,54 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
         composed = Image.open(BytesIO(jpeg))
         self.assertEqual(composed.size, (40, 40))
         self.assertEqual(composed.mode, "RGB")
+
+
+class DownloadContractTests(unittest.TestCase):
+    def make_client(self) -> TestClient:
+        app = FastAPI()
+        app.dependency_overrides[require_app_user] = lambda: AppSessionUserSnapshot(user_id="test-user")
+        app.include_router(projects_router)
+        return TestClient(app)
+
+    def png_data_url(self) -> str:
+        image = Image.new("RGB", (2, 2), (12, 34, 56))
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        return "data:image/png;base64," + b64encode(buffer.getvalue()).decode("ascii")
+
+    def test_image_download_proxy_returns_attachment(self):
+        response = self.make_client().post(
+            "/api/projects/download-image",
+            json={"url": self.png_data_url(), "filename": "generated.png"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "image/png")
+        self.assertIn("attachment", response.headers["content-disposition"])
+        self.assertIn('filename="generated.png"', response.headers["content-disposition"])
+        self.assertTrue(response.content.startswith(b"\x89PNG\r\n"))
+
+    def test_composed_job_download_proxies_remote_url_as_attachment(self):
+        job_id = "compose_download_contract"
+        COMPOSE_JOBS[job_id] = {
+            "status": "done",
+            "stage": "done",
+            "current": 1,
+            "total": 1,
+            "message": "done",
+            "content": b"",
+            "url": self.png_data_url(),
+        }
+        try:
+            response = self.make_client().get(f"/api/projects/compose-long-image/jobs/{job_id}/download")
+        finally:
+            COMPOSE_JOBS.pop(job_id, None)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-type"], "image/png")
+        self.assertIn("attachment", response.headers["content-disposition"])
+        self.assertNotEqual(response.headers["content-type"], "application/json")
+        self.assertTrue(response.content.startswith(b"\x89PNG\r\n"))
 
 
 if __name__ == "__main__":

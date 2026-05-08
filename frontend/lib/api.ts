@@ -303,18 +303,10 @@ export async function downloadComposeLongImageJob(jobId: string) {
   return requestBlob(`/api/projects/compose-long-image/jobs/${jobId}/download`, { timeoutMs: 600000 });
 }
 
-export async function fetchComposeLongImageDownload(jobId: string) {
-  const response = await fetch(`${API_BASE_URL}/api/projects/compose-long-image/jobs/${jobId}/download`, {
-    credentials: "include"
+export async function downloadImage(url: string, filename: string) {
+  return requestBlob("/api/projects/download-image", {
+    method: "POST",
+    body: JSON.stringify({ url, filename }),
+    timeoutMs: 600000
   });
-  if (!response.ok) {
-    const payload = await readJsonSafely(response);
-    redirectToMainAppIfNeeded(response, payload);
-    throw new Error(extractApiErrorMessage(payload, `API request failed: ${response.status}`));
-  }
-  const contentType = response.headers.get("Content-Type") ?? "";
-  if (contentType.includes("application/json")) {
-    return response.json() as Promise<{ url: string }>;
-  }
-  return { blob: await response.blob() };
 }
