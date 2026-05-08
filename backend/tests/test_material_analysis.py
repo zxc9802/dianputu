@@ -572,7 +572,8 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
         environ["IMAGE_GENERATION_API_KEY"] = "test-key"
         try:
             with (
-                patch("app.routers.projects.call_image_model", new=AsyncMock(return_value=["data:image/png;base64,aGVsbG8="])),
+                patch("app.routers.projects._read_image_bytes", new=AsyncMock(return_value=b"\x89PNG\r\n")),
+                patch("app.routers.projects.call_image_edit_model", new=AsyncMock(return_value=["data:image/png;base64,aGVsbG8="])),
                 patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(return_value="https://img.example.com/prod/edited/image.png")),
             ):
                 from app.routers.projects import edit_generated_image

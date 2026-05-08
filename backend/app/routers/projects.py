@@ -14,7 +14,7 @@ from uuid import uuid4
 
 from app.core.config import get_model_settings
 from app.demo_data import DEFAULT_MODULES, DEMO_IMAGE_URLS, STYLE_OPTIONS
-from app.services.image_model import call_image_model
+from app.services.image_model import call_image_edit_model, call_image_model
 from app.services.object_storage import upload_bytes_to_object_storage, upload_data_url_to_object_storage
 from app.services.prompt_builder import build_module_image_prompt
 from app.services.text_model import call_text_model
@@ -587,14 +587,21 @@ async def edit_generated_image(image_url: str, instruction: str, platform_size: 
         return {"source": "error", "error": "image model is not configured"}
 
     prompt = build_image_edit_prompt(cleaned_instruction)
+
+    # Download the source image so we can upload it as a file to the edits endpoint
     try:
-        urls = await call_image_model(settings.image, prompt, image=[image_url], size=platform_size)
+        image_bytes = await _read_image_bytes(image_url)
+    except Exception as exc:
+        return {"source": "error", "error": f"failed to download source image: {exc}"}
+
+    try:
+        urls = await call_image_edit_model(settings.image, prompt, image_bytes, size=platform_size)
     except Exception as primary_exc:
         logger.warning("primary image edit failed error=%s", primary_exc)
         if not settings.fallback_image.api_key:
             return {"source": "error", "error": str(primary_exc)}
         try:
-            urls = await call_image_model(settings.fallback_image, prompt, image=[image_url], size=platform_size)
+            urls = await call_image_edit_model(settings.fallback_image, prompt, image_bytes, size=platform_size)
         except Exception as fallback_exc:
             return {"source": "error", "error": f"primary failed: {primary_exc}; fallback failed: {fallback_exc}"}
 

@@ -31,13 +31,15 @@ function downloadBlob(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function downloadUrl(url: string, filename: string) {
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+async function fetchAndDownload(url: string, filename: string) {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    downloadBlob(blob, filename);
+  } catch {
+    // Fallback: open in new tab if fetch fails (e.g. CORS)
+    window.open(url, "_blank");
+  }
 }
 
 function moduleGroup(module: ModuleConfig): ImageGroup {
@@ -110,13 +112,12 @@ export function PreviewStep({
   const manifestHref = `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(detailManifest, null, 2))}`;
   const batchDownloadLabel = activeImageGroup === "campaign" ? "活动主图" : "主图";
 
-  function handleDownloadVisibleBatch() {
+  async function handleDownloadVisibleBatch() {
     if (activeImageGroup === "detail" || visibleItems.length === 0) return;
-    visibleItems.forEach((item, index) => {
-      window.setTimeout(() => {
-        downloadUrl(item.url, `${activeImageGroup}-${String(index + 1).padStart(2, "0")}-${item.module.id}.png`);
-      }, index * 120);
-    });
+    for (let index = 0; index < visibleItems.length; index++) {
+      const item = visibleItems[index];
+      await fetchAndDownload(item.url, `${activeImageGroup}-${String(index + 1).padStart(2, "0")}-${item.module.id}.png`);
+    }
   }
 
   async function handleDownloadLongJpg() {
@@ -230,7 +231,7 @@ export function PreviewStep({
                             >
                               {isCurrent ? "生成中" : url ? "重新生成" : "生成"}
                             </button>
-                            {url ? <a href={url} download={`${String(index + 1).padStart(2, "0")}-${module.id}.png`}>下载</a> : null}
+                            {url ? <button className="inlineActionButton" onClick={() => fetchAndDownload(url, `${String(index + 1).padStart(2, "0")}-${module.id}.png`)} type="button">下载</button> : null}
                           </span>
                         </footer>
                         {versions.length > 0 ? (
@@ -355,9 +356,9 @@ export function PreviewStep({
                       {isCurrent ? "生成中" : moduleUrl ? "重新生成" : "生成"}
                     </button>
                     {moduleUrl ? (
-                      <a href={moduleUrl} download={`${String(index + 1).padStart(2, "0")}-${module.id}.png`}>
+                      <button className="inlineActionButton" onClick={() => fetchAndDownload(moduleUrl, `${String(index + 1).padStart(2, "0")}-${module.id}.png`)} type="button">
                         下载
-                      </a>
+                      </button>
                     ) : null}
                   </span>
                 </div>
