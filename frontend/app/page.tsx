@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, Clock } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Clock, CornerUpLeft } from "lucide-react";
 import { HistoryDrawer } from "@/components/HistoryDrawer";
 import { ModulesStep } from "@/components/ModulesStep";
 import { PreviewStep } from "@/components/PreviewStep";
@@ -57,6 +57,9 @@ import type {
 const order: StepId[] = ["upload", "review", "style", "modules", "preview"];
 const PROJECT_STATE_STORAGE_KEY = "detail-image-agent-project-state-v1";
 const WHITE_BACKGROUND_MODULE_IDS = new Set(["main_white_bg", "campaign_white_bg"]);
+const DEFAULT_CATEGORY = "护肤精华";
+const DEFAULT_STYLE_ID = "green_repair";
+const DEFAULT_PLATFORM_ID: CommercePlatformId = "tmall";
 
 const groupLabel: Record<ImageGroup, string> = {
   main: "主图",
@@ -67,7 +70,14 @@ const groupLabel: Record<ImageGroup, string> = {
 type GenerationProgress = { isGenerating: boolean; completed: number; total: number; runningModuleIds: string[]; errorCount: number };
 type GenerationProgressMap = Record<ImageGroup, GenerationProgress>;
 type ImageVersionStore = { versions: GeneratedImageVersionState; selectedVersionIds: Record<string, string> };
-
+type WorkspaceSnapshot = {
+  state: PersistedProjectState;
+  historyId: string | null;
+  uploadedFiles: UploadedFileInfo[];
+  manualFieldKeys: ProductInfoFieldKey[];
+  analysisSource: string;
+  activeStep: StepId;
+};
 
 
 function createEmptyImageVersionStore(): ImageVersionStore {
@@ -105,12 +115,12 @@ function readPersistedProjectState(): PersistedProjectState | null {
     return {
       productInfo: parsed.productInfo ?? null,
       hasAiProductInfo: Boolean(parsed.hasAiProductInfo && parsed.productInfo),
-      selectedStyleId: parsed.selectedStyleId || "green_repair",
+      selectedStyleId: parsed.selectedStyleId || DEFAULT_STYLE_ID,
       customStyle: parsed.customStyle && typeof parsed.customStyle === "object" ? (parsed.customStyle as StyleOption) : null,
       styleSource,
-      selectedCategory: parsed.selectedCategory || "护肤精华",
+      selectedCategory: parsed.selectedCategory || DEFAULT_CATEGORY,
       activeImageGroup,
-      selectedPlatformId: COMMERCE_PLATFORMS.some((platform) => platform.id === parsed.selectedPlatformId) ? (parsed.selectedPlatformId as CommercePlatformId) : "tmall",
+      selectedPlatformId: COMMERCE_PLATFORMS.some((platform) => platform.id === parsed.selectedPlatformId) ? (parsed.selectedPlatformId as CommercePlatformId) : DEFAULT_PLATFORM_ID,
       promotionInfo: parsed.promotionInfo || "",
       modules: Array.isArray(parsed.modules) ? parsed.modules : [],
       generatedImages: Array.isArray(parsed.generatedImages) ? parsed.generatedImages : [],
@@ -139,6 +149,40 @@ function persistProjectState(state: PersistedProjectState) {
   } catch {
     // Storage may be full or disabled; the app can still run without persistence.
   }
+}
+
+function createProjectStateSnapshot(input: {
+  productInfo: ProductInfo | null;
+  hasAiProductInfo: boolean;
+  selectedStyleId: string;
+  customStyle: StyleOption | null;
+  styleSource: StyleSource;
+  selectedCategory: string;
+  selectedPlatformId: CommercePlatformId;
+  activeImageGroup: ImageGroup;
+  promotionInfo: string;
+  modules: ModuleConfig[];
+  imageVersionStore: ImageVersionStore;
+  userTemplates: ProjectTemplate[];
+  statusText: string;
+}): PersistedProjectState {
+  return {
+    productInfo: input.productInfo,
+    hasAiProductInfo: input.hasAiProductInfo,
+    selectedStyleId: input.selectedStyleId,
+    customStyle: input.customStyle,
+    styleSource: input.styleSource,
+    selectedCategory: input.selectedCategory,
+    selectedPlatformId: input.selectedPlatformId,
+    activeImageGroup: input.activeImageGroup,
+    promotionInfo: input.promotionInfo,
+    modules: input.modules,
+    generatedImages: getSelectedGeneratedImages(input.imageVersionStore.versions, input.imageVersionStore.selectedVersionIds),
+    generatedImageVersions: input.imageVersionStore.versions,
+    selectedVersionIds: input.imageVersionStore.selectedVersionIds,
+    userTemplates: input.userTemplates,
+    statusText: input.statusText
+  };
 }
 
 function fileToDataUrl(file: File) {
@@ -173,13 +217,13 @@ export default function Home() {
   const [modules, setModules] = useState<ModuleConfig[]>([]);
   const [activeImageGroup, setActiveImageGroup] = useState<ImageGroup>("main");
   const [promotionInfo, setPromotionInfo] = useState("");
-  const [selectedStyleId, setSelectedStyleId] = useState("green_repair");
+  const [selectedStyleId, setSelectedStyleId] = useState(DEFAULT_STYLE_ID);
   const [customStyle, setCustomStyle] = useState<StyleOption | null>(null);
   const [styleSource, setStyleSource] = useState<StyleSource>("preset");
   const [isPlanningCustomStyle, setIsPlanningCustomStyle] = useState(false);
   const [isGeneratingStyleSample, setIsGeneratingStyleSample] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState("护肤精华");
-  const [selectedPlatformId, setSelectedPlatformId] = useState<CommercePlatformId>("tmall");
+  const [selectedCategory, setSelectedCategory] = useState(DEFAULT_CATEGORY);
+  const [selectedPlatformId, setSelectedPlatformId] = useState<CommercePlatformId>(DEFAULT_PLATFORM_ID);
   const [modelConfig, setModelConfig] = useState<PublicModelConfig>(DEMO_MODEL_CONFIG);
   const [imageVersionStore, setImageVersionStore] = useState<ImageVersionStore>(() => createEmptyImageVersionStore());
   const [userTemplates, setUserTemplates] = useState<ProjectTemplate[]>([]);
@@ -192,6 +236,8 @@ export default function Home() {
   const [hasRestoredProjectState, setHasRestoredProjectState] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
+  const [returnWorkspaceSnapshot, setReturnWorkspaceSnapshot] = useState<WorkspaceSnapshot | null>(null);
+  const [defaultModules, setDefaultModules] = useState<ModuleConfig[]>([]);
 
   useEffect(() => {
     async function loadDefaults() {
@@ -199,6 +245,7 @@ export default function Home() {
       const restored = readPersistedProjectState();
       setStyles(defaults.styles);
       setModelConfig(models);
+      setDefaultModules(defaults.modules);
       if (restored) {
         setProductInfo(restored.productInfo);
         setHasAiProductInfo(restored.hasAiProductInfo);
@@ -227,7 +274,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!hasRestoredProjectState) return;
-    persistProjectState({
+    persistProjectState(createProjectStateSnapshot({
       productInfo,
       hasAiProductInfo,
       selectedStyleId,
@@ -238,12 +285,10 @@ export default function Home() {
       activeImageGroup,
       promotionInfo,
       modules,
-      generatedImages: getSelectedGeneratedImages(imageVersionStore.versions, imageVersionStore.selectedVersionIds),
-      generatedImageVersions: imageVersionStore.versions,
-      selectedVersionIds: imageVersionStore.selectedVersionIds,
+      imageVersionStore,
       userTemplates,
       statusText
-    });
+    }));
   }, [activeImageGroup, customStyle, hasAiProductInfo, hasRestoredProjectState, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedPlatformId, selectedStyleId, statusText, styleSource, userTemplates]);
 
   useEffect(() => {
@@ -270,6 +315,48 @@ export default function Home() {
     [imageVersionStore]
   );
   const allTemplates = useMemo(() => [...OFFICIAL_PROJECT_TEMPLATES, ...userTemplates], [userTemplates]);
+
+  function createCurrentProjectState(status = statusText): PersistedProjectState {
+    return createProjectStateSnapshot({
+      productInfo,
+      hasAiProductInfo,
+      selectedStyleId,
+      customStyle,
+      styleSource,
+      selectedCategory,
+      selectedPlatformId,
+      activeImageGroup,
+      promotionInfo,
+      modules,
+      imageVersionStore,
+      userTemplates,
+      statusText: status
+    });
+  }
+
+  function applyProjectState(state: PersistedProjectState, options?: { exactModules?: boolean; statusText?: string }) {
+    setProductInfo(state.productInfo);
+    setHasAiProductInfo(state.hasAiProductInfo);
+    setSelectedStyleId(state.selectedStyleId);
+    setCustomStyle(state.customStyle);
+    setStyleSource(state.styleSource);
+    setSelectedCategory(state.selectedCategory);
+    setSelectedPlatformId(state.selectedPlatformId);
+    setActiveImageGroup(state.activeImageGroup);
+    setPromotionInfo(state.promotionInfo);
+    if (state.modules?.length) {
+      setModules((current) => (options?.exactModules ? state.modules : mergeRestoredModules(current, state.modules)));
+    }
+    if (Object.keys(state.generatedImageVersions || {}).length) {
+      setImageVersionStore({ versions: state.generatedImageVersions, selectedVersionIds: state.selectedVersionIds || {} });
+    } else if (state.generatedImages?.length) {
+      setImageVersionStore(appendImageVersions(createEmptyImageVersionStore(), state.generatedImages, "restored", Date.now()));
+    } else {
+      setImageVersionStore(createEmptyImageVersionStore());
+    }
+    setUserTemplates(state.userTemplates ?? []);
+    setStatusText(options?.statusText ?? state.statusText);
+  }
 
   function go(step: StepId) {
     setActiveStep(step);
@@ -314,16 +401,29 @@ export default function Home() {
     setStatusText("已保存为模板");
   }
 
-  function duplicateProjectForNewProduct() {
+  function startNewProject() {
     setCurrentHistoryId(null);
+    setReturnWorkspaceSnapshot(null);
     setProductInfo(null);
     setHasAiProductInfo(false);
     setUploadedFiles([]);
     setManualFieldKeys([]);
     setAnalysisSource("");
+    setActiveImageGroup("main");
+    setPromotionInfo("");
+    setSelectedStyleId(styles[0]?.id ?? "green_repair");
+    setCustomStyle(null);
+    setStyleSource("preset");
+    setSelectedCategory(DEFAULT_CATEGORY);
+    setSelectedPlatformId("tmall");
+    setModules(defaultModules.map((module) => ({ ...module })));
     setImageVersionStore(createEmptyImageVersionStore());
     setGenerationProgress(createIdleGenerationProgress());
-    setStatusText("已复制配置，请替换新产品资料");
+    setIsAnalyzing(false);
+    setIsPlanningCustomStyle(false);
+    setIsGeneratingStyleSample(false);
+    setIsHistoryOpen(false);
+    setStatusText("已新建项目");
     go("upload");
   }
 
@@ -602,28 +702,35 @@ export default function Home() {
     }
   }, [generationProgress, imageVersionStore, hasAiProductInfo, saveToHistory]);
 
-  function restoreFromHistory(state: PersistedProjectState, historyId?: string) {
-    setCurrentHistoryId(historyId ?? null);
-    setProductInfo(state.productInfo);
-    setHasAiProductInfo(state.hasAiProductInfo);
-    setSelectedStyleId(state.selectedStyleId);
-    setCustomStyle(state.customStyle);
-    setStyleSource(state.styleSource);
-    setSelectedCategory(state.selectedCategory);
-    setSelectedPlatformId(state.selectedPlatformId);
-    setActiveImageGroup(state.activeImageGroup);
-    setPromotionInfo(state.promotionInfo);
-    if (state.modules?.length) {
-      setModules((current) => mergeRestoredModules(current, state.modules));
-    }
-    if (Object.keys(state.generatedImageVersions || {}).length) {
-      setImageVersionStore({ versions: state.generatedImageVersions, selectedVersionIds: state.selectedVersionIds || {} });
-    } else if (state.generatedImages?.length) {
-      setImageVersionStore(appendImageVersions(createEmptyImageVersionStore(), state.generatedImages, "restored", Date.now()));
-    }
-    if (state.userTemplates?.length) setUserTemplates(state.userTemplates);
-    setStatusText("已从历史记录恢复");
+  async function restoreCopyFromHistory(state: PersistedProjectState, historyId?: string) {
+    const originalState = createCurrentProjectState();
+    setReturnWorkspaceSnapshot({
+      state: originalState,
+      historyId: currentHistoryId,
+      uploadedFiles,
+      manualFieldKeys,
+      analysisSource,
+      activeStep
+    });
+    void saveToHistory();
+    setCurrentHistoryId(null);
+    applyProjectState(state, { statusText: "已载入历史副本" });
+    setUploadedFiles([]);
+    setManualFieldKeys([]);
+    setAnalysisSource(historyId ? `正在编辑历史记录 ${historyId} 的副本，原工作区已保留。` : "正在编辑历史副本，原工作区已保留。");
     go("preview");
+  }
+
+  function returnToOriginalWorkspace() {
+    if (!returnWorkspaceSnapshot) return;
+    applyProjectState(returnWorkspaceSnapshot.state, { exactModules: true, statusText: "已返回原工作区" });
+    setCurrentHistoryId(returnWorkspaceSnapshot.historyId);
+    setUploadedFiles(returnWorkspaceSnapshot.uploadedFiles);
+    setManualFieldKeys(returnWorkspaceSnapshot.manualFieldKeys);
+    setAnalysisSource(returnWorkspaceSnapshot.analysisSource);
+    setGenerationProgress(createIdleGenerationProgress());
+    setReturnWorkspaceSnapshot(null);
+    go(returnWorkspaceSnapshot.activeStep);
   }
 
   if (!selectedStyle || modules.length === 0) {
@@ -644,12 +751,18 @@ export default function Home() {
         </button>
         <h1>商品详情图生成智能体</h1>
         <div className="topbarActions">
+          {returnWorkspaceSnapshot ? (
+            <button className="returnWorkspaceButton" onClick={returnToOriginalWorkspace} type="button">
+              <CornerUpLeft size={16} />
+              返回原工作区
+            </button>
+          ) : null}
           <button className="historyButton" onClick={() => setIsHistoryOpen(true)} type="button">
             <Clock size={16} />
             历史记录
           </button>
-          <button className="backButton" onClick={duplicateProjectForNewProduct} type="button">
-            复制项目
+          <button className="backButton" onClick={startNewProject} type="button">
+            新建项目
           </button>
           <div className="statusBadge">
             <span />
@@ -753,7 +866,7 @@ export default function Home() {
       <HistoryDrawer
         open={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
-        onRestore={restoreFromHistory}
+        onRestoreCopy={restoreCopyFromHistory}
       />
     </main>
   );

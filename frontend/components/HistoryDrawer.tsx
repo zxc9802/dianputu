@@ -30,11 +30,11 @@ function formatDate(isoDate: string): string {
 export function HistoryDrawer({
   open,
   onClose,
-  onRestore
+  onRestoreCopy
 }: {
   open: boolean;
   onClose: () => void;
-  onRestore: (state: PersistedProjectState, historyId?: string) => void;
+  onRestoreCopy: (state: PersistedProjectState, historyId?: string) => void;
 }) {
   const [items, setItems] = useState<HistoryMeta[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -71,7 +71,7 @@ export function HistoryDrawer({
     const detail = await fetchHistoryDetail(id);
     setRestoringId(null);
     if (detail?.state) {
-      onRestore(detail.state, detail.id);
+      onRestoreCopy(detail.state, detail.id);
       onClose();
     }
   }
@@ -170,7 +170,7 @@ export function HistoryDrawer({
                     type="button"
                   >
                     <RotateCcw size={14} />
-                    {restoringId === item.id ? "恢复中..." : "恢复"}
+                    {restoringId === item.id ? "载入中..." : "载入副本"}
                   </button>
                   <button
                     className="historyDeleteButton"

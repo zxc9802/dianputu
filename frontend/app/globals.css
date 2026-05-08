@@ -1532,7 +1532,8 @@ a {
 
   .topbar h1,
   .statusBadge,
-  .backButton {
+  .backButton,
+  .topbarActions {
     justify-self: center;
   }
 
@@ -1885,7 +1886,8 @@ a {
   white-space: nowrap;
 }
 
-.historyButton {
+.historyButton,
+.returnWorkspaceButton {
   min-height: 38px;
   width: fit-content;
   display: inline-flex;
@@ -1902,9 +1904,16 @@ a {
   transition: all 0.15s;
 }
 
-.historyButton:hover {
+.historyButton:hover,
+.returnWorkspaceButton:hover {
   border-color: rgba(31, 140, 67, 0.45);
   background: #f7fdf8;
+}
+
+.returnWorkspaceButton {
+  border-color: rgba(31, 140, 67, 0.35);
+  background: var(--green-100);
+  color: var(--green-800);
 }
 
 .historyButton .historyBadge {
