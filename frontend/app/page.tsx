@@ -11,6 +11,7 @@ import { StyleStep } from "@/components/StyleStep";
 import { UploadStep } from "@/components/UploadStep";
 import { COMMERCE_PLATFORMS, DEMO_MODEL_CONFIG, OFFICIAL_PROJECT_TEMPLATES } from "@/lib/constants";
 import {
+  analyzeProductVisual,
   analyzeUploadedMaterials,
   editGeneratedImage,
   fetchModelConfig,
@@ -31,7 +32,6 @@ import {
   appendImageVersions,
   applyTemplateToModules,
   createTemplateFromProject,
-  extractDominantColorsFromRgba,
   getSelectedGeneratedImages,
   recommendStyleFromBrandColors,
   resolveReusableHistoryId,
@@ -47,6 +47,7 @@ import type {
   ModuleConfig,
   PersistedProjectState,
   ProductInfo,
+  ProductVisualSuggestion,
   ProjectTemplate,
   PublicModelConfig,
   StepId,
@@ -120,6 +121,7 @@ function readPersistedProjectState(): PersistedProjectState | null {
       selectedVersionIds: parsed.selectedVersionIds && typeof parsed.selectedVersionIds === "object" ? parsed.selectedVersionIds : {},
       userTemplates: Array.isArray(parsed.userTemplates) ? parsed.userTemplates : [],
       brandColors: Array.isArray(parsed.brandColors) ? parsed.brandColors.filter((color): color is string => typeof color === "string") : [],
+      productVisualSuggestion: parsed.productVisualSuggestion && typeof parsed.productVisualSuggestion === "object" ? parsed.productVisualSuggestion : null,
       statusText: parsed.statusText || "原型预览"
     };
   } catch {
@@ -150,29 +152,6 @@ function fileToDataUrl(file: File) {
     reader.onload = () => resolve(String(reader.result ?? ""));
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
-  });
-}
-
-function extractColorsFromImageDataUrl(dataUrl: string) {
-  return new Promise<string[]>((resolve) => {
-    const image = new Image();
-    image.onload = () => {
-      const canvas = document.createElement("canvas");
-      const maxSide = 96;
-      const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
-      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-      const context = canvas.getContext("2d", { willReadFrequently: true });
-      if (!context) {
-        resolve([]);
-        return;
-      }
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-      resolve(extractDominantColorsFromRgba(imageData.data));
-    };
-    image.onerror = () => resolve([]);
-    image.src = dataUrl;
   });
 }
 
@@ -210,6 +189,7 @@ export default function Home() {
   const [imageVersionStore, setImageVersionStore] = useState<ImageVersionStore>(() => createEmptyImageVersionStore());
   const [userTemplates, setUserTemplates] = useState<ProjectTemplate[]>([]);
   const [brandColors, setBrandColors] = useState<string[]>([]);
+  const [productVisualSuggestion, setProductVisualSuggestion] = useState<ProductVisualSuggestion | null>(null);
   const [generationProgress, setGenerationProgress] = useState<GenerationProgressMap>(() => createIdleGenerationProgress());
   const [statusText, setStatusText] = useState("原型预览");
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFileInfo[]>([]);
@@ -244,6 +224,7 @@ export default function Home() {
         }
         setUserTemplates(restored.userTemplates);
         setBrandColors(restored.brandColors);
+        setProductVisualSuggestion(restored.productVisualSuggestion);
         setStatusText(restored.generatedImages.length || Object.keys(restored.generatedImageVersions).length ? "已恢复生成结果" : restored.statusText);
       } else {
         setModules(defaults.modules);
@@ -271,9 +252,10 @@ export default function Home() {
       selectedVersionIds: imageVersionStore.selectedVersionIds,
       userTemplates,
       brandColors,
+      productVisualSuggestion,
       statusText
     });
-  }, [activeImageGroup, brandColors, customStyle, hasAiProductInfo, hasRestoredProjectState, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedPlatformId, selectedStyleId, statusText, styleSource, userTemplates]);
+  }, [activeImageGroup, brandColors, customStyle, hasAiProductInfo, hasRestoredProjectState, imageVersionStore, modules, productInfo, productVisualSuggestion, promotionInfo, selectedCategory, selectedPlatformId, selectedStyleId, statusText, styleSource, userTemplates]);
 
   useEffect(() => {
     function syncStepFromHash() {
@@ -322,16 +304,30 @@ export default function Home() {
     if (slot === "product_image") {
       const firstImage = nextFiles.find((file) => file.type.startsWith("image/") && file.dataUrl);
       if (firstImage?.dataUrl) {
-        const colors = await extractColorsFromImageDataUrl(firstImage.dataUrl);
-        if (colors.length) {
+        const result = await analyzeProductVisual(
+          {
+            slot: firstImage.slot,
+            filename: firstImage.name,
+            content_type: firstImage.type,
+            data_url: firstImage.dataUrl
+          },
+          productInfo
+        );
+        if (result.source === "model" && result.suggestion) {
+          const colors = result.suggestion.recommended_colors;
+          setProductVisualSuggestion(result.suggestion);
           setBrandColors(colors);
           const recommendation = recommendStyleFromBrandColors(colors);
           if (recommendation) {
             setSelectedStyleId(recommendation.styleId);
-            setStatusText("已提取品牌色并推荐风格");
+            setStatusText("Gemini 已给出产品视觉建议");
             return;
           }
+          setStatusText("Gemini 已给出产品视觉建议");
+          return;
         }
+        setStatusText(`产品视觉建议失败：${result.error ?? "模型未返回建议"}`);
+        return;
       }
     }
     setStatusText("资料已加入");
@@ -366,6 +362,8 @@ export default function Home() {
     setUploadedFiles([]);
     setManualFieldKeys([]);
     setAnalysisSource("");
+    setProductVisualSuggestion(null);
+    setBrandColors([]);
     setImageVersionStore(createEmptyImageVersionStore());
     setGenerationProgress(createIdleGenerationProgress());
     setStatusText("已复制配置，请替换新产品资料");
@@ -637,11 +635,12 @@ export default function Home() {
         selectedVersionIds: imageVersionStore.selectedVersionIds,
         userTemplates,
         brandColors,
+        productVisualSuggestion,
         statusText: "已从历史恢复"
       }
     });
     setCurrentHistoryId((existingId) => resolveReusableHistoryId(existingId, saved?.id ?? null) ?? null);
-  }, [activeImageGroup, brandColors, currentHistoryId, customStyle, hasAiProductInfo, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedPlatformId, selectedStyleId, statusText, styleSource, styles, userTemplates]);
+  }, [activeImageGroup, brandColors, currentHistoryId, customStyle, hasAiProductInfo, imageVersionStore, modules, productInfo, productVisualSuggestion, promotionInfo, selectedCategory, selectedPlatformId, selectedStyleId, statusText, styleSource, styles, userTemplates]);
 
   // Auto-save to history when new images are generated
   useEffect(() => {
@@ -674,6 +673,7 @@ export default function Home() {
     }
     if (state.userTemplates?.length) setUserTemplates(state.userTemplates);
     if (state.brandColors?.length) setBrandColors(state.brandColors);
+    setProductVisualSuggestion(state.productVisualSuggestion ?? null);
     setStatusText("已从历史记录恢复");
     go("preview");
   }
@@ -742,6 +742,7 @@ export default function Home() {
             isGeneratingStyleSample={isGeneratingStyleSample}
             uploadedFiles={uploadedFiles}
             brandColors={brandColors}
+            productVisualSuggestion={productVisualSuggestion}
             recommendedStyleId={styleRecommendation?.styleId ?? ""}
             onSelect={selectPresetStyle}
             onAiCustomStyleSelect={selectAiCustomStyle}

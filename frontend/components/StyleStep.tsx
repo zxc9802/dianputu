@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Check, FileText, FileUp, FolderOpen, Sparkles, Trash2 } from "lucide-react";
-import type { StyleOption, StyleSource, UploadedFileInfo, UploadSlot } from "@/lib/types";
+import type { ProductVisualSuggestion, StyleOption, StyleSource, UploadedFileInfo, UploadSlot } from "@/lib/types";
 
 function formatFileSize(size: number) {
   if (size < 1024) return `${size} B`;
@@ -20,6 +20,7 @@ export function StyleStep({
   isGeneratingStyleSample,
   uploadedFiles,
   brandColors,
+  productVisualSuggestion,
   recommendedStyleId,
   onSelect,
   onAiCustomStyleSelect,
@@ -41,6 +42,7 @@ export function StyleStep({
   isGeneratingStyleSample: boolean;
   uploadedFiles: UploadedFileInfo[];
   brandColors: string[];
+  productVisualSuggestion: ProductVisualSuggestion | null;
   recommendedStyleId: string;
   onSelect: (id: string) => void;
   onAiCustomStyleSelect: () => void;
@@ -86,8 +88,8 @@ export function StyleStep({
         {brandColors.length > 0 ? (
           <div className="brandColorPanel">
             <div>
-              <b>提取到的产品主色</b>
-              <span>产品主色会提供给 AI 自定义风格，也保留预设风格推荐作参考。</span>
+              <b>Gemini 产品视觉建议</b>
+              <span>{productVisualSuggestion?.visual_direction || "建议色会提供给 AI 自定义风格，也保留预设风格推荐作参考。"}</span>
             </div>
             <div className="colorSwatches">
               {brandColors.map((color) => (
@@ -97,6 +99,14 @@ export function StyleStep({
                 </span>
               ))}
             </div>
+            {productVisualSuggestion?.keywords.length ? (
+              <div className="keywordRow">
+                {productVisualSuggestion.keywords.map((keyword) => (
+                  <span key={keyword}>{keyword}</span>
+                ))}
+              </div>
+            ) : null}
+            {productVisualSuggestion?.reasoning ? <p className="aiStyleBrief">{productVisualSuggestion.reasoning}</p> : null}
           </div>
         ) : null}
         <div className="styleGrid">

@@ -89,6 +89,13 @@ export type BrandColorRecommendation = {
   distance: number;
 };
 
+export type ProductVisualSuggestion = {
+  recommended_colors: string[];
+  keywords: string[];
+  visual_direction: string;
+  reasoning: string;
+};
+
 export type MaterialPayload = {
   slot: UploadSlot;
   filename: string;
@@ -145,6 +152,6 @@ export type PersistedProjectState = {
   selectedVersionIds: Record<string, string>;
   userTemplates: ProjectTemplate[];
   brandColors: string[];
+  productVisualSuggestion: ProductVisualSuggestion | null;
   statusText: string;
 };
-

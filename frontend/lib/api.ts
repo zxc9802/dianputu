@@ -1,5 +1,5 @@
 import { DEFAULT_MODULES, DEMO_MODEL_CONFIG, STYLE_OPTIONS } from "./constants";
-import type { MaterialPayload, ModuleConfig, ProductInfo, PublicModelConfig, StyleOption } from "./types";
+import type { MaterialPayload, ModuleConfig, ProductInfo, ProductVisualSuggestion, PublicModelConfig, StyleOption } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -166,6 +166,24 @@ export async function analyzeUploadedMaterials(materials: MaterialPayload[]) {
     return {
       source: "error",
       error: error instanceof Error ? error.message : "AI 解析请求失败"
+    };
+  }
+}
+
+export async function analyzeProductVisual(material: MaterialPayload, productInfo?: ProductInfo | null) {
+  try {
+    return await requestJson<{ source: string; suggestion?: ProductVisualSuggestion; raw?: string; error?: string }>(
+      "/api/projects/analyze-product-visual",
+      {
+        method: "POST",
+        body: JSON.stringify({ material, product_info: productInfo ?? null }),
+        timeoutMs: 180000
+      }
+    );
+  } catch (error) {
+    return {
+      source: "error",
+      error: error instanceof Error ? error.message : "AI 视觉建议请求失败"
     };
   }
 }

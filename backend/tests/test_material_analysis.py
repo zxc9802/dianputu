@@ -5,12 +5,15 @@ from unittest.mock import AsyncMock, patch
 
 from app.routers.projects import (
     UploadedMaterial,
+    analyze_product_visuals,
     analyze_uploaded_materials,
     build_custom_style_sample_prompt,
     build_material_analysis_messages,
+    build_product_visual_analysis_messages,
     build_style_planning_messages,
     generate_custom_style_sample,
     generate_detail_images,
+    normalize_product_visual_suggestion_from_model,
     normalize_product_info_from_model,
     normalize_style_plan_from_model,
     prepare_compose_image_urls,
@@ -36,6 +39,23 @@ class MaterialAnalysisTests(unittest.TestCase):
         content = messages[0]["content"]
         self.assertEqual(content[0]["type"], "text")
         self.assertIn("main-product.png", content[0]["text"])
+        self.assertEqual(content[1]["type"], "image_url")
+        self.assertTrue(content[1]["image_url"]["url"].startswith("data:image/png;base64,"))
+
+    def test_product_visual_analysis_message_includes_product_image(self):
+        messages = build_product_visual_analysis_messages(
+            UploadedMaterial(
+                filename="main-product.png",
+                content_type="image/png",
+                data=b"\x89PNG\r\n",
+                slot="product_image",
+            ),
+            {"product_name": "琉光面霜", "category": "面霜乳液"},
+        )
+
+        content = messages[0]["content"]
+        self.assertIn("根据产品图给出电商视觉建议", content[0]["text"])
+        self.assertIn("琉光面霜", content[0]["text"])
         self.assertEqual(content[1]["type"], "image_url")
         self.assertTrue(content[1]["image_url"]["url"].startswith("data:image/png;base64,"))
 
@@ -91,6 +111,22 @@ class MaterialAnalysisTests(unittest.TestCase):
         self.assertEqual(style["keywords"], ["微晶", "冻感", "舒缓"])
         self.assertIn("透明凝胶", style["visual_direction"])
         self.assertIn("模块化卡片", style["layout_guidance"])
+
+    def test_model_json_is_normalized_to_product_visual_suggestion(self):
+        suggestion = normalize_product_visual_suggestion_from_model(
+            """
+            {
+              "recommended_colors": ["#D8C7B4", "#F4EFE8", "#8A6A55", "bad"],
+              "keywords": ["柔光", "滋润", "高级"],
+              "visual_direction": "暖调柔光和半透明膏霜质感",
+              "reasoning": "产品包装偏暖米色，适合表现滋润修护"
+            }
+            """
+        )
+
+        self.assertEqual(suggestion["recommended_colors"], ["#D8C7B4", "#F4EFE8", "#8A6A55"])
+        self.assertEqual(suggestion["keywords"], ["柔光", "滋润", "高级"])
+        self.assertIn("暖调柔光", suggestion["visual_direction"])
 
     def test_style_planning_message_asks_gemini_to_create_not_choose(self):
         messages = build_style_planning_messages(
@@ -170,6 +206,25 @@ class MaterialAnalysisTests(unittest.TestCase):
 
 
 class AnalyzeUploadedMaterialsConfigTests(unittest.IsolatedAsyncioTestCase):
+    async def test_analyze_product_visuals_calls_gemini_with_product_image(self):
+        captured_messages = []
+
+        async def fake_call_text_model(settings, messages):
+            captured_messages.extend(messages)
+            return '{"recommended_colors":["#D8C7B4"],"keywords":["柔光"],"visual_direction":"暖调柔光","reasoning":"匹配包装"}'
+
+        with patch("app.routers.projects.get_model_settings") as mocked_settings:
+            mocked_settings.return_value.text.api_key = "text-key"
+            with patch("app.routers.projects.call_text_model", new=fake_call_text_model):
+                result = await analyze_product_visuals(
+                    UploadedMaterial(filename="main.png", content_type="image/png", data=b"\x89PNG\r\n"),
+                    {"product_name": "琉光面霜"},
+                )
+
+        self.assertEqual(result["source"], "model")
+        self.assertEqual(result["suggestion"]["recommended_colors"], ["#D8C7B4"])
+        self.assertEqual(captured_messages[0]["content"][1]["type"], "image_url")
+
     async def test_analyze_uploaded_materials_reports_missing_text_model_key_separately(self):
         with patch("app.routers.projects.get_model_settings") as mocked_settings:
             mocked_settings.return_value.text.api_key = ""

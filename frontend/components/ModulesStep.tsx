@@ -130,13 +130,14 @@ export function ModulesStep({
               <select value={selectedPlatformId} onChange={(event) => onPlatformChange(event.target.value as CommercePlatformId)}>
                 {platforms.map((platform) => (
                   <option key={platform.id} value={platform.id}>
-                    {platform.name} · {platform.mainSize}
+                    {platform.name} · 生成 {platform.generationSize}
                   </option>
                 ))}
               </select>
             </label>
             <p>
-              主图 {selectedPlatform.mainSize}，详情图宽 {selectedPlatform.detailWidth}px。{selectedPlatform.note}
+              生成尺寸 {selectedPlatform.generationSize}，详情图宽 {selectedPlatform.detailWidth}px。发布参考：主图 {selectedPlatform.mainSize}。
+              {selectedPlatform.note}
             </p>
           </div>
 

@@ -30,6 +30,8 @@ assertIncludes("app/page.tsx", "uploadedFiles={uploadedFiles}", "style step must
 assertIncludes("app/page.tsx", "onStyleFilesAdded={addUploadedFiles}", "style step must reuse the upload handler for reference images");
 assertIncludes("app/page.tsx", "onStyleFileRemove", "style step must be able to remove uploaded reference images");
 assertIncludes("lib/api.ts", "analyzeUploadedMaterials", "frontend API must send uploaded materials for AI analysis");
+assertIncludes("lib/api.ts", "analyzeProductVisual", "frontend API must ask Gemini for product visual suggestions");
+assertIncludes("lib/api.ts", "/api/projects/analyze-product-visual", "frontend API must call the backend product visual suggestion endpoint");
 assertIncludes("lib/productInfo.ts", "mergeProductInfoWithManualPriority", "product info helper must preserve manual fields when AI returns data");
 assertIncludes("app/page.tsx", "mergeProductInfoWithManualPriority", "page must merge AI analysis results without overwriting manual fields");
 assertIncludes("lib/api.ts", "http://127.0.0.1:8000", "frontend API should default to the backend bind address");
@@ -43,6 +45,9 @@ assert.ok(!fs.existsSync(path.join(root, "lib/autoGenerate.ts")), "lib/autoGener
 assert.ok(!fs.existsSync(path.join(root, "components/AutoUploadStep.tsx")), "components/AutoUploadStep.tsx: full auto upload step should be removed");
 assert.ok(!fs.existsSync(path.join(root, "components/AutoProgressStep.tsx")), "components/AutoProgressStep.tsx: full auto progress step should be removed");
 assert.ok(!fs.existsSync(path.join(root, "components/AutoResultStep.tsx")), "components/AutoResultStep.tsx: full auto result step should be removed");
+assertIncludes("components/ModulesStep.tsx", "{platform.name} · 生成 {platform.generationSize}", "platform selector must show the 2K generation size first");
+assertIncludes("components/ModulesStep.tsx", "生成尺寸 {selectedPlatform.generationSize}", "platform summary must lead with actual generation size");
+assertIncludes("components/ModulesStep.tsx", "发布参考：主图 {selectedPlatform.mainSize}", "platform summary may show platform publishing size only as a reference");
 assertIncludes("components/ModulesStep.tsx", "当前平台生成尺寸 {selectedPlatform.generationSize}", "model panel must show the actual 2K request size");
 
 assertIncludes("components/ReviewStep.tsx", "textarea", "review step must allow editing extracted fields");
@@ -92,6 +97,8 @@ assertIncludes("lib/api.ts", "planAiCustomStyle", "frontend API must expose Gemi
 assertIncludes("lib/api.ts", "/api/projects/plan-style", "frontend API must call the backend style planning endpoint");
 assertIncludes("lib/api.ts", "generateAiCustomStyleSample", "frontend API must expose custom style sample generation");
 assertIncludes("lib/api.ts", "/api/projects/plan-style-sample", "frontend API must call the style sample endpoint separately");
+assertIncludes("components/StyleStep.tsx", "Gemini 产品视觉建议", "style step must label visual suggestions as Gemini analysis rather than local color extraction");
+assertIncludes("app/page.tsx", "setProductVisualSuggestion(result.suggestion)", "page must store Gemini product visual suggestions");
 assertIncludes("app/page.tsx", "customStyle", "page must store the Gemini-planned custom style");
 assertIncludes("app/page.tsx", "planAiCustomStyle", "page must call Gemini only from the AI custom style action");
 assertIncludes("app/page.tsx", "generateAiCustomStyleSample", "page must generate AI style samples only from the separate sample action");
