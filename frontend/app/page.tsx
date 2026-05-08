@@ -31,6 +31,7 @@ import {
   appendImageVersions,
   applyTemplateToModules,
   createTemplateFromProject,
+  enableModuleForSingleGeneration,
   getSelectedGeneratedImages,
   resolveReusableHistoryId,
   runParallelImageGeneration,
@@ -603,6 +604,9 @@ export default function Home() {
     if (styleSource === "ai_custom" && !activeCustomStyle) {
       setStatusText("请先让 AI 规划自定义风格");
       return;
+    }
+    if (targetModule) {
+      setModules((current) => enableModuleForSingleGeneration(current, targetModule.id));
     }
 
     setGenerationProgress((current) => ({

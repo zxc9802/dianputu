@@ -93,6 +93,17 @@ export function applyTemplateToModules(modules: ModuleConfig[], template: Projec
   });
 }
 
+export function enableModuleForSingleGeneration(modules: ModuleConfig[], moduleId: string) {
+  let changed = false;
+  const nextModules = modules.map((module) => {
+    if (module.id !== moduleId || module.enabled) return module;
+    changed = true;
+    return { ...module, enabled: true };
+  });
+
+  return changed ? nextModules : modules;
+}
+
 export function createTemplateFromProject(input: {
   id: string;
   name: string;
