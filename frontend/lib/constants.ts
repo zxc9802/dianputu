@@ -117,7 +117,7 @@ export const DEMO_MODEL_CONFIG = {
   textAnalysis: {
     model: "gemini-3.1-pro-preview",
     configured: false,
-    defaults: { max_tokens: 4096, temperature: 0.2 }
+    defaults: { max_tokens: 4096, temperature: 0.7 }
   },
   imageGeneration: {
     model: "gpt-image-2",

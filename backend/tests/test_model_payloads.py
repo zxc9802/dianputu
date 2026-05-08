@@ -24,13 +24,13 @@ class ModelPayloadTests(unittest.TestCase):
             messages=[{"role": "user", "content": "测试"}],
             model="gemini-3.1-pro-preview",
             max_tokens=4096,
-            temperature=0.2,
+            temperature=0.7,
         )
 
         self.assertEqual(payload["model"], "gemini-3.1-pro-preview")
         self.assertEqual(payload["messages"], [{"role": "user", "content": "测试"}])
         self.assertEqual(payload["max_tokens"], 4096)
-        self.assertEqual(payload["temperature"], 0.2)
+        self.assertEqual(payload["temperature"], 0.7)
 
     def test_image_payload_contains_generation_defaults(self):
         payload = build_image_generation_payload(

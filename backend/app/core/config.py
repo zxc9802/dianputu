@@ -105,7 +105,7 @@ def get_model_settings(env: Mapping[str, str] | None = None, env_file: Path | st
             base_url=_read(source, "TEXT_ANALYSIS_BASE_URL", "https://www.shanbaob.net/v1"),
             model=_read(source, "TEXT_ANALYSIS_MODEL", "gemini-3.1-pro-preview"),
             max_tokens=int(_read(source, "TEXT_ANALYSIS_MAX_TOKENS", "4096")),
-            temperature=float(_read(source, "TEXT_ANALYSIS_TEMPERATURE", "0.2")),
+            temperature=float(_read(source, "TEXT_ANALYSIS_TEMPERATURE", "0.7")),
         ),
         fallback_text=TextAnalysisSettings(
             api_key=_read(source, "FALLBACK_TEXT_ANALYSIS_API_KEY", ""),

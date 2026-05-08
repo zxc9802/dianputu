@@ -83,6 +83,9 @@ assertIncludes("app/page.tsx", "generationProgress", "page must track generation
 assertIncludes("app/page.tsx", "promotionInfo", "page must persist campaign promotion text");
 assertIncludes("app/page.tsx", "currentHistoryId", "page must keep the saved history id for later autosaves");
 assertIncludes("app/page.tsx", "id: resolveReusableHistoryId(currentHistoryId, null)", "history autosave must reuse the current history id instead of inserting duplicates");
+assertIncludes("lib/historyApi.ts", "LOCAL_HISTORY_STORAGE_KEY", "history API must keep a local fallback when PostgreSQL is not configured");
+assertIncludes("lib/historyApi.ts", "saveLocalHistory", "history save must persist locally when the backend save fails");
+assertIncludes("lib/historyApi.ts", "fetchLocalHistoryList", "history drawer must still show locally saved records when the backend list is empty");
 assertIncludes("app/page.tsx", "defaultModules", "page must keep the default module config for a full new-project reset");
 assertIncludes("app/page.tsx", "startNewProject", "page must expose a full new-project reset action");
 assertIncludes("app/page.tsx", "setSelectedStyleId(styles[0]?.id ?? \"green_repair\")", "new project reset must restore the default style instead of copying the previous project style");

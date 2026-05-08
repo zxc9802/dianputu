@@ -7,7 +7,7 @@
     "model": "gemini-3.1-pro-preview",
     "defaults": {
       "max_tokens": 4096,
-      "temperature": 0.2
+      "temperature": 0.7
     }
   },
   "imageGeneration": {
