@@ -88,20 +88,17 @@ export async function generateImages(
   customStyle?: StyleOption
 ) {
   try {
-    return await requestJson<{ source: string; images: Array<{ module_id: string; url: string }>; errors?: string[] }>("/api/projects/generate", {
-      method: "POST",
-      body: JSON.stringify({
-        module_ids: moduleIds,
-        style_id: styleId,
-        product_info: productInfo,
-        reference_images: referenceImages,
-        style_reference_images: styleReferenceImages,
-        custom_style: customStyle,
-        promotion_info: promotionInfo,
-        platform_size: platformSize
-      }),
-      timeoutMs: 600000
-    });
+    const { job_id: jobId } = await createGenerateImageJob(
+      moduleIds,
+      styleId,
+      productInfo,
+      referenceImages,
+      promotionInfo,
+      platformSize,
+      styleReferenceImages,
+      customStyle
+    );
+    return await pollGenerateImageJob(jobId);
   } catch (error) {
     rethrowMainAppRedirect(error);
     return {
@@ -110,6 +107,74 @@ export async function generateImages(
       errors: ["前端请求后端生成接口失败，已使用本地演示图兜底。"]
     };
   }
+}
+
+type GenerateImagesResult = {
+  source: string;
+  images: Array<{ module_id: string; url: string }>;
+  errors?: string[];
+};
+
+type GenerateImageJobStatus = {
+  status: "pending" | "running" | "done" | "error";
+  stage: string;
+  current: number;
+  total: number;
+  message: string;
+  error?: string;
+  result?: GenerateImagesResult;
+};
+
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+export async function createGenerateImageJob(
+  moduleIds: string[],
+  styleId: string,
+  productInfo?: ProductInfo,
+  referenceImages: string[] = [],
+  promotionInfo = "",
+  platformSize = "",
+  styleReferenceImages: string[] = [],
+  customStyle?: StyleOption
+) {
+  return requestJson<{ job_id: string }>("/api/projects/generate/jobs", {
+    method: "POST",
+    body: JSON.stringify({
+      module_ids: moduleIds,
+      style_id: styleId,
+      product_info: productInfo,
+      reference_images: referenceImages,
+      style_reference_images: styleReferenceImages,
+      custom_style: customStyle,
+      promotion_info: promotionInfo,
+      platform_size: platformSize
+    }),
+    timeoutMs: 15000
+  });
+}
+
+export async function fetchGenerateImageJob(jobId: string) {
+  return requestJson<GenerateImageJobStatus>(`/api/projects/generate/jobs/${jobId}`, { timeoutMs: 15000 });
+}
+
+export async function pollGenerateImageJob(jobId: string, timeoutMs = 600000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt <= timeoutMs) {
+    const job = await fetchGenerateImageJob(jobId);
+    if (job.status === "done") {
+      if (!job.result) {
+        throw new Error("图片生成任务完成但没有返回结果");
+      }
+      return job.result;
+    }
+    if (job.status === "error") {
+      throw new Error(job.error || job.message || "图片生成任务失败");
+    }
+    await sleep(3000);
+  }
+  throw new Error("图片生成任务超时，请稍后重试");
 }
 
 export async function planAiCustomStyle(productInfo?: ProductInfo, category = "", productImages: MaterialPayload[] = []) {

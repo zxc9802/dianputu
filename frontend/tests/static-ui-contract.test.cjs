@@ -42,7 +42,11 @@ assertIncludes("lib/api.ts", 'credentials: "include"', "frontend API requests mu
 assertIncludes("lib/api.ts", "redirectToMainAppIfNeeded", "frontend API requests must redirect to the main site on SSO 401 responses");
 assertIncludes("middleware.ts", "ssoError", "middleware must tell the main site when ticket exchange fails");
 assertIncludes("lib/api.ts", "AbortController", "frontend API requests must time out instead of leaving the app loading forever");
-assertIncludes("lib/api.ts", "timeoutMs: 600000", "image generation must keep the request open long enough for real model output");
+assertIncludes("lib/api.ts", "createGenerateImageJob", "image generation must create a backend job instead of holding one long request");
+assertIncludes("lib/api.ts", "fetchGenerateImageJob", "image generation must poll the backend generation job");
+assertIncludes("lib/api.ts", "pollGenerateImageJob", "image generation must wait for job completion through short polling requests");
+assertIncludes("lib/api.ts", "/api/projects/generate/jobs", "frontend image generation must use the backend job endpoint");
+assertNotIncludes("lib/api.ts", "timeoutMs: 600000\n    });\n  } catch (error) {\n    rethrowMainAppRedirect(error);\n    return {\n      source: \"demo\"", "image generation must not wait on a single long synchronous request");
 assertIncludes("lib/api.ts", "timeoutMs: 180000", "material analysis must keep the request open long enough for model output");
 assertIncludes("lib/constants.ts", 'defaults: { size: "2048x2048"', "frontend demo model config must reflect 2K image generation defaults");
 assertIncludes("app/page.tsx", "selectedPlatform.generationSize", "page image generation requests must use the 2K generation size");

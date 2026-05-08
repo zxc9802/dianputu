@@ -16,6 +16,7 @@ from app.routers.projects import (
     prepare_compose_image_urls,
     plan_custom_style,
     run_compose_job,
+    run_generation_job,
 )
 from app.services.prompt_builder import build_module_image_prompt
 
@@ -615,6 +616,51 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, ["https://img.example.com/composed/source-1.png", "https://img.example.com/source-2.png"])
         upload_mocked.assert_any_await("data:image/png;base64,aGVsbG8=", "compose-sources")
         upload_mocked.assert_any_await("https://img.example.com/source-2.png", "compose-sources")
+
+    async def test_generation_job_stores_completed_result(self):
+        from app.routers import projects
+
+        projects.GENERATION_JOBS["generate_test"] = {
+            "status": "pending",
+            "stage": "pending",
+            "current": 0,
+            "total": 1,
+            "message": "等待开始生成",
+            "created_at": "2026-05-07T00:00:00+00:00",
+        }
+        payload = {
+            "module_ids": ["hero"],
+            "style_id": "green_repair",
+            "product_info": {"product_name": "积雪草修护精华"},
+            "reference_images": ["https://example.com/product.png"],
+            "style_reference_images": [],
+            "custom_style": None,
+            "promotion_info": "",
+            "platform_size": "2048x2048",
+        }
+        try:
+            with patch(
+                "app.routers.projects.generate_detail_images",
+                new=AsyncMock(return_value={"source": "model", "images": [{"module_id": "hero", "url": "https://example.com/hero.png"}], "errors": []}),
+            ) as generate_mocked:
+                await run_generation_job("generate_test", payload)
+
+            job = projects.GENERATION_JOBS["generate_test"]
+            self.assertEqual(job["status"], "done")
+            self.assertEqual(job["stage"], "done")
+            self.assertEqual(job["result"]["images"], [{"module_id": "hero", "url": "https://example.com/hero.png"}])
+            generate_mocked.assert_awaited_once_with(
+                ["hero"],
+                "green_repair",
+                product_info={"product_name": "积雪草修护精华"},
+                reference_images=["https://example.com/product.png"],
+                style_reference_images=[],
+                custom_style=None,
+                promotion_info="",
+                platform_size="2048x2048",
+            )
+        finally:
+            projects.GENERATION_JOBS.pop("generate_test", None)
 
 
 if __name__ == "__main__":

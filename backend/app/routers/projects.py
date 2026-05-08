@@ -24,9 +24,23 @@ logger = logging.getLogger("detail_image_generation")
 MODEL_GATEWAY_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
 WHITE_BACKGROUND_MODULE_IDS = {"main_white_bg", "campaign_white_bg"}
 STYLE_SAMPLE_IMAGE_SIZE = "1024x1024"
+GENERATION_JOBS: dict[str, dict[str, Any]] = {}
+GENERATION_JOB_TTL_SECONDS = 3600  # 1 hour
 COMPOSE_JOBS: dict[str, dict[str, Any]] = {}
 COMPOSE_JOB_TTL_SECONDS = 600  # 10 minutes
 WHITE_BACKGROUND_REFERENCE_REQUIRED_ERROR = "白底图需要先上传产品图，系统会直接复用上传图以避免模型重绘导致包装、Logo 或瓶身变形。"
+
+
+def _cleanup_expired_generation_jobs() -> None:
+    """Remove generation jobs older than TTL to prevent memory leaks."""
+    now = datetime.now(UTC)
+    expired = [
+        job_id
+        for job_id, job in GENERATION_JOBS.items()
+        if (now - datetime.fromisoformat(job.get("created_at", now.isoformat()))).total_seconds() > GENERATION_JOB_TTL_SECONDS
+    ]
+    for job_id in expired:
+        GENERATION_JOBS.pop(job_id, None)
 
 
 def _cleanup_expired_compose_jobs() -> None:
@@ -676,6 +690,57 @@ try:
         promotion_info: str | None = None
         platform_size: str | None = None
 
+    def _generation_payload_from_request(request: GenerateRequest) -> dict[str, Any]:
+        return {
+            "module_ids": list(request.module_ids),
+            "style_id": request.style_id,
+            "product_info": request.product_info,
+            "reference_images": list(request.reference_images),
+            "style_reference_images": list(request.style_reference_images),
+            "custom_style": request.custom_style,
+            "promotion_info": request.promotion_info,
+            "platform_size": request.platform_size,
+        }
+
+    async def run_generation_job(job_id: str, payload: dict[str, Any]) -> None:
+        job = GENERATION_JOBS.get(job_id)
+        if not job:
+            return
+        module_ids = list(payload.get("module_ids") or [])
+        total = len(module_ids)
+        try:
+            job.update(
+                {
+                    "status": "running",
+                    "stage": "generating",
+                    "current": 0,
+                    "total": total,
+                    "message": "正在生成图片",
+                }
+            )
+            result = await generate_detail_images(
+                module_ids,
+                payload.get("style_id") or "green_repair",
+                product_info=payload.get("product_info"),
+                reference_images=payload.get("reference_images") or [],
+                style_reference_images=payload.get("style_reference_images") or [],
+                custom_style=payload.get("custom_style"),
+                promotion_info=payload.get("promotion_info"),
+                platform_size=payload.get("platform_size"),
+            )
+            job.update(
+                {
+                    "status": "done",
+                    "stage": "done",
+                    "current": total,
+                    "total": total,
+                    "message": "图片生成完成",
+                    "result": result,
+                }
+            )
+        except Exception as exc:
+            job.update({"status": "error", "stage": "error", "message": str(exc), "error": str(exc)})
+
     class PlanStyleRequest(BaseModel):
         product_info: dict[str, Any] | None = None
         category: str | None = None
@@ -739,6 +804,29 @@ try:
             promotion_info=request.promotion_info,
             platform_size=request.platform_size,
         )
+
+    @router.post("/generate/jobs")
+    async def create_generate_project_job(request: GenerateRequest, background_tasks: BackgroundTasks) -> dict[str, str]:
+        _cleanup_expired_generation_jobs()
+        payload = _generation_payload_from_request(request)
+        job_id = f"generate_{uuid4().hex}"
+        GENERATION_JOBS[job_id] = {
+            "status": "pending",
+            "stage": "pending",
+            "current": 0,
+            "total": len(payload["module_ids"]),
+            "message": "等待开始生成",
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        background_tasks.add_task(run_generation_job, job_id, payload)
+        return {"job_id": job_id}
+
+    @router.get("/generate/jobs/{job_id}")
+    async def get_generate_project_job(job_id: str) -> dict[str, Any]:
+        job = GENERATION_JOBS.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="generation job not found")
+        return job
 
     @router.post("/edit-image")
     async def edit_project_image(request: EditImageRequest) -> dict[str, Any]:
