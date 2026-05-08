@@ -215,11 +215,11 @@ def _ingredients(value: Any) -> list[dict[str, str]]:
     for item in value:
         if isinstance(item, dict):
             name = str(item.get("name", "")).strip()
-            benefit = str(item.get("benefit", "")).strip() or "AI 待确认"
+            benefit = str(item.get("benefit", "")).strip() or "辅助日常肌肤护理"
             if name:
                 normalized.append({"name": name, "benefit": benefit})
         elif str(item).strip():
-            normalized.append({"name": str(item).strip(), "benefit": "AI 待确认"})
+            normalized.append({"name": str(item).strip(), "benefit": "辅助日常肌肤护理"})
     return normalized
 
 
@@ -277,6 +277,11 @@ def build_style_planning_messages(
     product_images: list[UploadedMaterial] | None = None,
 ) -> list[dict[str, Any]]:
     info = product_info or {}
+    category_line = (
+        f"品类：{info['category']}"
+        if str(info.get("category", "")).strip()
+        else "请自行识别产品品类，不要套用页面当前选择的类目。"
+    )
     prompt = "\n".join(
         [
             "你是资深电商美术指导。请基于产品资料和产品图，全权规划一个全新的电商视觉风格。",
@@ -287,7 +292,7 @@ def build_style_planning_messages(
             "要求：name 是 6-12 个中文字符的风格名；primary_color 是十六进制颜色；keywords 是 3-6 个短词。",
             "visual_direction 写清楚色调、材质、光影、氛围；layout_guidance 写清楚主图和详情页如何保持统一但模块差异化。",
             "避免医疗化、绝对化功效，不编造品牌授权或真实机构背书。",
-            f"品类：{category or info.get('category') or '护肤品'}",
+            category_line,
             f"产品信息 JSON：{json.dumps(info, ensure_ascii=False)}",
         ]
     )
@@ -743,7 +748,6 @@ try:
 
     class PlanStyleRequest(BaseModel):
         product_info: dict[str, Any] | None = None
-        category: str | None = None
         product_images: list[MaterialPayload] = Field(default_factory=list)
 
     class PlanStyleSampleRequest(BaseModel):
@@ -786,7 +790,7 @@ try:
     @router.post("/plan-style")
     async def plan_project_style(request: PlanStyleRequest) -> dict[str, Any]:
         product_images = [uploaded_material_from_payload(payload) for payload in request.product_images[:3]]
-        return await plan_custom_style(request.product_info, request.category, product_images)
+        return await plan_custom_style(request.product_info, product_images=product_images)
 
     @router.post("/plan-style-sample")
     async def plan_project_style_sample(request: PlanStyleSampleRequest) -> dict[str, Any]:

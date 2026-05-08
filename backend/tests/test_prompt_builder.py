@@ -67,14 +67,17 @@ class PromptBuilderTests(unittest.TestCase):
             total_modules=7,
         )
 
-        self.assertIn("隐藏 brief、模块职责、资料项、来源类型、报告限制、合规提醒只作为生成依据", prompt)
-        self.assertIn("禁止把这些内容排版成图片里的说明框、段落、清单、脚注或底部文字区域", prompt)
-        self.assertIn("报告卡片只保留轮廓、图形和不可读占位纹理", prompt)
+        self.assertIn("图片必须像可直接用于店铺上架的成品物料", prompt)
+        self.assertIn("隐藏 brief、模块职责、资料限制、合规提醒只作为生成依据", prompt)
+        self.assertIn("不能排版成图片里的说明框、段落、清单、脚注或底部文字区域", prompt)
+        self.assertIn("报告卡片只保留轮廓、图形和不可读纹理", prompt)
         self.assertIn("仅短标题、极短标签、必要数值或步骤编号需要清晰可读", prompt)
         self.assertNotIn("数据/说明区", prompt)
         self.assertNotIn("底部补充区", prompt)
         self.assertNotIn("1-2 句克制的权威背书短文案", prompt)
         self.assertNotIn("说明文字清晰可读", prompt)
+        self.assertNotIn("免责声明", prompt)
+        self.assertNotIn("占位纹理", prompt)
 
     def test_effect_prompt_contains_complete_metrics_sources_and_compliance_limits(self):
         build_module_image_prompt = load_prompt_builder()
@@ -108,8 +111,8 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("14 天人体功效测试", prompt)
         self.assertIn("细纹观感改善", prompt)
         self.assertIn("87%", prompt)
-        self.assertIn("ai_generated", prompt)
-        self.assertIn("示意型数据", prompt)
+        self.assertNotIn("ai_generated", prompt)
+        self.assertIn("体验型视觉", prompt)
         self.assertIn("避免绝对化医疗表达", prompt)
 
     def test_style_reference_prompt_overrides_preset_style_for_non_white_background_images(self):
@@ -130,6 +133,39 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("不要混入预设风格", prompt)
         self.assertNotIn("预设风格只作为兜底", prompt)
         self.assertNotIn("绿色修护风", prompt)
+
+    def test_ingredient_prompt_is_store_ready_without_placeholder_copy(self):
+        build_module_image_prompt = load_prompt_builder()
+        ingredient_module = next(module for module in DEFAULT_MODULES if module["id"] == "ingredient")
+
+        prompt = build_module_image_prompt(
+            product_info={
+                "product_name": "水润保湿面霜",
+                "category": "面霜",
+                "ingredients": [{"name": "透明质酸钠"}],
+            },
+            style=STYLE_OPTIONS[0],
+            module=ingredient_module,
+            module_index=6,
+            total_modules=7,
+        )
+
+        self.assertIn("可直接用于店铺上架", prompt)
+        self.assertIn("透明质酸钠", prompt)
+        self.assertIn("辅助日常肌肤护理", prompt)
+        for forbidden in [
+            "待确认",
+            "待说明",
+            "待根据",
+            "AI 待确认",
+            "未展示完整成分",
+            "作用待确认",
+            "实际成分以",
+            "备案为准",
+            "免责声明",
+            "占位纹理",
+        ]:
+            self.assertNotIn(forbidden, prompt)
 
 
 if __name__ == "__main__":

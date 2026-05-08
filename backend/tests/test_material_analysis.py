@@ -114,6 +114,17 @@ class MaterialAnalysisTests(unittest.TestCase):
         self.assertEqual(content[1]["type"], "image_url")
         self.assertTrue(content[1]["image_url"]["url"].startswith("data:image/png;base64,"))
 
+    def test_style_planning_message_does_not_force_selected_category(self):
+        messages = build_style_planning_messages(
+            {"product_name": "蓝铜胜肽喷雾"},
+            "护肤精华",
+            [],
+        )
+
+        text = messages[0]["content"][0]["text"]
+        self.assertNotIn("品类：护肤精华", text)
+        self.assertIn("请自行识别产品品类", text)
+
 
     def test_main_image_prompts_use_module_specific_briefs_and_visual_constraints(self):
         product_info = {

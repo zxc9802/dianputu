@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 
-def _text(value: Any, fallback: str = "待根据资料补全") -> str:
+def _text(value: Any, fallback: str = "产品信息") -> str:
     if value is None:
         return fallback
     cleaned = str(value).strip()
@@ -34,20 +34,20 @@ def _numbered_lines(items: list[str], fallback: str) -> str:
 
 def _format_ingredients(value: Any) -> str:
     if not isinstance(value, list) or not value:
-        return "1. 待根据品类补全核心成分；作用：围绕产品功效给出谨慎、非医疗化说明"
+        return "1. 成分：核心植萃；作用：辅助日常肌肤护理\n2. 成分：保湿复配；作用：提升水润肤感"
 
     lines: list[str] = []
     for index, item in enumerate(value, start=1):
         if isinstance(item, dict):
             name = _text(item.get("name"), "")
-            benefit = _text(item.get("benefit"), "待说明作用")
+            benefit = _text(item.get("benefit"), "辅助日常肌肤护理")
             if name:
                 lines.append(f"{index}. 成分：{name}；作用：{benefit}")
         else:
             name = str(item).strip()
             if name:
-                lines.append(f"{index}. 成分：{name}；作用：待说明作用")
-    return "\n".join(lines) if lines else "1. 待根据品类补全核心成分；作用：围绕产品功效给出谨慎、非医疗化说明"
+                lines.append(f"{index}. 成分：{name}；作用：辅助日常肌肤护理")
+    return "\n".join(lines) if lines else "1. 成分：核心植萃；作用：辅助日常肌肤护理\n2. 成分：保湿复配；作用：提升水润肤感"
 
 
 def _authority_asset_label(item: str) -> str:
@@ -60,11 +60,11 @@ def _format_authority_assets(value: Any) -> str:
     items = _string_items(value)
     if not items:
         return (
-            "1. 资料项：实验室研发、检测报告轮廓或专研配方理念；"
-            "来源类型：ai_generated；说明：仅作为详情页示意型权威背书，不编造真实机构编号"
+            "1. 权威方向：实验室研发、配方研究、检测报告视觉；"
+            "画面表达：科研氛围、报告轮廓和泛化标签，机构名称与编号保持模糊处理"
         )
     return "\n".join(
-        f"{index}. 资料项：{_authority_asset_label(item)}；来源类型：用户确认/AI 提炼字段 authority_assets；画面只呈现报告轮廓和泛化标签，不展示报告编号、样本量、机构编号等具体细节"
+        f"{index}. 权威方向：{_authority_asset_label(item)}；画面表达：报告轮廓、图表形状和泛化标签，编号、样本量、机构编号等细节保持模糊处理"
         for index, item in enumerate(items, start=1)
     )
 
@@ -72,26 +72,25 @@ def _format_authority_assets(value: Any) -> str:
 def _format_effect_claims(value: Any) -> str:
     if not isinstance(value, list) or not value:
         return (
-            "1. 指标：根据产品功效补全一条谨慎的效果指标；数值：生成合理示意型百分比；"
-            "来源类型：ai_generated；说明：示意型数据，避免绝对化医疗表达"
+            "1. 指标：水润感；呈现：进度条或对比卡片视觉；表达：体验感导向，避免绝对化医疗表达"
         )
 
     lines: list[str] = []
     for index, item in enumerate(value, start=1):
         if isinstance(item, dict):
             claim = _text(item.get("claim"), "")
-            value_text = _text(item.get("value"), "待补全为合理示意数值")
-            source_type = _text(item.get("source_type"), "ai_generated")
+            value_text = _text(item.get("value"), "柔和进度视觉")
+            source_type = str(item.get("source_type", "")).strip()
             if claim:
-                lines.append(f"{index}. 指标：{claim}；数值：{value_text}；来源类型：{source_type}")
+                source_label = f"；依据：{source_type}" if source_type and source_type != "ai_generated" else ""
+                lines.append(f"{index}. 指标：{claim}；数值：{value_text}{source_label}")
         else:
             claim = str(item).strip()
             if claim:
-                lines.append(f"{index}. 指标：{claim}；数值：待补全为合理示意数值；来源类型：ai_generated")
+                lines.append(f"{index}. 指标：{claim}；数值：柔和进度视觉")
     if not lines:
         return (
-            "1. 指标：根据产品功效补全一条谨慎的效果指标；数值：生成合理示意型百分比；"
-            "来源类型：ai_generated；说明：示意型数据，避免绝对化医疗表达"
+            "1. 指标：水润感；呈现：进度条或对比卡片视觉；表达：体验感导向，避免绝对化医疗表达"
         )
     return "\n".join(lines)
 
@@ -101,19 +100,19 @@ def build_product_generation_brief(product_info: dict[str, Any] | None) -> str:
     return "\n".join(
         [
             "【产品生成 brief】",
-            f"- 产品名称：{_text(info.get('product_name'), '待确认产品')}",
+            f"- 产品名称：{_text(info.get('product_name'), '当前护肤产品')}",
             f"- 品类：{_text(info.get('category'), '护肤品')}",
-            f"- 规格：{_text(info.get('spec'), '待确认规格')}",
+            f"- 规格：{_text(info.get('spec'), '常规规格')}",
             "- 核心卖点：",
-            _numbered_lines(_string_items(info.get("core_selling_points")), "待根据 AI 提炼结果补全核心卖点"),
+            _numbered_lines(_string_items(info.get("core_selling_points")), "温和护理"),
             "- 核心功效：",
-            _numbered_lines(_string_items(info.get("functions")), "待根据品类补全温和功效"),
+            _numbered_lines(_string_items(info.get("functions")), "补水保湿"),
             "- 核心成分小报告：",
             _format_ingredients(info.get("ingredients")),
             "- 目标人群：",
-            _numbered_lines(_string_items(info.get("target_users")), "待根据品类补全目标人群"),
+            _numbered_lines(_string_items(info.get("target_users")), "日常护肤人群"),
             "- 使用方法：",
-            _numbered_lines(_string_items(info.get("usage_method")), "待根据品类补全标准使用步骤"),
+            _numbered_lines(_string_items(info.get("usage_method")), "洁面后取适量涂抹"),
             "- 权威资料小报告：",
             _format_authority_assets(info.get("authority_assets")),
             "- 效果数据小报告：",
@@ -195,11 +194,11 @@ def build_module_specific_brief(product_info: dict[str, Any] | None, module: dic
     module_id = str(module.get("id"))
     base_lines = [
         "【当前模块精简 brief】",
-        f"- 产品名称：{_text(info.get('product_name'), '待确认产品')}",
+        f"- 产品名称：{_text(info.get('product_name'), '当前护肤产品')}",
     ]
 
     if module_id in {"main_white_bg", "campaign_white_bg"}:
-        return "\n".join([*base_lines, f"- 规格：{_text(info.get('spec'), '待确认规格')}"])
+        return "\n".join([*base_lines, f"- 规格：{_text(info.get('spec'), '常规规格')}"])
 
     if module_id in {"main_hero_selling_point", "campaign_hero_selling_point"}:
         return "\n".join(
@@ -207,9 +206,9 @@ def build_module_specific_brief(product_info: dict[str, Any] | None, module: dic
                 *base_lines,
                 f"- 品类：{_text(info.get('category'), '护肤品')}",
                 "- 主标题使用前 2 个核心卖点（字号大、醒目）：",
-                _limited_numbered_lines(info.get("core_selling_points"), "待根据 AI 提炼结果补全核心卖点", 2),
+                _limited_numbered_lines(info.get("core_selling_points"), "温和护理", 2),
                 "- 副标题可使用前 2 个核心功效关键词（字号小、辅助信息）：",
-                _limited_numbered_lines(info.get("functions"), "待根据品类补全温和功效", 2),
+                _limited_numbered_lines(info.get("functions"), "补水保湿", 2),
             ]
         )
 
@@ -221,7 +220,7 @@ def build_module_specific_brief(product_info: dict[str, Any] | None, module: dic
             [
                 *base_lines,
                 "- 本图只使用核心功效：",
-                _limited_numbered_lines(info.get("functions"), "待根据品类补全温和功效", 3),
+                _limited_numbered_lines(info.get("functions"), "补水保湿", 3),
                 "- 本图只使用效果数据：",
                 _format_effect_claims(info.get("effect_claims")),
             ]
@@ -232,9 +231,9 @@ def build_module_specific_brief(product_info: dict[str, Any] | None, module: dic
             [
                 *base_lines,
                 "- 本图只使用目标人群：",
-                _limited_numbered_lines(info.get("target_users"), "待根据品类补全目标人群", 3),
+                _limited_numbered_lines(info.get("target_users"), "日常护肤人群", 3),
                 "- 本图只使用使用方法：",
-                _limited_numbered_lines(info.get("usage_method"), "待根据品类补全标准使用步骤", 4),
+                _limited_numbered_lines(info.get("usage_method"), "洁面后取适量涂抹", 4),
             ]
         )
 
@@ -263,9 +262,10 @@ def _detail_text_guardrails() -> str:
     return "\n".join(
         [
             "【图片文字边界】",
-            "- 隐藏 brief、模块职责、资料项、来源类型、报告限制、合规提醒只作为生成依据，禁止把这些内容排版成图片里的说明框、段落、清单、脚注或底部文字区域。",
-            "- 图片上只允许短标题、极短标签、必要的指标数值或步骤编号；不要出现完整解释句、资料补充建议、字段名、AI 提炼、来源类型、免责声明或页面说明。",
-            "- 报告、图表、证书和卡片可以作为视觉元素，但正文必须是不可读占位纹理或极短泛化标签，不能生成可阅读的长句说明。",
+            "- 图片必须像可直接用于店铺上架的成品物料，只呈现消费者会看到的标题、卖点标签、指标或步骤。",
+            "- 隐藏 brief、模块职责、资料限制、合规提醒只作为生成依据，不能排版成图片里的说明框、段落、清单、脚注或底部文字区域。",
+            "- 资料不足时减少文字密度和卡片数量，只保留确定的正向卖点；不能出现信息缺失、核验提醒、补全提醒或以外部资料为准的半成品提示。",
+            "- 报告、图表、证书和卡片可以作为视觉元素，但正文必须是不可读纹理、抽象线条或极短泛化标签，不能生成可阅读的长句说明。",
         ]
     )
 
@@ -301,11 +301,13 @@ def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | 
             "画面只呈现成分次图，突出核心成分、原料质感和成分标签。",
             "必须参考以下成分信息，选择 2-3 个重点成分呈现：",
             ingredients_report,
+            "文案必须像可直接用于店铺上架的成品成分图，只写成分名、正向作用标签和短标题。",
+            "如果成分资料较少，就减少卡片数量，用原料质感补足画面，不写信息缺失提示。",
             "成分作用表达要谨慎，不能写成药品疗效或治疗承诺。",
         ],
         "main_effect": [
             "画面只呈现效果次图，突出核心功效、使用收益和可信的效果表达。",
-            "优先参考以下效果数据；如为示意型数据，画面需弱化为体验感表达：",
+            "优先参考以下效果数据；如果数据不完整，画面用体验型视觉和进度条表达：",
             effect_report,
             "避免绝对化承诺，不写治愈、根治、永久有效，不制造夸张前后对比。",
         ],
@@ -332,11 +334,13 @@ def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | 
             "画面呈现活动成分次图，展示核心成分与原料质感，同时加入活动氛围元素。",
             "必须参考以下成分信息，选择 2-3 个重点成分呈现：",
             ingredients_report,
+            "文案必须像可直接用于店铺上架的成品成分图，只写成分名、正向作用标签和短标题。",
+            "如果成分资料较少，就减少卡片数量，用原料质感补足画面，不写信息缺失提示。",
             "促销元素作为辅助转化信息出现，不能压过成分可信表达，也不能写成药品疗效。",
         ],
         "campaign_effect": [
             "画面呈现活动效果次图，突出核心功效、使用收益和促销转化理由。",
-            "优先参考以下效果数据；如为示意型数据，画面需弱化为体验感表达：",
+            "优先参考以下效果数据；如果数据不完整，画面用体验型视觉和进度条表达：",
             effect_report,
             "可加入限时优惠、活动权益、购买利益点，但不能夸大效果或制造绝对承诺。",
         ],
@@ -352,10 +356,10 @@ def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | 
         "authority": [
             "画面只呈现权威资质展示，核心视觉为科学家/研究员在干净明亮实验室做护肤品研究的背景画面。",
             "人物需穿实验服或科研防护服，可出现显微镜、试管、培养皿、实验台、柔和玻璃器皿等专业但真实的科研元素。",
-            "报告只作为辅助视觉出现：用几张报告纸、图表轮廓、印章轮廓或证书卡片表达即可；报告卡片只保留轮廓、图形和不可读占位纹理，文字要小且虚化/泛化，不写具体报告编号、样本编号、机构编号或可核验编号。",
+            "报告只作为辅助视觉出现：用几张报告纸、图表轮廓、印章轮廓或证书卡片表达即可；报告卡片只保留轮廓、图形和不可读纹理，文字要小且虚化/泛化，不写具体报告编号、样本编号、机构编号或可核验编号。",
             "必须参考以下权威资料方向，但不要把完整原文搬到画面上：",
             authority_report,
-            "版式建议：实验室科学家背景 + 半透明报告轮廓卡片 + 简洁模块标题；不做底部说明区、资料建议区或免责声明。",
+            "版式建议：实验室科学家背景 + 半透明报告轮廓卡片 + 简洁模块标题；不做底部说明区、资料建议区或风险提示类文字。",
         ],
         "pain_scene": [
             "画面只呈现目标人群的护肤痛点场景，突出困扰、情绪和产品解决方向。",
@@ -365,7 +369,7 @@ def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | 
             "画面只呈现效果对比，必须像小报告一样写清楚每条效果数据。",
             "必须完整带入以下效果数据：",
             effect_report,
-            "如果来源类型为 ai_generated 或资料缺失，画面按示意型数据处理；避免绝对化医疗表达，不写治愈、根治、永久有效。",
+            "如果数据不完整，画面用体验型视觉和进度条表达；避免绝对化医疗表达，不写治愈、根治、永久有效。",
         ],
         "competitor_comparison": [
             "画面只呈现本产品与普通同类产品的对比，不指名真实竞品品牌。",
@@ -375,6 +379,8 @@ def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | 
             "画面只呈现成分页，必须把核心成分和对应作用讲清楚。",
             "必须完整带入以下成分信息：",
             ingredients_report,
+            "文案必须像可直接用于店铺上架的成品成分图，只写成分名、正向作用标签和短标题。",
+            "如果成分资料较少，就减少卡片数量，用原料质感补足画面，不写信息缺失提示。",
             "不要把成分作用写成药品疗效。",
         ],
         "usage": [
@@ -403,7 +409,7 @@ def build_module_image_prompt(
     readable_text_rule = (
         "- 字体层级清楚，标题短促有力，说明文字清晰可读，不出现乱码、水印、品牌侵权标识。"
         if is_main_image
-        else "- 仅短标题、极短标签、必要数值或步骤编号需要清晰可读；不要生成说明文字、段落脚注、资料建议或免责声明，不出现乱码、水印、品牌侵权标识。"
+        else "- 仅短标题、极短标签、必要数值或步骤编号需要清晰可读；不要生成说明文字、段落脚注、资料建议或风险提示类文案，不出现乱码、水印、品牌侵权标识。"
     )
     structure_lines = [
         f"- 当前模块：{_text(module.get('name'))}",
@@ -436,6 +442,7 @@ def build_module_image_prompt(
             "- 产品本体不重绘、不改字、不改 Logo、不改标签、不改包装图案，不能生成空白标签。",
             "- 产品外观如有参考图必须保持一致。",
             "- 不出现乱码、水印、品牌侵权标识。",
+            "- 所有可见文字必须像可直接用于店铺上架的成品图文案，不写信息缺失或核验提醒。",
         ]
     else:
         if has_style_reference:
@@ -445,6 +452,7 @@ def build_module_image_prompt(
                 "- 不要混入预设风格名称、主色或关键词；风格只以已上传的风格参考图为准。",
                 "- 中文电商视觉，高级、干净、统一；产品外观如有产品参考图必须保持一致。",
                 readable_text_rule,
+                "- 所有可见文字必须像可直接用于店铺上架的成品图文案，不写信息缺失、核验提醒、补全提醒或半成品提示。",
                 "- 所有效果、权威、成分表达必须谨慎，不使用医疗化、绝对化承诺。",
             ]
         else:
@@ -463,6 +471,7 @@ def build_module_image_prompt(
                 ),
                 "- 中文电商视觉，高级、干净、统一；产品外观如有参考图必须保持一致。",
                 readable_text_rule,
+                "- 所有可见文字必须像可直接用于店铺上架的成品图文案，不写信息缺失、核验提醒、补全提醒或半成品提示。",
                 "- 所有效果、权威、成分表达必须谨慎，不使用医疗化、绝对化承诺。",
             ]
 
