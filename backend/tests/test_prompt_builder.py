@@ -12,7 +12,7 @@ def load_prompt_builder():
 
 
 class PromptBuilderTests(unittest.TestCase):
-    def test_authority_prompt_prefers_lab_scientist_scene_and_soft_report_visuals(self):
+    def test_authority_prompt_prefers_real_paper_report_materials(self):
         build_module_image_prompt = load_prompt_builder()
         authority_module = next(module for module in DEFAULT_MODULES if module["id"] == "authority")
 
@@ -44,10 +44,12 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("用户修改后的 CICA 精华", prompt)
         self.assertIn("用户补充的强韧屏障卖点", prompt)
         self.assertIn("SGS 第三方检测报告", prompt)
-        self.assertIn("科学家/研究员", prompt)
-        self.assertIn("实验室", prompt)
-        self.assertIn("报告轮廓", prompt)
-        self.assertIn("文字要小", prompt)
+        self.assertIn("真实纸质检测报告", prompt)
+        self.assertIn("纸张纤维", prompt)
+        self.assertIn("折痕", prompt)
+        self.assertIn("装订", prompt)
+        self.assertIn("实验室背景只能虚化", prompt)
+        self.assertIn("不要半透明 UI 卡片", prompt)
         self.assertIn("不写具体报告编号", prompt)
         self.assertNotIn("样本 32 人", prompt)
         self.assertNotIn("SGS-CICA-2026-042", prompt)
@@ -70,7 +72,7 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("图片必须像可直接用于店铺上架的成品物料", prompt)
         self.assertIn("隐藏 brief、模块职责、资料限制、合规提醒只作为生成依据", prompt)
         self.assertIn("不能排版成图片里的说明框、段落、清单、脚注或底部文字区域", prompt)
-        self.assertIn("报告卡片只保留轮廓、图形和不可读纹理", prompt)
+        self.assertIn("报告只能做成真实纸质材质", prompt)
         self.assertIn("仅短标题、极短标签、必要数值或步骤编号需要清晰可读", prompt)
         self.assertNotIn("数据/说明区", prompt)
         self.assertNotIn("底部补充区", prompt)
@@ -78,6 +80,7 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertNotIn("说明文字清晰可读", prompt)
         self.assertNotIn("免责声明", prompt)
         self.assertNotIn("占位纹理", prompt)
+        self.assertNotIn("半透明报告轮廓卡片", prompt)
 
     def test_effect_prompt_contains_complete_metrics_sources_and_compliance_limits(self):
         build_module_image_prompt = load_prompt_builder()
