@@ -734,6 +734,10 @@ a {
   border-color: rgba(52, 127, 185, 0.28);
 }
 
+.aiCustomStyleCard > h3 {
+  margin-top: 10px;
+}
+
 .aiStylePreview {
   width: 100%;
   aspect-ratio: 16 / 10;
@@ -749,6 +753,10 @@ a {
   min-height: 44px;
   font-size: 13px;
   line-height: 1.6;
+}
+
+.aiPlanButton {
+  margin-top: 22px;
 }
 
 .selectedMark {
@@ -791,23 +799,6 @@ a {
   color: #59636d;
   font-size: 13px;
   font-weight: 700;
-}
-
-.styleRefHint {
-  margin: 0 0 16px;
-  color: var(--muted);
-  line-height: 1.6;
-  font-size: 15px;
-}
-
-.styleRefCard {
-  max-width: 420px;
-  position: relative;
-}
-
-.styleRefCard.selected {
-  border-color: var(--green-700);
-  background: linear-gradient(180deg, #ffffff, #f3faf4);
 }
 
 .fieldList {
@@ -1929,4 +1920,3 @@ a {
   font-weight: 800;
   padding: 0 5px;
 }
-

@@ -1,14 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Check, FileText, FileUp, FolderOpen, Sparkles, Trash2 } from "lucide-react";
-import type { ProductVisualSuggestion, StyleOption, StyleSource, UploadedFileInfo, UploadSlot } from "@/lib/types";
-
-function formatFileSize(size: number) {
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
-}
+import { Check, Sparkles } from "lucide-react";
+import type { StyleOption, StyleSource } from "@/lib/types";
 
 export function StyleStep({
   styles,
@@ -18,18 +11,12 @@ export function StyleStep({
   customStyle,
   isPlanningCustomStyle,
   isGeneratingStyleSample,
-  uploadedFiles,
-  brandColors,
-  productVisualSuggestion,
   recommendedStyleId,
   onSelect,
   onAiCustomStyleSelect,
   onPlanAiCustomStyle,
   onGenerateAiStyleSample,
-  onStyleReferenceSelect,
   onCategoryChange,
-  onStyleFilesAdded,
-  onStyleFileRemove,
   onBack,
   onNext
 }: {
@@ -40,30 +27,15 @@ export function StyleStep({
   customStyle: StyleOption | null;
   isPlanningCustomStyle: boolean;
   isGeneratingStyleSample: boolean;
-  uploadedFiles: UploadedFileInfo[];
-  brandColors: string[];
-  productVisualSuggestion: ProductVisualSuggestion | null;
   recommendedStyleId: string;
   onSelect: (id: string) => void;
   onAiCustomStyleSelect: () => void;
   onPlanAiCustomStyle: () => void;
   onGenerateAiStyleSample: () => void;
-  onStyleReferenceSelect: () => void;
   onCategoryChange: (category: string) => void;
-  onStyleFilesAdded: (slot: UploadSlot, files: File[]) => void;
-  onStyleFileRemove: (id: string) => void;
   onBack: () => void;
   onNext: () => void;
 }) {
-  const [isDragging, setIsDragging] = useState(false);
-  const styleRefFiles = uploadedFiles.filter((f) => f.slot === "style_reference");
-  const isReferenceSelected = styleSource === "reference";
-
-  function handleFiles(files: FileList | File[]) {
-    const nextFiles = Array.from(files);
-    if (nextFiles.length > 0) onStyleFilesAdded("style_reference", nextFiles);
-  }
-
   return (
     <>
       <section className="panel mainPanel fullPanel">
@@ -85,30 +57,6 @@ export function StyleStep({
         </select>
 
         <h3 className="subheading">风格</h3>
-        {brandColors.length > 0 ? (
-          <div className="brandColorPanel">
-            <div>
-              <b>Gemini 产品视觉建议</b>
-              <span>{productVisualSuggestion?.visual_direction || "建议色会提供给 AI 自定义风格，也保留预设风格推荐作参考。"}</span>
-            </div>
-            <div className="colorSwatches">
-              {brandColors.map((color) => (
-                <span key={color}>
-                  <i style={{ background: color }} />
-                  {color}
-                </span>
-              ))}
-            </div>
-            {productVisualSuggestion?.keywords.length ? (
-              <div className="keywordRow">
-                {productVisualSuggestion.keywords.map((keyword) => (
-                  <span key={keyword}>{keyword}</span>
-                ))}
-              </div>
-            ) : null}
-            {productVisualSuggestion?.reasoning ? <p className="aiStyleBrief">{productVisualSuggestion.reasoning}</p> : null}
-          </div>
-        ) : null}
         <div className="styleGrid">
           <article className={`styleCard aiCustomStyleCard ${styleSource === "ai_custom" ? "selected" : ""}`}>
             {styleSource === "ai_custom" ? (
@@ -116,7 +64,6 @@ export function StyleStep({
                 <Check size={24} />
               </span>
             ) : null}
-            <em className="recommendBadge">Gemini 3.1 Pro</em>
             <h3 style={{ color: customStyle?.primary_color ?? "#1F8C43" }}>AI 自定义风格</h3>
             <p>{customStyle ? customStyle.name : "让 AI 根据产品定位、卖点和包装色规划全新风格。"}</p>
             {customStyle?.asset ? (
@@ -142,7 +89,7 @@ export function StyleStep({
                 </button>
               </>
             ) : null}
-            <button className="primaryButton fullWidth" type="button" onClick={onPlanAiCustomStyle} disabled={isPlanningCustomStyle}>
+            <button className="primaryButton fullWidth aiPlanButton" type="button" onClick={onPlanAiCustomStyle} disabled={isPlanningCustomStyle}>
               {isPlanningCustomStyle ? "AI 规划中..." : customStyle ? "重新规划风格" : "让 AI 规划风格"}
             </button>
           </article>
@@ -172,79 +119,6 @@ export function StyleStep({
             );
           })}
         </div>
-
-        <h3 className="subheading" style={{ marginTop: "2rem" }}>
-          <Sparkles size={20} style={{ verticalAlign: "middle", marginRight: "0.4rem" }} />
-          风格参考图（可选）
-        </h3>
-        <p className="styleRefHint">上传参考图后，AI 只参考排版、色调、光影和氛围，不改变产品外观、包装和品牌信息。</p>
-
-        <article
-          className={`uploadSlotCard styleRefCard ${isDragging ? "dragging" : ""} ${isReferenceSelected ? "selected" : ""}`}
-          onDragOver={(event) => {
-            event.preventDefault();
-            setIsDragging(true);
-          }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={(event) => {
-            event.preventDefault();
-            setIsDragging(false);
-            handleFiles(event.dataTransfer.files);
-          }}
-        >
-          {isReferenceSelected ? (
-            <span className="selectedMark">
-              <Check size={24} />
-            </span>
-          ) : null}
-          <div className="slotIcon">
-            <Sparkles size={28} />
-          </div>
-          <h3>风格参考图</h3>
-          <p>只参考排版、色调、光影和氛围，不改变产品外观、包装和品牌信息。</p>
-          <input
-            id="style-reference-upload"
-            className="fileInput"
-            type="file"
-            multiple
-            accept="image/*"
-            onChange={(event) => {
-              if (event.currentTarget.files) handleFiles(event.currentTarget.files);
-              event.currentTarget.value = "";
-            }}
-          />
-          <label className="outlineButton" htmlFor="style-reference-upload">
-            <FolderOpen size={19} />
-            选择文件
-          </label>
-          <button
-            className="outlineButton"
-            type="button"
-            disabled={styleRefFiles.length === 0}
-            onClick={onStyleReferenceSelect}
-          >
-            {isReferenceSelected ? "已选择" : "选择此风格"}
-          </button>
-          <span className="dropHint">
-            <FileUp size={16} />
-            {styleRefFiles.length > 0 ? "可作为独立风格来源" : "上传后可选择此风格"}
-          </span>
-
-          {styleRefFiles.length > 0 ? (
-            <div className="slotFileList">
-              {styleRefFiles.map((file) => (
-                <div className="uploadedFileRow compact" key={file.id}>
-                  <FileText size={18} />
-                  <span>{file.name}</span>
-                  <em>{formatFileSize(file.size)}</em>
-                  <button aria-label={`移除 ${file.name}`} onClick={() => onStyleFileRemove(file.id)}>
-                    <Trash2 size={17} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          ) : null}
-        </article>
       </section>
 
       <footer className="bottomActions">

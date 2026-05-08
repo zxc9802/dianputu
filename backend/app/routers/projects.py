@@ -253,56 +253,17 @@ def normalize_style_plan_from_model(raw: str) -> dict[str, Any]:
     }
 
 
-def _hex_colors(value: Any) -> list[str]:
-    candidates = value if isinstance(value, list) else _string_list(value, [])
-    colors: list[str] = []
-    for item in candidates:
-        color = str(item).strip().upper()
-        if re.fullmatch(r"#[0-9A-F]{6}", color):
-            colors.append(color)
-    return colors[:5]
-
-
-def normalize_product_visual_suggestion_from_model(raw: str) -> dict[str, Any]:
-    data = _extract_json_object(raw) or {}
-    return {
-        "recommended_colors": _hex_colors(data.get("recommended_colors")),
-        "keywords": _string_list(data.get("keywords"), [])[:6],
-        "visual_direction": str(data.get("visual_direction") or "").strip(),
-        "reasoning": str(data.get("reasoning") or "").strip(),
-    }
-
-
-def build_product_visual_analysis_messages(material: UploadedMaterial, product_info: dict[str, Any] | None = None) -> list[dict[str, Any]]:
-    prompt = "\n".join(
-        [
-            "你是资深电商美术指导。请根据产品图给出电商视觉建议。",
-            "不要做像素级取色，也不要只统计图片里面积最大的背景色；要理解产品包装、质地、品类和定位后给出适合详情页的建议。",
-            "必须只输出 JSON，不要输出解释文字。",
-            "JSON 字段：recommended_colors, keywords, visual_direction, reasoning。",
-            "recommended_colors 输出 2-5 个十六进制颜色，优先选择适合电商视觉延展的主色/辅助色，而不是灰色阴影或白色背景。",
-            "keywords 输出 3-6 个中文短词；visual_direction 描述色调、材质、光影和画面气质；reasoning 简短说明依据。",
-            f"产品信息 JSON：{json.dumps(product_info or {}, ensure_ascii=False)}",
-            f"上传产品图：{material.filename} ({material.content_type})",
-        ]
-    )
-    return [
-        {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {"url": _data_uri(material)}},
-            ],
-        }
-    ]
-
-
-def build_style_planning_messages(product_info: dict[str, Any] | None, category: str | None, brand_colors: list[str] | None) -> list[dict[str, Any]]:
+def build_style_planning_messages(
+    product_info: dict[str, Any] | None,
+    category: str | None,
+    product_images: list[UploadedMaterial] | None = None,
+) -> list[dict[str, Any]]:
     info = product_info or {}
     prompt = "\n".join(
         [
-            "你是资深电商美术指导。请基于产品资料规划一个全新的电商视觉风格。",
+            "你是资深电商美术指导。请基于产品资料和产品图，全权规划一个全新的电商视觉风格。",
             "不要从现有三套预设风格里选择，也不要只输出绿色修护、蓝色补水、金色抗老这类模板名。",
+            "不要依赖前置颜色提取；请直接观察产品图，综合包装、质地、品类、价格感和卖点来决定主色、辅助气质和视觉语言。",
             "必须只输出 JSON，不要输出解释文字。",
             "JSON 字段：name, primary_color, keywords, visual_direction, layout_guidance, reasoning。",
             "要求：name 是 6-12 个中文字符的风格名；primary_color 是十六进制颜色；keywords 是 3-6 个短词。",
@@ -310,10 +271,13 @@ def build_style_planning_messages(product_info: dict[str, Any] | None, category:
             "避免医疗化、绝对化功效，不编造品牌授权或真实机构背书。",
             f"品类：{category or info.get('category') or '护肤品'}",
             f"产品信息 JSON：{json.dumps(info, ensure_ascii=False)}",
-            f"产品包装主色：{', '.join(brand_colors or []) or '未提取到主色'}",
         ]
     )
-    return [{"role": "user", "content": prompt}]
+    content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+    for material in (product_images or [])[:3]:
+        if material.content_type.startswith("image/") and material.data:
+            content.append({"type": "image_url", "image_url": {"url": _data_uri(material)}})
+    return [{"role": "user", "content": content}]
 
 
 def _plain_text(value: Any, fallback: str) -> str:
@@ -403,39 +367,31 @@ async def analyze_uploaded_materials(materials: list[UploadedMaterial]) -> dict[
     return {"source": "model", "product_info": normalize_product_info_from_model(content), "raw": content}
 
 
-async def analyze_product_visuals(material: UploadedMaterial, product_info: dict[str, Any] | None = None) -> dict[str, Any]:
-    settings = get_model_settings()
-    if not material.content_type.startswith("image/") or not material.data:
-        return {"source": "error", "error": "product image is required"}
-    if not settings.text.api_key and not settings.fallback_text.api_key:
-        return {"source": "error", "error": "text model is not configured"}
-
-    try:
-        image_url = await upload_material_image_if_configured(material)
-        model_material = UploadedMaterial(
-            filename=material.filename,
-            content_type=material.content_type,
-            data=material.data,
-            slot=material.slot,
-            text=material.text,
-            data_url=image_url,
-        )
-        content = await call_text_model_with_fallback(settings, build_product_visual_analysis_messages(model_material, product_info))
-    except Exception as exc:
-        return {"source": "error", "error": str(exc)}
-    if not content:
-        return {"source": "error", "error": "text model returned empty content"}
-
-    return {"source": "model", "suggestion": normalize_product_visual_suggestion_from_model(content), "raw": content}
-
-
-async def plan_custom_style(product_info: dict[str, Any] | None, category: str | None = None, brand_colors: list[str] | None = None) -> dict[str, Any]:
+async def plan_custom_style(
+    product_info: dict[str, Any] | None,
+    category: str | None = None,
+    product_images: list[UploadedMaterial] | None = None,
+) -> dict[str, Any]:
     settings = get_model_settings()
     if not settings.text.api_key and not settings.fallback_text.api_key:
         return {"source": "error", "error": "text model is not configured"}
 
     try:
-        content = await call_text_model_with_fallback(settings, build_style_planning_messages(product_info, category, brand_colors))
+        model_images: list[UploadedMaterial] = []
+        for material in product_images or []:
+            if material.content_type.startswith("image/") and material.data:
+                image_url = await upload_material_image_if_configured(material)
+                model_images.append(
+                    UploadedMaterial(
+                        filename=material.filename,
+                        content_type=material.content_type,
+                        data=material.data,
+                        slot=material.slot,
+                        text=material.text,
+                        data_url=image_url,
+                    )
+                )
+        content = await call_text_model_with_fallback(settings, build_style_planning_messages(product_info, category, model_images))
     except Exception as exc:
         return {"source": "error", "error": str(exc)}
     if not content:
@@ -700,10 +656,6 @@ try:
     class AnalyzeMaterialsRequest(BaseModel):
         materials: list[MaterialPayload] = Field(default_factory=list)
 
-    class AnalyzeProductVisualRequest(BaseModel):
-        material: MaterialPayload
-        product_info: dict[str, Any] | None = None
-
     class GenerateRequest(BaseModel):
         module_ids: list[str] = Field(default_factory=lambda: [module["id"] for module in DEFAULT_MODULES])
         style_id: str = "green_repair"
@@ -717,7 +669,7 @@ try:
     class PlanStyleRequest(BaseModel):
         product_info: dict[str, Any] | None = None
         category: str | None = None
-        brand_colors: list[str] = Field(default_factory=list)
+        product_images: list[MaterialPayload] = Field(default_factory=list)
 
     class PlanStyleSampleRequest(BaseModel):
         style: dict[str, Any]
@@ -756,13 +708,10 @@ try:
         materials = [uploaded_material_from_payload(payload) for payload in request.materials[:8]]
         return await analyze_uploaded_materials(materials)
 
-    @router.post("/analyze-product-visual")
-    async def analyze_project_product_visual(request: AnalyzeProductVisualRequest) -> dict[str, Any]:
-        return await analyze_product_visuals(uploaded_material_from_payload(request.material), request.product_info)
-
     @router.post("/plan-style")
     async def plan_project_style(request: PlanStyleRequest) -> dict[str, Any]:
-        return await plan_custom_style(request.product_info, request.category, request.brand_colors[:8])
+        product_images = [uploaded_material_from_payload(payload) for payload in request.product_images[:3]]
+        return await plan_custom_style(request.product_info, request.category, product_images)
 
     @router.post("/plan-style-sample")
     async def plan_project_style_sample(request: PlanStyleSampleRequest) -> dict[str, Any]:

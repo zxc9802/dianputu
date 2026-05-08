@@ -241,7 +241,7 @@ export function ModulesStep({
             <div className="planMeta">
               <div>
                 <span>当前风格</span>
-                <b>{styleSource === "reference" ? "风格参考图" : selectedStyle.name}</b>
+                <b>{selectedStyle.name}</b>
               </div>
               <div>
                 <span>生成版块</span>

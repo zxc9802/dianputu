@@ -20,15 +20,6 @@ const sandbox = {
   module: { exports: {} },
   require(request) {
     if (request === "@/lib/types") return {};
-    if (request === "./constants") {
-      return {
-        STYLE_OPTIONS: [
-          { id: "green_repair", name: "绿色修护风", keywords: [], primary_color: "#1F8C43", asset: "" },
-          { id: "blue_hydration", name: "蓝色补水风", keywords: [], primary_color: "#347FB9", asset: "" },
-          { id: "gold_antiaging", name: "金色抗老风", keywords: [], primary_color: "#B88727", asset: "" }
-        ]
-      };
-    }
     throw new Error(`Unexpected require: ${request}`);
   },
   Date,
@@ -41,9 +32,7 @@ const {
   appendImageVersions,
   applyTemplateToModules,
   resolveReusableHistoryId,
-  extractDominantColorsFromRgba,
   getSelectedGeneratedImages,
-  recommendStyleFromBrandColors,
   runParallelImageGeneration
 } = sandbox.module.exports;
 
@@ -65,17 +54,6 @@ assert.deepEqual(JSON.parse(JSON.stringify(selected)), [{ module_id: "hero", url
 assert.equal(resolveReusableHistoryId(null, null), undefined);
 assert.equal(resolveReusableHistoryId(null, "history-1"), "history-1");
 assert.equal(resolveReusableHistoryId("history-1", "history-2"), "history-1");
-
-const dominant = extractDominantColorsFromRgba([
-  31, 140, 67, 255,
-  31, 140, 67, 255,
-  52, 127, 185, 255,
-  255, 255, 255, 255
-]);
-assert.deepEqual([...dominant.slice(0, 2)], ["#1F8C43", "#347FB9"]);
-
-const recommendation = recommendStyleFromBrandColors(["#208C40"]);
-assert.equal(recommendation?.styleId, "green_repair");
 
 const modules = [
   { id: "hero", name: "详情首图", description: "", enabled: false, order: 9, image_group: "detail" },

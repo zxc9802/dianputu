@@ -11,7 +11,6 @@ import { StyleStep } from "@/components/StyleStep";
 import { UploadStep } from "@/components/UploadStep";
 import { COMMERCE_PLATFORMS, DEMO_MODEL_CONFIG, OFFICIAL_PROJECT_TEMPLATES } from "@/lib/constants";
 import {
-  analyzeProductVisual,
   analyzeUploadedMaterials,
   editGeneratedImage,
   fetchModelConfig,
@@ -33,7 +32,6 @@ import {
   applyTemplateToModules,
   createTemplateFromProject,
   getSelectedGeneratedImages,
-  recommendStyleFromBrandColors,
   resolveReusableHistoryId,
   runParallelImageGeneration,
   selectImageVersion
@@ -47,7 +45,6 @@ import type {
   ModuleConfig,
   PersistedProjectState,
   ProductInfo,
-  ProductVisualSuggestion,
   ProjectTemplate,
   PublicModelConfig,
   StepId,
@@ -104,7 +101,7 @@ function readPersistedProjectState(): PersistedProjectState | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<PersistedProjectState>;
     const activeImageGroup = ["main", "campaign", "detail"].includes(parsed.activeImageGroup ?? "") ? (parsed.activeImageGroup as ImageGroup) : "main";
-    const styleSource: StyleSource = parsed.styleSource === "reference" || parsed.styleSource === "ai_custom" ? parsed.styleSource : "preset";
+    const styleSource: StyleSource = parsed.styleSource === "ai_custom" ? parsed.styleSource : "preset";
     return {
       productInfo: parsed.productInfo ?? null,
       hasAiProductInfo: Boolean(parsed.hasAiProductInfo && parsed.productInfo),
@@ -120,8 +117,6 @@ function readPersistedProjectState(): PersistedProjectState | null {
       generatedImageVersions: parsed.generatedImageVersions && typeof parsed.generatedImageVersions === "object" ? parsed.generatedImageVersions : {},
       selectedVersionIds: parsed.selectedVersionIds && typeof parsed.selectedVersionIds === "object" ? parsed.selectedVersionIds : {},
       userTemplates: Array.isArray(parsed.userTemplates) ? parsed.userTemplates : [],
-      brandColors: Array.isArray(parsed.brandColors) ? parsed.brandColors.filter((color): color is string => typeof color === "string") : [],
-      productVisualSuggestion: parsed.productVisualSuggestion && typeof parsed.productVisualSuggestion === "object" ? parsed.productVisualSuggestion : null,
       statusText: parsed.statusText || "原型预览"
     };
   } catch {
@@ -188,8 +183,6 @@ export default function Home() {
   const [modelConfig, setModelConfig] = useState<PublicModelConfig>(DEMO_MODEL_CONFIG);
   const [imageVersionStore, setImageVersionStore] = useState<ImageVersionStore>(() => createEmptyImageVersionStore());
   const [userTemplates, setUserTemplates] = useState<ProjectTemplate[]>([]);
-  const [brandColors, setBrandColors] = useState<string[]>([]);
-  const [productVisualSuggestion, setProductVisualSuggestion] = useState<ProductVisualSuggestion | null>(null);
   const [generationProgress, setGenerationProgress] = useState<GenerationProgressMap>(() => createIdleGenerationProgress());
   const [statusText, setStatusText] = useState("原型预览");
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFileInfo[]>([]);
@@ -223,8 +216,6 @@ export default function Home() {
           setImageVersionStore(appendImageVersions(createEmptyImageVersionStore(), restored.generatedImages, "restored", Date.now()));
         }
         setUserTemplates(restored.userTemplates);
-        setBrandColors(restored.brandColors);
-        setProductVisualSuggestion(restored.productVisualSuggestion);
         setStatusText(restored.generatedImages.length || Object.keys(restored.generatedImageVersions).length ? "已恢复生成结果" : restored.statusText);
       } else {
         setModules(defaults.modules);
@@ -251,11 +242,9 @@ export default function Home() {
       generatedImageVersions: imageVersionStore.versions,
       selectedVersionIds: imageVersionStore.selectedVersionIds,
       userTemplates,
-      brandColors,
-      productVisualSuggestion,
       statusText
     });
-  }, [activeImageGroup, brandColors, customStyle, hasAiProductInfo, hasRestoredProjectState, imageVersionStore, modules, productInfo, productVisualSuggestion, promotionInfo, selectedCategory, selectedPlatformId, selectedStyleId, statusText, styleSource, userTemplates]);
+  }, [activeImageGroup, customStyle, hasAiProductInfo, hasRestoredProjectState, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedPlatformId, selectedStyleId, statusText, styleSource, userTemplates]);
 
   useEffect(() => {
     function syncStepFromHash() {
@@ -280,7 +269,6 @@ export default function Home() {
     () => getSelectedGeneratedImages(imageVersionStore.versions, imageVersionStore.selectedVersionIds),
     [imageVersionStore]
   );
-  const styleRecommendation = useMemo(() => recommendStyleFromBrandColors(brandColors), [brandColors]);
   const allTemplates = useMemo(() => [...OFFICIAL_PROJECT_TEMPLATES, ...userTemplates], [userTemplates]);
 
   function go(step: StepId) {
@@ -301,35 +289,6 @@ export default function Home() {
     setStatusText("读取上传文件");
     const nextFiles = await Promise.all(files.map((file) => fileToUploadInfo(slot, file)));
     setUploadedFiles((current) => [...current, ...nextFiles]);
-    if (slot === "product_image") {
-      const firstImage = nextFiles.find((file) => file.type.startsWith("image/") && file.dataUrl);
-      if (firstImage?.dataUrl) {
-        const result = await analyzeProductVisual(
-          {
-            slot: firstImage.slot,
-            filename: firstImage.name,
-            content_type: firstImage.type,
-            data_url: firstImage.dataUrl
-          },
-          productInfo
-        );
-        if (result.source === "model" && result.suggestion) {
-          const colors = result.suggestion.recommended_colors;
-          setProductVisualSuggestion(result.suggestion);
-          setBrandColors(colors);
-          const recommendation = recommendStyleFromBrandColors(colors);
-          if (recommendation) {
-            setSelectedStyleId(recommendation.styleId);
-            setStatusText("Gemini 已给出产品视觉建议");
-            return;
-          }
-          setStatusText("Gemini 已给出产品视觉建议");
-          return;
-        }
-        setStatusText(`产品视觉建议失败：${result.error ?? "模型未返回建议"}`);
-        return;
-      }
-    }
     setStatusText("资料已加入");
   }
 
@@ -362,8 +321,6 @@ export default function Home() {
     setUploadedFiles([]);
     setManualFieldKeys([]);
     setAnalysisSource("");
-    setProductVisualSuggestion(null);
-    setBrandColors([]);
     setImageVersionStore(createEmptyImageVersionStore());
     setGenerationProgress(createIdleGenerationProgress());
     setStatusText("已复制配置，请替换新产品资料");
@@ -405,10 +362,6 @@ export default function Home() {
     setStyleSource("preset");
   }
 
-  function selectStyleReference() {
-    setStyleSource("reference");
-  }
-
   function selectAiCustomStyle() {
     if (!customStyle) {
       setStatusText("请先点击让 AI 规划风格");
@@ -427,7 +380,15 @@ export default function Home() {
     setIsPlanningCustomStyle(true);
     setStatusText("Gemini 3.1 Pro 正在规划风格");
     try {
-      const result = await planAiCustomStyle(productInfo, selectedCategory, brandColors);
+      const productImages = uploadedFiles
+        .filter((file) => file.slot === "product_image" && file.type.startsWith("image/") && file.dataUrl)
+        .map((file) => ({
+          slot: file.slot,
+          filename: file.name,
+          content_type: file.type,
+          data_url: file.dataUrl
+        }));
+      const result = await planAiCustomStyle(productInfo, selectedCategory, productImages);
       if (result.source === "model" && result.style) {
         setCustomStyle(result.style);
         setStyleSource("ai_custom");
@@ -534,18 +495,9 @@ export default function Home() {
       .filter((file) => file.slot === "product_image" && file.type.startsWith("image/") && file.dataUrl)
       .map((file) => file.dataUrl as string)
       .slice(0, 4);
-    const styleReferenceImages = uploadedFiles
-      .filter((file) => file.slot === "style_reference" && file.type.startsWith("image/") && file.dataUrl)
-      .map((file) => file.dataUrl as string)
-      .slice(0, 4);
-    const activeStyleReferenceImages = styleSource === "reference" ? styleReferenceImages : [];
     const activeCustomStyle = styleSource === "ai_custom" && customStyle ? customStyle : undefined;
     if (modulesToGenerate.some((module) => WHITE_BACKGROUND_MODULE_IDS.has(module.id)) && referenceImages.length === 0) {
       setStatusText("白底图需要先上传产品图，避免 AI 重绘导致包装或 Logo 变形");
-      return;
-    }
-    if (styleSource === "reference" && activeStyleReferenceImages.length === 0) {
-      setStatusText("请先上传并选择风格参考图");
       return;
     }
     if (styleSource === "ai_custom" && !activeCustomStyle) {
@@ -576,7 +528,7 @@ export default function Home() {
             referenceImages,
             group === "campaign" ? promotionInfo : "",
             selectedPlatform.generationSize,
-            activeStyleReferenceImages,
+            [],
             activeCustomStyle
           ),
         (module, result, progress) => {
@@ -634,13 +586,11 @@ export default function Home() {
         generatedImageVersions: imageVersionStore.versions,
         selectedVersionIds: imageVersionStore.selectedVersionIds,
         userTemplates,
-        brandColors,
-        productVisualSuggestion,
         statusText: "已从历史恢复"
       }
     });
     setCurrentHistoryId((existingId) => resolveReusableHistoryId(existingId, saved?.id ?? null) ?? null);
-  }, [activeImageGroup, brandColors, currentHistoryId, customStyle, hasAiProductInfo, imageVersionStore, modules, productInfo, productVisualSuggestion, promotionInfo, selectedCategory, selectedPlatformId, selectedStyleId, statusText, styleSource, styles, userTemplates]);
+  }, [activeImageGroup, currentHistoryId, customStyle, hasAiProductInfo, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedPlatformId, selectedStyleId, statusText, styleSource, styles, userTemplates]);
 
   // Auto-save to history when new images are generated
   useEffect(() => {
@@ -672,8 +622,6 @@ export default function Home() {
       setImageVersionStore(appendImageVersions(createEmptyImageVersionStore(), state.generatedImages, "restored", Date.now()));
     }
     if (state.userTemplates?.length) setUserTemplates(state.userTemplates);
-    if (state.brandColors?.length) setBrandColors(state.brandColors);
-    setProductVisualSuggestion(state.productVisualSuggestion ?? null);
     setStatusText("已从历史记录恢复");
     go("preview");
   }
@@ -718,7 +666,7 @@ export default function Home() {
             uploadedFiles={uploadedFiles}
             productInfo={productInfo}
             productName={productInfo?.product_name ?? "待 AI 解析"}
-            selectedStyleName={styleSource === "reference" ? "风格参考图" : styleSource === "ai_custom" ? customStyle?.name ?? "AI 自定义风格" : selectedStyle.name}
+            selectedStyleName={styleSource === "ai_custom" ? customStyle?.name ?? "AI 自定义风格" : selectedStyle.name}
             moduleCount={modules.filter((module) => module.enabled).length}
             manualFieldKeys={manualFieldKeys}
             isAnalyzing={isAnalyzing}
@@ -740,18 +688,12 @@ export default function Home() {
             customStyle={customStyle}
             isPlanningCustomStyle={isPlanningCustomStyle}
             isGeneratingStyleSample={isGeneratingStyleSample}
-            uploadedFiles={uploadedFiles}
-            brandColors={brandColors}
-            productVisualSuggestion={productVisualSuggestion}
-            recommendedStyleId={styleRecommendation?.styleId ?? ""}
+            recommendedStyleId=""
             onSelect={selectPresetStyle}
             onAiCustomStyleSelect={selectAiCustomStyle}
             onPlanAiCustomStyle={handlePlanAiCustomStyle}
             onGenerateAiStyleSample={handleGenerateAiStyleSample}
-            onStyleReferenceSelect={selectStyleReference}
             onCategoryChange={updateCategory}
-            onStyleFilesAdded={addUploadedFiles}
-            onStyleFileRemove={(id) => setUploadedFiles((current) => current.filter((file) => file.id !== id))}
             onBack={() => go(previousStep(activeStep))}
             onNext={() => go(nextStep(activeStep))}
           />

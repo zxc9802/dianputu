@@ -238,12 +238,6 @@ export function UploadStep({
               </p>
             </div>
             <div>
-              <Sparkles size={26} />
-              <p>
-                <b>风格参考：</b>{filesForSlot(uploadedFiles, "style_reference").length} 张
-              </p>
-            </div>
-            <div>
               <Package size={26} />
               <p>
                 <b>生成项：</b>{moduleCount} 个

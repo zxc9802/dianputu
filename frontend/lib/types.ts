@@ -1,8 +1,8 @@
 export type StepId = "upload" | "style" | "review" | "modules" | "preview";
 
-export type UploadSlot = "product_image" | "style_reference" | "reports" | "documents";
+export type UploadSlot = "product_image" | "reports" | "documents";
 
-export type StyleSource = "preset" | "reference" | "ai_custom";
+export type StyleSource = "preset" | "ai_custom";
 
 export type StyleOption = {
   id: string;
@@ -84,18 +84,6 @@ export type ProjectTemplate = {
   source: "official" | "user";
 };
 
-export type BrandColorRecommendation = {
-  styleId: string;
-  distance: number;
-};
-
-export type ProductVisualSuggestion = {
-  recommended_colors: string[];
-  keywords: string[];
-  visual_direction: string;
-  reasoning: string;
-};
-
 export type MaterialPayload = {
   slot: UploadSlot;
   filename: string;
@@ -151,7 +139,5 @@ export type PersistedProjectState = {
   generatedImageVersions: GeneratedImageVersionState;
   selectedVersionIds: Record<string, string>;
   userTemplates: ProjectTemplate[];
-  brandColors: string[];
-  productVisualSuggestion: ProductVisualSuggestion | null;
   statusText: string;
 };

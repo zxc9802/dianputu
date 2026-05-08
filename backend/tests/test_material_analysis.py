@@ -5,15 +5,12 @@ from unittest.mock import AsyncMock, patch
 
 from app.routers.projects import (
     UploadedMaterial,
-    analyze_product_visuals,
     analyze_uploaded_materials,
     build_custom_style_sample_prompt,
     build_material_analysis_messages,
-    build_product_visual_analysis_messages,
     build_style_planning_messages,
     generate_custom_style_sample,
     generate_detail_images,
-    normalize_product_visual_suggestion_from_model,
     normalize_product_info_from_model,
     normalize_style_plan_from_model,
     prepare_compose_image_urls,
@@ -39,23 +36,6 @@ class MaterialAnalysisTests(unittest.TestCase):
         content = messages[0]["content"]
         self.assertEqual(content[0]["type"], "text")
         self.assertIn("main-product.png", content[0]["text"])
-        self.assertEqual(content[1]["type"], "image_url")
-        self.assertTrue(content[1]["image_url"]["url"].startswith("data:image/png;base64,"))
-
-    def test_product_visual_analysis_message_includes_product_image(self):
-        messages = build_product_visual_analysis_messages(
-            UploadedMaterial(
-                filename="main-product.png",
-                content_type="image/png",
-                data=b"\x89PNG\r\n",
-                slot="product_image",
-            ),
-            {"product_name": "琉光面霜", "category": "面霜乳液"},
-        )
-
-        content = messages[0]["content"]
-        self.assertIn("根据产品图给出电商视觉建议", content[0]["text"])
-        self.assertIn("琉光面霜", content[0]["text"])
         self.assertEqual(content[1]["type"], "image_url")
         self.assertTrue(content[1]["image_url"]["url"].startswith("data:image/png;base64,"))
 
@@ -112,22 +92,6 @@ class MaterialAnalysisTests(unittest.TestCase):
         self.assertIn("透明凝胶", style["visual_direction"])
         self.assertIn("模块化卡片", style["layout_guidance"])
 
-    def test_model_json_is_normalized_to_product_visual_suggestion(self):
-        suggestion = normalize_product_visual_suggestion_from_model(
-            """
-            {
-              "recommended_colors": ["#D8C7B4", "#F4EFE8", "#8A6A55", "bad"],
-              "keywords": ["柔光", "滋润", "高级"],
-              "visual_direction": "暖调柔光和半透明膏霜质感",
-              "reasoning": "产品包装偏暖米色，适合表现滋润修护"
-            }
-            """
-        )
-
-        self.assertEqual(suggestion["recommended_colors"], ["#D8C7B4", "#F4EFE8", "#8A6A55"])
-        self.assertEqual(suggestion["keywords"], ["柔光", "滋润", "高级"])
-        self.assertIn("暖调柔光", suggestion["visual_direction"])
-
     def test_style_planning_message_asks_gemini_to_create_not_choose(self):
         messages = build_style_planning_messages(
             {
@@ -136,14 +100,18 @@ class MaterialAnalysisTests(unittest.TestCase):
                 "core_selling_points": ["舒缓泛红", "屏障修护"],
             },
             "护肤精华",
-            ["#D8F1EA", "#2D8C6F"],
+            [UploadedMaterial(filename="main-product.png", content_type="image/png", data=b"\x89PNG\r\n", slot="product_image")],
         )
 
-        text = messages[0]["content"]
+        content = messages[0]["content"]
+        text = content[0]["text"]
         self.assertIn("规划一个全新的电商视觉风格", text)
+        self.assertIn("全权规划", text)
         self.assertIn("不要从现有三套预设风格里选择", text)
         self.assertIn("积雪草修护精华", text)
-        self.assertIn("#D8F1EA", text)
+        self.assertNotIn("产品包装主色", text)
+        self.assertEqual(content[1]["type"], "image_url")
+        self.assertTrue(content[1]["image_url"]["url"].startswith("data:image/png;base64,"))
 
 
     def test_main_image_prompts_use_module_specific_briefs_and_visual_constraints(self):
@@ -206,25 +174,6 @@ class MaterialAnalysisTests(unittest.TestCase):
 
 
 class AnalyzeUploadedMaterialsConfigTests(unittest.IsolatedAsyncioTestCase):
-    async def test_analyze_product_visuals_calls_gemini_with_product_image(self):
-        captured_messages = []
-
-        async def fake_call_text_model(settings, messages):
-            captured_messages.extend(messages)
-            return '{"recommended_colors":["#D8C7B4"],"keywords":["柔光"],"visual_direction":"暖调柔光","reasoning":"匹配包装"}'
-
-        with patch("app.routers.projects.get_model_settings") as mocked_settings:
-            mocked_settings.return_value.text.api_key = "text-key"
-            with patch("app.routers.projects.call_text_model", new=fake_call_text_model):
-                result = await analyze_product_visuals(
-                    UploadedMaterial(filename="main.png", content_type="image/png", data=b"\x89PNG\r\n"),
-                    {"product_name": "琉光面霜"},
-                )
-
-        self.assertEqual(result["source"], "model")
-        self.assertEqual(result["suggestion"]["recommended_colors"], ["#D8C7B4"])
-        self.assertEqual(captured_messages[0]["content"][1]["type"], "image_url")
-
     async def test_analyze_uploaded_materials_reports_missing_text_model_key_separately(self):
         with patch("app.routers.projects.get_model_settings") as mocked_settings:
             mocked_settings.return_value.text.api_key = ""
@@ -295,7 +244,7 @@ class AnalyzeUploadedMaterialsConfigTests(unittest.IsolatedAsyncioTestCase):
                     result = await plan_custom_style(
                         product_info={"product_name": "积雪草修护精华", "category": "护肤精华"},
                         category="护肤精华",
-                        brand_colors=["#8ECFE6"],
+                        product_images=[UploadedMaterial(filename="main.png", content_type="image/png", data=b"\x89PNG\r\n")],
                     )
 
         self.assertEqual(result["source"], "model")
@@ -303,7 +252,9 @@ class AnalyzeUploadedMaterialsConfigTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["style"]["name"], "微晶冻感修护风")
         self.assertIn("清透冷感", result["style"]["visual_direction"])
         self.assertEqual(result["style"]["asset"], "")
-        self.assertIn("积雪草修护精华", text_mocked.call_args.args[1][0]["content"])
+        content = text_mocked.call_args.args[1][0]["content"]
+        self.assertIn("积雪草修护精华", content[0]["text"])
+        self.assertEqual(content[1]["type"], "image_url")
         image_mocked.assert_not_called()
 
     async def test_generate_custom_style_sample_uses_image_model_and_returns_asset(self):
