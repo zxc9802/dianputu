@@ -15,7 +15,17 @@ from uuid import uuid4
 
 from app.core.config import get_model_settings
 from app.demo_data import DEFAULT_MODULES, DEMO_IMAGE_URLS, STYLE_OPTIONS
+from app.services.compliance_checker import check_text_items
 from app.services.image_model import call_image_edit_model, call_image_model
+from app.services.language_renderer import (
+    DEFAULT_LANGUAGE,
+    apply_translated_text,
+    build_text_layers,
+    build_translation_messages,
+    language_label,
+    normalize_language,
+    render_text_layers_to_data_url,
+)
 from app.services.object_storage import upload_bytes_to_object_storage, upload_data_url_to_object_storage
 from app.services.prompt_builder import build_module_image_prompt
 from app.services.text_model import call_text_model
@@ -161,14 +171,20 @@ def uploaded_material_from_payload(payload: Any) -> UploadedMaterial:
 
 
 def build_material_analysis_messages(materials: list[UploadedMaterial]) -> list[dict[str, Any]]:
+    from app.services.file_parser import parse_document
+
     file_lines = "\n".join(
         f"- [{material.slot}] {material.filename} ({material.content_type or 'unknown'}, {len(material.data)} bytes)"
         for material in materials
     )
     prompt = (
         "你是电商护肤详情页产品经理。请根据上传的产品主图和资料，提取商品详情页生成所需信息。"
+        "如果资料很长，先在内部筛选最适合打动消费者、最可信、最适合上图表达的内容，再写入 JSON。"
+        "必须优先提炼：1) 可作为购买理由的核心卖点；2) 有数据或实验依据的功效点；3) 可用于权威背书的报告/资质/实验室信息；"
+        "4) 需要谨慎表达或不能直接宣传的内容。"
         "必须只输出 JSON，不要输出解释文字。字段包括：product_name, category, spec, "
-        "core_selling_points, functions, ingredients, target_users, usage_method, authority_assets, effect_claims。"
+        "core_selling_points, functions, ingredients, target_users, usage_method, authority_assets, effect_claims, material_highlights。"
+        "material_highlights 是 3-6 条面向消费者的资料亮点摘要，每条应短、可信、有转化力，并可直接辅助电商图片文案。"
         "如果图片或资料里无法确定，请基于护肤品详情页常识给出谨慎的 AI 补全，并避免绝对化医疗功效。"
         f"\n上传文件：\n{file_lines}"
     )
@@ -177,12 +193,25 @@ def build_material_analysis_messages(materials: list[UploadedMaterial]) -> list[
         if material.content_type.startswith("image/") and material.data:
             content.append({"type": "image_url", "image_url": {"url": _data_uri(material)}})
         elif material.content_type == "application/pdf" and material.data:
+            # PDF: send as file to LLM API (native support), with PyMuPDF text as fallback context.
             content.append({"type": "file", "file": {"filename": material.filename, "file_data": _data_uri(material)}})
+            result = parse_document(material.data, material.content_type, material.filename)
+            for w in result.warnings:
+                logger.warning("file parse warning file=%s warning=%s", material.filename, w)
+            if result.text:
+                content.append({"type": "text", "text": f"{material.filename} 文本提取备用：\n{result.text[:6000]}"})
         elif material.data:
-            text = (material.text or material.data[:12000].decode("utf-8", errors="ignore")).strip()
+            # Word, Excel, and other document formats: extract text via file_parser.
+            result = parse_document(material.data, material.content_type, material.filename)
+            for w in result.warnings:
+                logger.warning("file parse warning file=%s warning=%s", material.filename, w)
+            text = (material.text or result.text).strip()
             if text:
                 content.append({"type": "text", "text": f"{material.filename} 内容摘录：\n{text}"})
+            elif result.warnings:
+                content.append({"type": "text", "text": f"{material.filename}：{'；'.join(result.warnings)}"})
     return [{"role": "user", "content": content}]
+
 
 
 def _extract_json_object(raw: str) -> dict[str, Any] | None:
@@ -255,6 +284,7 @@ def normalize_product_info_from_model(raw: str) -> dict[str, Any]:
         "usage_method": _string_list(data.get("usage_method"), []),
         "authority_assets": _string_list(data.get("authority_assets"), []),
         "effect_claims": _effect_claims(data.get("effect_claims")),
+        "material_highlights": _string_list(data.get("material_highlights"), [])[:6],
         "confirmation_status": "pending",
     }
 
@@ -353,7 +383,8 @@ async def analyze_product_materials(raw_text: str | None = None) -> dict[str, An
         prompt = (
             "你是电商护肤详情页产品经理。请从资料中提炼商品信息，"
             "输出 JSON 字段：product_name, category, core_selling_points, functions, "
-            "ingredients, target_users, usage_method, authority_assets, effect_claims。"
+            "ingredients, target_users, usage_method, authority_assets, effect_claims, material_highlights。"
+            "material_highlights 写 3-6 条最能吸引消费者且有资料依据的短亮点。"
             f"\n资料：{raw_text}"
         )
         content = await call_text_model_with_retry(settings, [{"role": "user", "content": prompt}])
@@ -450,6 +481,124 @@ async def generate_custom_style_sample(style: dict[str, Any], product_info: dict
     return {"source": "error", "error": "image model returned empty content", "warnings": warnings}
 
 
+async def translate_text_layers(layers: list[dict[str, Any]], language: str) -> list[dict[str, Any]]:
+    normalized_language = normalize_language(language)
+    if normalized_language == DEFAULT_LANGUAGE or not layers:
+        return [{**layer, "text": str(layer.get("source_text") or layer.get("text") or "").strip()} for layer in layers]
+
+    settings = get_model_settings()
+    if not settings.text.api_key:
+        raise RuntimeError("text model is not configured")
+    raw = await call_text_model_with_retry(settings, build_translation_messages(layers, normalized_language))
+    if not raw:
+        raise RuntimeError("text model returned empty translation")
+    return apply_translated_text(layers, raw)
+
+
+async def render_layered_language_version(
+    *,
+    base_url: str,
+    layers: list[dict[str, Any]],
+    language: str,
+    folder: str = "translated",
+    module_id: str = "",
+    platform_id: str | None = None,
+    product_info: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    normalized_language = normalize_language(language)
+    translated_layers = await translate_text_layers(layers, normalized_language)
+    image_bytes = await _read_image_bytes(base_url)
+    data_url, warnings = render_text_layers_to_data_url(image_bytes, translated_layers, language=normalized_language)
+    uploaded_url = await upload_image_url_if_configured(data_url, f"{folder}/{normalized_language}")
+    compliance = check_project_text_compliance(
+        text_layers_to_compliance_items(translated_layers, module_id=module_id, language=normalized_language),
+        platform_id=platform_id,
+        product_info=product_info,
+    )
+    return {
+        "language": normalized_language,
+        "language_label": language_label(normalized_language),
+        "url": uploaded_url,
+        "layers": translated_layers,
+        "warnings": warnings,
+        "compliance": compliance,
+    }
+
+
+def text_layers_to_compliance_items(
+    layers: list[dict[str, Any]],
+    *,
+    module_id: str = "",
+    language: str = DEFAULT_LANGUAGE,
+) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    for layer in layers:
+        text = str(layer.get("text") or layer.get("source_text") or "").strip()
+        if not text:
+            continue
+        items.append(
+            {
+                "text": text,
+                "location": {
+                    "source_type": "text_layer",
+                    "module_id": module_id,
+                    "field": str(layer.get("role") or layer.get("id") or "text"),
+                    "language": language,
+                },
+            }
+        )
+    return items
+
+
+def check_project_text_compliance(
+    items: list[dict[str, Any]],
+    *,
+    platform_id: str | None = None,
+    product_info: dict[str, Any] | None = None,
+    debug: bool = False,
+) -> dict[str, Any]:
+    return check_text_items(items, platform_id=platform_id, product_info=product_info, debug=debug)
+
+
+async def build_layered_generated_image(
+    *,
+    module: dict[str, Any],
+    product_info: dict[str, Any] | None,
+    base_url: str,
+    promotion_info: str | None = None,
+    platform_id: str | None = None,
+) -> dict[str, Any]:
+    module_id = str(module.get("id"))
+    layers = build_text_layers(product_info, module, promotion_info=promotion_info)
+    if not layers:
+        return {
+            "module_id": module_id,
+            "url": base_url,
+            "base_url": base_url,
+            "text_layers": [],
+            "language_versions": {},
+            "compliance": check_project_text_compliance([], platform_id=platform_id, product_info=product_info),
+        }
+
+    default_version = await render_layered_language_version(
+        base_url=base_url,
+        layers=layers,
+        language=DEFAULT_LANGUAGE,
+        folder=f"generated/{module_id}/languages",
+        module_id=module_id,
+        platform_id=platform_id,
+        product_info=product_info,
+    )
+    return {
+        "module_id": module_id,
+        "url": default_version["url"],
+        "base_url": base_url,
+        "text_layers": layers,
+        "language_versions": {DEFAULT_LANGUAGE: default_version},
+        "compliance": default_version["compliance"],
+    }
+
+
 def build_fixed_product_composite_prompt(module: dict[str, Any], background_url: str | None = None) -> str:
     background_line = f"参考已生成的背景/版式方向：{background_url}" if background_url else "按当前模块提示词中的背景、版式和文案方向完成画面。"
     return "\n".join(
@@ -477,9 +626,11 @@ async def _generate_module_image(
     module_index: int,
     total_modules: int,
     platform_size: str | None = None,
+    platform_id: str | None = None,
     image_model_id: str | None = None,
     generation_mode: str = REFERENCE_GENERATE_MODE,
-) -> tuple[dict[str, str] | None, str | None]:
+    layered_text: bool = False,
+) -> tuple[dict[str, Any] | None, str | None]:
     logger.info("detail image generation start %s/%s module=%s", module_index, total_modules, module["id"])
     module_id = str(module["id"])
     if module_id in WHITE_BACKGROUND_MODULE_IDS and reference_images:
@@ -497,19 +648,20 @@ async def _generate_module_image(
         total_modules=total_modules,
         promotion_info=promotion_info,
         has_style_reference=bool(style_reference_images),
+        text_layer_mode=layered_text,
     )
     image_settings = settings.image_options.get(image_model_id or settings.image.id, settings.image)
-    try:
-        urls = await call_image_model(image_settings, prompt, image=model_reference_images or None, size=platform_size)
-    except Exception as primary_exc:
-        logger.warning("primary image generation failed %s/%s module=%s error=%s", module_index, total_modules, module["id"], primary_exc)
-        if image_settings.id != settings.image.id or not settings.fallback_image.api_key:
-            return None, f"{module['id']}: {primary_exc}"
+    image_label = f"{image_settings.label} ({image_settings.model})"
+    primary_error = ""
+    urls: list[str] = []
+    if image_settings.api_key:
         try:
-            urls = await call_image_model(settings.fallback_image, prompt, image=model_reference_images or None, size=platform_size)
-        except Exception as fallback_exc:
-            logger.warning("fallback image generation failed %s/%s module=%s error=%s", module_index, total_modules, module["id"], fallback_exc)
-            return None, f"{module['id']}: primary failed: {primary_exc}; fallback failed: {fallback_exc}"
+            urls = await call_image_model(image_settings, prompt, image=model_reference_images or None, size=platform_size)
+        except Exception as primary_exc:
+            primary_error = f"{image_label} failed: {primary_exc}"
+            logger.warning("primary image generation failed %s/%s module=%s error=%s", module_index, total_modules, module["id"], primary_exc)
+    else:
+        primary_error = f"{image_label} is not configured"
 
     if urls:
         if generation_mode == FIXED_PRODUCT_COMPOSITE_MODE and reference_images:
@@ -527,12 +679,54 @@ async def _generate_module_image(
             if composite_urls:
                 image_url = await upload_image_url_if_configured(composite_urls[0], f"generated/{module_id}")
                 logger.info("detail image generation done %s/%s module=%s mode=fixed_product_composite", module_index, total_modules, module["id"])
+                if layered_text:
+                    layered_image = await build_layered_generated_image(
+                        module=module,
+                        product_info=product_info,
+                        base_url=image_url,
+                        promotion_info=promotion_info,
+                        platform_id=platform_id,
+                    )
+                    return layered_image, None
                 return {"module_id": module["id"], "url": image_url}, None
             return None, f"{module['id']}: fixed product composite returned empty content"
         image_url = await upload_image_url_if_configured(urls[0], f"generated/{module_id}")
         logger.info("detail image generation done %s/%s module=%s", module_index, total_modules, module["id"])
+        if layered_text:
+            layered_image = await build_layered_generated_image(
+                module=module,
+                product_info=product_info,
+                base_url=image_url,
+                promotion_info=promotion_info,
+                platform_id=platform_id,
+            )
+            return layered_image, None
         return {"module_id": module["id"], "url": image_url}, None
-    return None, None
+
+    primary_error = primary_error or f"{image_label} returned empty content"
+    if image_settings.id == settings.image.id and settings.fallback_image.api_key:
+        fallback_label = f"{settings.fallback_image.label} ({settings.fallback_image.model})"
+        try:
+            fallback_urls = await call_image_model(settings.fallback_image, prompt, image=model_reference_images or None, size=platform_size)
+        except Exception as fallback_exc:
+            logger.warning("fallback image generation failed %s/%s module=%s error=%s", module_index, total_modules, module["id"], fallback_exc)
+            return None, f"{module['id']}: primary {primary_error}; fallback {fallback_label} failed: {fallback_exc}"
+        if fallback_urls:
+            image_url = await upload_image_url_if_configured(fallback_urls[0], f"generated/{module_id}")
+            logger.info("detail image generation done %s/%s module=%s source=fallback", module_index, total_modules, module["id"])
+            if layered_text:
+                layered_image = await build_layered_generated_image(
+                    module=module,
+                    product_info=product_info,
+                    base_url=image_url,
+                    promotion_info=promotion_info,
+                    platform_id=platform_id,
+                )
+                return layered_image, None
+            return {"module_id": module["id"], "url": image_url}, None
+        return None, f"{module['id']}: primary {primary_error}; fallback {fallback_label} returned empty content"
+
+    return None, f"{module['id']}: {primary_error}"
 
 
 async def generate_detail_images(
@@ -544,8 +738,10 @@ async def generate_detail_images(
     custom_style: dict[str, Any] | None = None,
     promotion_info: str | None = None,
     platform_size: str | None = None,
+    platform_id: str | None = None,
     image_model_id: str | None = None,
     generation_mode: str | None = REFERENCE_GENERATE_MODE,
+    layered_text: bool = False,
 ) -> dict[str, Any]:
     settings = get_model_settings()
     image_settings = settings.image_options.get(image_model_id or settings.image.id, settings.image)
@@ -561,8 +757,14 @@ async def generate_detail_images(
             "errors": [f"{module['id']}: {WHITE_BACKGROUND_REFERENCE_REQUIRED_ERROR}" for module in missing_white_background_reference],
         }
 
-    generated_images: list[dict[str, str]] = []
+    generated_images: list[dict[str, Any]] = []
     errors: list[str] = []
+    if not image_settings.api_key and not settings.fallback_image.api_key:
+        errors.extend(
+            f"{module['id']}: {image_settings.label} ({image_settings.model}) is not configured"
+            for module in enabled_modules
+            if str(module["id"]) not in WHITE_BACKGROUND_MODULE_IDS
+        )
     if image_settings.api_key or settings.fallback_image.api_key or (reference_images and any(str(module["id"]) in WHITE_BACKGROUND_MODULE_IDS for module in enabled_modules)):
         total_modules = len(enabled_modules)
         results = await asyncio.gather(
@@ -579,8 +781,10 @@ async def generate_detail_images(
                     module_index=index,
                     total_modules=total_modules,
                     platform_size=platform_size,
+                    platform_id=platform_id,
                     image_model_id=image_model_id,
                     generation_mode=generation_mode or REFERENCE_GENERATE_MODE,
+                    layered_text=layered_text,
                 )
                 for index, module in enumerate(enabled_modules, start=1)
             )
@@ -614,12 +818,27 @@ def build_image_edit_prompt(instruction: str) -> str:
     )
 
 
-async def edit_generated_image(image_url: str, instruction: str, platform_size: str | None = None, image_model_id: str | None = None) -> dict[str, Any]:
+async def edit_generated_image(
+    image_url: str,
+    instruction: str,
+    platform_size: str | None = None,
+    image_model_id: str | None = None,
+    platform_id: str | None = None,
+) -> dict[str, Any]:
     cleaned_instruction = instruction.strip()
     if not image_url:
         return {"source": "error", "error": "image_url is required"}
     if not cleaned_instruction:
         return {"source": "error", "error": "instruction is required"}
+    compliance = check_project_text_compliance(
+        [
+            {
+                "text": cleaned_instruction,
+                "location": {"source_type": "edit_instruction", "field": "instruction"},
+            }
+        ],
+        platform_id=platform_id,
+    )
 
     settings = get_model_settings()
     image_settings = settings.image_options.get(image_model_id or settings.image.id, settings.image)
@@ -648,7 +867,7 @@ async def edit_generated_image(image_url: str, instruction: str, platform_size: 
     if not urls:
         return {"source": "error", "error": "image model returned empty content"}
     url = await upload_image_url_if_configured(urls[0], "edited")
-    return {"source": "model", "url": url}
+    return {"source": "model", "url": url, "compliance": compliance}
 
 
 async def _read_image_bytes(url: str) -> bytes:
@@ -785,8 +1004,10 @@ try:
         custom_style: dict[str, Any] | None = None
         promotion_info: str | None = None
         platform_size: str | None = None
+        platform_id: str | None = None
         image_model_id: str | None = None
         generation_mode: str | None = REFERENCE_GENERATE_MODE
+        layered_text: bool = False
 
     def _generation_payload_from_request(request: GenerateRequest) -> dict[str, Any]:
         return {
@@ -798,8 +1019,10 @@ try:
             "custom_style": request.custom_style,
             "promotion_info": request.promotion_info,
             "platform_size": request.platform_size,
+            "platform_id": request.platform_id,
             "image_model_id": request.image_model_id,
             "generation_mode": request.generation_mode,
+            "layered_text": request.layered_text,
         }
 
     async def run_generation_job(job_id: str, payload: dict[str, Any]) -> None:
@@ -827,8 +1050,10 @@ try:
                 custom_style=payload.get("custom_style"),
                 promotion_info=payload.get("promotion_info"),
                 platform_size=payload.get("platform_size"),
+                platform_id=payload.get("platform_id"),
                 image_model_id=payload.get("image_model_id"),
                 generation_mode=payload.get("generation_mode") or REFERENCE_GENERATE_MODE,
+                layered_text=bool(payload.get("layered_text")),
             )
             job.update(
                 {
@@ -856,10 +1081,38 @@ try:
         instruction: str
         platform_size: str | None = None
         image_model_id: str | None = None
+        platform_id: str | None = None
+
+    class RenderLanguageRequest(BaseModel):
+        base_url: str
+        text_layers: list[dict[str, Any]] = Field(default_factory=list)
+        language: str = DEFAULT_LANGUAGE
+        platform_id: str | None = None
+        product_info: dict[str, Any] | None = None
 
     class DownloadImageRequest(BaseModel):
         url: str
         filename: str = "generated-image.png"
+
+    class ComplianceLocationPayload(BaseModel):
+        source_type: str = "field"
+        module_id: str = ""
+        field: str = ""
+        language: str = DEFAULT_LANGUAGE
+
+    class ComplianceTextItemPayload(BaseModel):
+        text: str = ""
+        location: ComplianceLocationPayload = Field(default_factory=ComplianceLocationPayload)
+
+    class ComplianceCheckTextRequest(BaseModel):
+        items: list[ComplianceTextItemPayload] = Field(default_factory=list)
+        platform_id: str | None = None
+        product_info: dict[str, Any] | None = None
+        debug: bool = False
+
+    class ComplianceCheckImagesRequest(BaseModel):
+        image_urls: list[str] = Field(default_factory=list)
+        platform_id: str | None = None
 
     class ComposeImageItem(BaseModel):
         module_id: str
@@ -909,8 +1162,10 @@ try:
             custom_style=request.custom_style,
             promotion_info=request.promotion_info,
             platform_size=request.platform_size,
+            platform_id=request.platform_id,
             image_model_id=request.image_model_id,
             generation_mode=request.generation_mode,
+            layered_text=request.layered_text,
         )
 
     @router.post("/generate/jobs")
@@ -938,7 +1193,51 @@ try:
 
     @router.post("/edit-image")
     async def edit_project_image(request: EditImageRequest) -> dict[str, Any]:
-        return await edit_generated_image(request.image_url, request.instruction, platform_size=request.platform_size, image_model_id=request.image_model_id)
+        return await edit_generated_image(
+            request.image_url,
+            request.instruction,
+            platform_size=request.platform_size,
+            image_model_id=request.image_model_id,
+            platform_id=request.platform_id,
+        )
+
+    @router.post("/render-language")
+    async def render_project_language(request: RenderLanguageRequest) -> dict[str, Any]:
+        if not request.base_url:
+            return {"source": "error", "error": "base_url is required"}
+        if not request.text_layers:
+            return {"source": "error", "error": "text_layers is required"}
+        try:
+            version = await render_layered_language_version(
+                base_url=request.base_url,
+                layers=request.text_layers,
+                language=request.language,
+                platform_id=request.platform_id,
+                product_info=request.product_info,
+            )
+        except Exception as exc:
+            return {"source": "error", "error": str(exc)}
+        return {"source": "model", **version}
+
+    @router.post("/compliance/check-text")
+    async def check_project_text_compliance_endpoint(request: ComplianceCheckTextRequest) -> dict[str, Any]:
+        items = [{"text": item.text, "location": item.location.model_dump()} for item in request.items]
+        return check_project_text_compliance(
+            items,
+            platform_id=request.platform_id,
+            product_info=request.product_info,
+            debug=request.debug,
+        )
+
+    @router.post("/compliance/check-images")
+    async def check_project_image_compliance_endpoint(request: ComplianceCheckImagesRequest) -> dict[str, Any]:
+        return {
+            "source": "ocr_noop",
+            "summary": {"status": "pass", "block_count": 0, "warn_count": 0, "review_count": 0},
+            "issues": [],
+            "image_count": len(request.image_urls),
+            "platform_id": request.platform_id,
+        }
 
     @router.post("/download-image")
     async def download_project_image(request: DownloadImageRequest) -> Response:
