@@ -141,6 +141,7 @@ export type GeneratedImage = { module_id: string; url: string };
 export type PersistedProjectState = {
   productInfo: ProductInfo | null;
   hasAiProductInfo: boolean;
+  uploadedFiles: UploadedFileInfo[];
   selectedStyleId: string;
   customStyle: StyleOption | null;
   styleSource: StyleSource;

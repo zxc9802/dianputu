@@ -59,7 +59,6 @@ import type {
 
 const order: StepId[] = ["upload", "review", "style", "modules", "preview"];
 const PROJECT_STATE_STORAGE_KEY = "detail-image-agent-project-state-v1";
-const WHITE_BACKGROUND_MODULE_IDS = new Set(["main_white_bg", "campaign_white_bg"]);
 const DEFAULT_CATEGORY = "";
 const DEFAULT_STYLE_ID = "green_repair";
 const DEFAULT_PLATFORM_ID: CommercePlatformId = "tmall";
@@ -118,6 +117,7 @@ function readPersistedProjectState(): PersistedProjectState | null {
     return {
       productInfo: parsed.productInfo ?? null,
       hasAiProductInfo: Boolean(parsed.hasAiProductInfo && parsed.productInfo),
+      uploadedFiles: Array.isArray(parsed.uploadedFiles) ? parsed.uploadedFiles : [],
       selectedStyleId: parsed.selectedStyleId || DEFAULT_STYLE_ID,
       customStyle: parsed.customStyle && typeof parsed.customStyle === "object" ? (parsed.customStyle as StyleOption) : null,
       styleSource,
@@ -158,6 +158,7 @@ function persistProjectState(state: PersistedProjectState) {
 function createProjectStateSnapshot(input: {
   productInfo: ProductInfo | null;
   hasAiProductInfo: boolean;
+  uploadedFiles: UploadedFileInfo[];
   selectedStyleId: string;
   customStyle: StyleOption | null;
   styleSource: StyleSource;
@@ -174,6 +175,7 @@ function createProjectStateSnapshot(input: {
   return {
     productInfo: input.productInfo,
     hasAiProductInfo: input.hasAiProductInfo,
+    uploadedFiles: input.uploadedFiles,
     selectedStyleId: input.selectedStyleId,
     customStyle: input.customStyle,
     styleSource: input.styleSource,
@@ -259,6 +261,7 @@ export default function Home() {
       if (restored) {
         setProductInfo(restored.productInfo);
         setHasAiProductInfo(restored.hasAiProductInfo);
+        setUploadedFiles(restored.uploadedFiles ?? []);
         setSelectedStyleId(restored.selectedStyleId);
         setCustomStyle(restored.customStyle);
         setStyleSource(restored.styleSource);
@@ -288,6 +291,7 @@ export default function Home() {
     persistProjectState(createProjectStateSnapshot({
       productInfo,
       hasAiProductInfo,
+      uploadedFiles,
       selectedStyleId,
       customStyle,
       styleSource,
@@ -301,7 +305,7 @@ export default function Home() {
       userTemplates,
       statusText
     }));
-  }, [activeImageGroup, customStyle, hasAiProductInfo, hasRestoredProjectState, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedImageModelId, selectedPlatformId, selectedStyleId, statusText, styleSource, userTemplates]);
+  }, [activeImageGroup, customStyle, hasAiProductInfo, hasRestoredProjectState, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedImageModelId, selectedPlatformId, selectedStyleId, statusText, styleSource, uploadedFiles, userTemplates]);
 
   useEffect(() => {
     function syncStepFromHash() {
@@ -333,6 +337,7 @@ export default function Home() {
     return createProjectStateSnapshot({
       productInfo,
       hasAiProductInfo,
+      uploadedFiles,
       selectedStyleId,
       customStyle,
       styleSource,
@@ -351,6 +356,7 @@ export default function Home() {
   function applyProjectState(state: PersistedProjectState, options?: { exactModules?: boolean; statusText?: string }) {
     setProductInfo(state.productInfo);
     setHasAiProductInfo(state.hasAiProductInfo);
+    setUploadedFiles(state.uploadedFiles ?? []);
     setSelectedStyleId(state.selectedStyleId);
     setCustomStyle(state.customStyle);
     setStyleSource(state.styleSource);
@@ -607,8 +613,8 @@ export default function Home() {
       .map((file) => file.dataUrl as string)
       .slice(0, 4);
     const activeCustomStyle = styleSource === "ai_custom" && customStyle ? customStyle : undefined;
-    if (modulesToGenerate.some((module) => WHITE_BACKGROUND_MODULE_IDS.has(module.id)) && referenceImages.length === 0) {
-      setStatusText("白底图需要先上传产品图，避免 AI 重绘导致包装或 Logo 变形");
+    if (referenceImages.length === 0) {
+      setStatusText("请先上传产品图，避免生成结果与原产品不一致");
       return;
     }
     if (styleSource === "ai_custom" && !activeCustomStyle) {
@@ -703,6 +709,7 @@ export default function Home() {
         state: {
           productInfo,
           hasAiProductInfo,
+          uploadedFiles,
           selectedStyleId,
           customStyle,
           styleSource,
@@ -727,7 +734,7 @@ export default function Home() {
     } finally {
       setIsSavingHistory(false);
     }
-  }, [activeImageGroup, currentHistoryId, customStyle, hasAiProductInfo, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedImageModelId, selectedPlatformId, selectedStyleId, styleSource, styles, userTemplates]);
+  }, [activeImageGroup, currentHistoryId, customStyle, hasAiProductInfo, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedImageModelId, selectedPlatformId, selectedStyleId, styleSource, styles, uploadedFiles, userTemplates]);
 
   // Mark dirty when new images are generated
   useEffect(() => {
@@ -761,7 +768,6 @@ export default function Home() {
     void saveToHistory({ trackSavedHistoryId: false });
     setCurrentHistoryId(null);
     applyProjectState(state, { statusText: "已载入历史副本" });
-    setUploadedFiles([]);
     setManualFieldKeys([]);
     setAnalysisSource(historyId ? `正在编辑历史记录 ${historyId} 的副本，原工作区已保留。` : "正在编辑历史副本，原工作区已保留。");
     go("preview");

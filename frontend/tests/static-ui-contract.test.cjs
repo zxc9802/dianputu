@@ -159,8 +159,14 @@ assertIncludes("app/page.tsx", "styleSource === \"ai_custom\" ? customStyle", "g
 assertIncludes("components/StyleStep.tsx", "customStyle.asset", "AI custom style card must render the generated GPT image sample when available");
 assertIncludes("components/StyleStep.tsx", "让 AI 规划风格", "AI custom style action must only communicate style planning");
 assertIncludes("components/StyleStep.tsx", "生成样例图", "AI custom style card must expose separate sample generation");
-assertIncludes("app/page.tsx", "WHITE_BACKGROUND_MODULE_IDS", "page must recognize white background modules");
-assertIncludes("app/page.tsx", "白底图需要先上传产品图", "white background regeneration must stop when the original product image is unavailable");
+assertNotIncludes("app/page.tsx", "WHITE_BACKGROUND_MODULE_IDS", "product image requirements should apply to every generated image, not only white-background modules");
+assertNotIncludes("app/page.tsx", "白底图需要先上传产品图", "product image requirement copy should not imply only white-background modules need the original product image");
+assertIncludes("lib/types.ts", "uploadedFiles: UploadedFileInfo[]", "persisted project state must include uploaded files so history can restore product images");
+assertIncludes("app/page.tsx", "uploadedFiles: input.uploadedFiles", "project snapshots must persist uploaded files");
+assertIncludes("app/page.tsx", "setUploadedFiles(restored.uploadedFiles ?? [])", "local project restore must restore uploaded files");
+assertIncludes("app/page.tsx", "setUploadedFiles(state.uploadedFiles ?? [])", "history restore must restore uploaded files");
+assertNotIncludes("app/page.tsx", "setUploadedFiles([]);\n    setManualFieldKeys([]);\n    setAnalysisSource(historyId", "history restore must not clear uploaded product images");
+assertIncludes("app/page.tsx", "请先上传产品图，避免生成结果与原产品不一致", "all image generation should require product images for consistency");
 assertIncludes("components/StyleStep.tsx", "AI 自定义风格", "style step must show an AI custom style option");
 assertNotIncludes("components/StyleStep.tsx", "Gemini 3.1 Pro</em>", "AI custom style card must not show a Gemini model badge");
 assertIncludes("components/StyleStep.tsx", "aiPlanButton", "AI planning action should sit lower in the custom style card");
