@@ -38,13 +38,33 @@ def build_image_generation_payload(
     return payload
 
 
+def build_chat_image_payload(
+    *,
+    prompt: str,
+    model: str,
+    image: list[str] | None = None,
+) -> dict[str, Any]:
+    content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
+    for image_url in image or []:
+        content.append({"type": "image_url", "image_url": {"url": image_url}})
+    return {
+        "model": model,
+        "messages": [{"role": "user", "content": content}],
+    }
+
+
 def extract_image_urls_from_response(data: dict[str, Any], *, image_format: str = "png") -> list[str]:
     urls: list[str] = []
+
+    def add_url(url: str) -> None:
+        if url and url not in urls:
+            urls.append(url)
+
     for item in data.get("data", []):
         if item.get("url"):
-            urls.append(item["url"])
+            add_url(item["url"])
         elif item.get("b64_json"):
-            urls.append(f"data:image/{image_format};base64,{item['b64_json']}")
+            add_url(f"data:image/{image_format};base64,{item['b64_json']}")
 
     for choice in data.get("choices", []):
         content = choice.get("message", {}).get("content", "")
@@ -52,10 +72,14 @@ def extract_image_urls_from_response(data: dict[str, Any], *, image_format: str 
             parts = []
             for item in content:
                 if isinstance(item, dict):
-                    parts.append(str(item.get("text") or item.get("image_url", {}).get("url") or ""))
+                    image_url = item.get("image_url", {})
+                    if isinstance(image_url, dict) and image_url.get("url"):
+                        add_url(str(image_url["url"]))
+                    parts.append(str(item.get("text") or (image_url.get("url") if isinstance(image_url, dict) else "") or ""))
             content = "\n".join(parts)
         if isinstance(content, str):
-            urls.extend(DATA_IMAGE_RE.findall(content))
+            for image_url in DATA_IMAGE_RE.findall(content):
+                add_url(image_url)
 
     return urls
 
@@ -71,16 +95,23 @@ async def call_image_model(
 
     import httpx
 
-    payload = build_image_generation_payload(
-        prompt=prompt,
-        model=settings.model,
-        size=size or settings.size,
-        n=settings.n,
-        quality=settings.quality,
-        output_format=settings.output_format,
-        response_format=settings.response_format,
-        image=image,
-    )
+    if settings.endpoint_path.rstrip("/") == "/chat/completions":
+        payload = build_chat_image_payload(
+            prompt=prompt,
+            model=settings.model,
+            image=image,
+        )
+    else:
+        payload = build_image_generation_payload(
+            prompt=prompt,
+            model=settings.model,
+            size=size or settings.size,
+            n=settings.n,
+            quality=settings.quality,
+            output_format=settings.output_format,
+            response_format=settings.response_format,
+            image=image,
+        )
     async with httpx.AsyncClient(timeout=480) as client:
         response = await client.post(
             settings.endpoint_url,
