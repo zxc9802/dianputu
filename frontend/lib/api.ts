@@ -1,6 +1,6 @@
 import { DEFAULT_MODULES, DEMO_MODEL_CONFIG, STYLE_OPTIONS } from "./constants";
 import { MainAppRedirectError, extractApiErrorMessage, readJsonSafely, redirectToMainAppIfNeeded } from "./client/api-response";
-import type { MaterialPayload, ModuleConfig, ProductInfo, PublicModelConfig, StyleOption } from "./types";
+import type { GenerationMode, MaterialPayload, ModuleConfig, ProductInfo, PublicModelConfig, StyleOption } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -86,7 +86,8 @@ export async function generateImages(
   platformSize = "",
   styleReferenceImages: string[] = [],
   customStyle?: StyleOption,
-  imageModelId = ""
+  imageModelId = "",
+  generationMode: GenerationMode = "reference_generate"
 ) {
   try {
     const { job_id: jobId } = await createGenerateImageJob(
@@ -98,7 +99,8 @@ export async function generateImages(
       platformSize,
       styleReferenceImages,
       customStyle,
-      imageModelId
+      imageModelId,
+      generationMode
     );
     return await pollGenerateImageJob(jobId);
   } catch (error) {
@@ -140,7 +142,8 @@ export async function createGenerateImageJob(
   platformSize = "",
   styleReferenceImages: string[] = [],
   customStyle?: StyleOption,
-  imageModelId = ""
+  imageModelId = "",
+  generationMode: GenerationMode = "reference_generate"
 ) {
   return requestJson<{ job_id: string }>("/api/projects/generate/jobs", {
     method: "POST",
@@ -153,7 +156,8 @@ export async function createGenerateImageJob(
       custom_style: customStyle,
       promotion_info: promotionInfo,
       platform_size: platformSize,
-      image_model_id: imageModelId
+      image_model_id: imageModelId,
+      generation_mode: generationMode
     }),
     timeoutMs: 15000
   });

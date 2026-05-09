@@ -4,6 +4,8 @@ export type UploadSlot = "product_image" | "reports" | "documents";
 
 export type StyleSource = "preset" | "ai_custom";
 
+export type GenerationMode = "reference_generate" | "fixed_product_composite";
+
 export type StyleOption = {
   id: string;
   name: string;
@@ -148,6 +150,7 @@ export type PersistedProjectState = {
   selectedCategory: string;
   selectedPlatformId: CommercePlatformId;
   selectedImageModelId?: string;
+  generationMode: GenerationMode;
   activeImageGroup: ImageGroup;
   promotionInfo: string;
   modules: ModuleConfig[];

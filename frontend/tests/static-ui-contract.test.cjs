@@ -55,6 +55,12 @@ assertIncludes("app/page.tsx", "selectedPlatform.generationSize", "page image ge
 assertIncludes("app/page.tsx", "editGeneratedImage(imageUrl, trimmed, selectedPlatform.generationSize, selectedImageModelId)", "image edits must keep the selected platform 2K generation size and selected image model");
 assertIncludes("components/ModulesStep.tsx", "选择图片模型", "modules step must expose the image model selector");
 assertIncludes("lib/api.ts", "image_model_id: imageModelId", "frontend generation/edit requests must send the selected image model id");
+assertIncludes("lib/types.ts", 'GenerationMode = "reference_generate" | "fixed_product_composite"', "frontend must model both image generation modes");
+assertIncludes("lib/api.ts", "generation_mode: generationMode", "frontend generation requests must send the selected generation mode");
+assertIncludes("app/page.tsx", "selectedGenerationMode", "page must keep selected generation mode in state");
+assertIncludes("app/page.tsx", "generationMode: input.generationMode", "project snapshots must persist selected generation mode");
+assertIncludes("components/ModulesStep.tsx", "生成模式", "modules step must expose the generation mode selector");
+assertIncludes("components/ModulesStep.tsx", "固定产品合成", "generation mode selector must include fixed product composition");
 assertNotIncludes("lib/api.ts", 'source: "demo"', "frontend must not convert failed image generation into fixed demo images");
 assertNotIncludes("lib/api.ts", "/assets/generated-cica-asset-sheet.png", "frontend must not mark fixed demo images as generated output");
 assert.ok(!fs.existsSync(path.join(root, "lib/autoGenerate.ts")), "lib/autoGenerate.ts: full auto generation flow should be removed");

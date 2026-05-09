@@ -41,6 +41,7 @@ import {
 } from "@/lib/projectEnhancements";
 import type {
   CommercePlatformId,
+  GenerationMode,
   GeneratedImage,
   GeneratedImageVersionState,
   ImageGroup,
@@ -62,6 +63,7 @@ const PROJECT_STATE_STORAGE_KEY = "detail-image-agent-project-state-v1";
 const DEFAULT_CATEGORY = "";
 const DEFAULT_STYLE_ID = "green_repair";
 const DEFAULT_PLATFORM_ID: CommercePlatformId = "tmall";
+const DEFAULT_GENERATION_MODE: GenerationMode = "reference_generate";
 
 const groupLabel: Record<ImageGroup, string> = {
   main: "主图",
@@ -125,6 +127,7 @@ function readPersistedProjectState(): PersistedProjectState | null {
       activeImageGroup,
       selectedPlatformId: COMMERCE_PLATFORMS.some((platform) => platform.id === parsed.selectedPlatformId) ? (parsed.selectedPlatformId as CommercePlatformId) : DEFAULT_PLATFORM_ID,
       selectedImageModelId: parsed.selectedImageModelId || "primary",
+      generationMode: parsed.generationMode === "fixed_product_composite" ? parsed.generationMode : DEFAULT_GENERATION_MODE,
       promotionInfo: parsed.promotionInfo || "",
       modules: Array.isArray(parsed.modules) ? parsed.modules : [],
       generatedImages: Array.isArray(parsed.generatedImages) ? parsed.generatedImages : [],
@@ -165,6 +168,7 @@ function createProjectStateSnapshot(input: {
   selectedCategory: string;
   selectedPlatformId: CommercePlatformId;
   selectedImageModelId: string;
+  generationMode: GenerationMode;
   activeImageGroup: ImageGroup;
   promotionInfo: string;
   modules: ModuleConfig[];
@@ -182,6 +186,7 @@ function createProjectStateSnapshot(input: {
     selectedCategory: input.selectedCategory,
     selectedPlatformId: input.selectedPlatformId,
     selectedImageModelId: input.selectedImageModelId,
+    generationMode: input.generationMode,
     activeImageGroup: input.activeImageGroup,
     promotionInfo: input.promotionInfo,
     modules: input.modules,
@@ -234,6 +239,7 @@ export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState(DEFAULT_CATEGORY);
   const [selectedPlatformId, setSelectedPlatformId] = useState<CommercePlatformId>(DEFAULT_PLATFORM_ID);
   const [selectedImageModelId, setSelectedImageModelId] = useState("primary");
+  const [selectedGenerationMode, setSelectedGenerationMode] = useState<GenerationMode>(DEFAULT_GENERATION_MODE);
   const [modelConfig, setModelConfig] = useState<PublicModelConfig>(DEMO_MODEL_CONFIG);
   const [imageVersionStore, setImageVersionStore] = useState<ImageVersionStore>(() => createEmptyImageVersionStore());
   const [userTemplates, setUserTemplates] = useState<ProjectTemplate[]>([]);
@@ -268,6 +274,7 @@ export default function Home() {
         setSelectedCategory(restored.selectedCategory);
         setSelectedPlatformId(restored.selectedPlatformId);
         setSelectedImageModelId(restored.selectedImageModelId || models.imageGeneration.defaultOptionId || "primary");
+        setSelectedGenerationMode(restored.generationMode ?? DEFAULT_GENERATION_MODE);
         setActiveImageGroup(restored.activeImageGroup);
         setPromotionInfo(restored.promotionInfo);
         setModules(mergeRestoredModules(defaults.modules, restored.modules));
@@ -298,6 +305,7 @@ export default function Home() {
       selectedCategory,
       selectedPlatformId,
       selectedImageModelId,
+      generationMode: selectedGenerationMode,
       activeImageGroup,
       promotionInfo,
       modules,
@@ -305,7 +313,7 @@ export default function Home() {
       userTemplates,
       statusText
     }));
-  }, [activeImageGroup, customStyle, hasAiProductInfo, hasRestoredProjectState, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedImageModelId, selectedPlatformId, selectedStyleId, statusText, styleSource, uploadedFiles, userTemplates]);
+  }, [activeImageGroup, customStyle, hasAiProductInfo, hasRestoredProjectState, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedGenerationMode, selectedImageModelId, selectedPlatformId, selectedStyleId, statusText, styleSource, uploadedFiles, userTemplates]);
 
   useEffect(() => {
     function syncStepFromHash() {
@@ -344,6 +352,7 @@ export default function Home() {
       selectedCategory,
       selectedPlatformId,
       selectedImageModelId,
+      generationMode: selectedGenerationMode,
       activeImageGroup,
       promotionInfo,
       modules,
@@ -363,6 +372,7 @@ export default function Home() {
     setSelectedCategory(state.selectedCategory);
     setSelectedPlatformId(state.selectedPlatformId);
     setSelectedImageModelId(state.selectedImageModelId || modelConfig.imageGeneration.defaultOptionId || "primary");
+    setSelectedGenerationMode(state.generationMode ?? DEFAULT_GENERATION_MODE);
     setActiveImageGroup(state.activeImageGroup);
     setPromotionInfo(state.promotionInfo);
     if (state.modules?.length) {
@@ -438,6 +448,7 @@ export default function Home() {
     setSelectedCategory(DEFAULT_CATEGORY);
     setSelectedPlatformId("tmall");
     setSelectedImageModelId(modelConfig.imageGeneration.defaultOptionId || "primary");
+    setSelectedGenerationMode(DEFAULT_GENERATION_MODE);
     setModules(defaultModules.map((module) => ({ ...module })));
     setImageVersionStore(createEmptyImageVersionStore());
     setGenerationProgress(createIdleGenerationProgress());
@@ -650,7 +661,8 @@ export default function Home() {
             selectedPlatform.generationSize,
             [],
             activeCustomStyle,
-            selectedImageModelId
+            selectedImageModelId,
+            selectedGenerationMode
           ),
         (module, result, progress) => {
           if (result.images.length) {
@@ -716,6 +728,7 @@ export default function Home() {
           selectedCategory,
           selectedPlatformId,
           selectedImageModelId,
+          generationMode: selectedGenerationMode,
           activeImageGroup,
           promotionInfo,
           modules,
@@ -734,7 +747,7 @@ export default function Home() {
     } finally {
       setIsSavingHistory(false);
     }
-  }, [activeImageGroup, currentHistoryId, customStyle, hasAiProductInfo, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedImageModelId, selectedPlatformId, selectedStyleId, styleSource, styles, uploadedFiles, userTemplates]);
+  }, [activeImageGroup, currentHistoryId, customStyle, hasAiProductInfo, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedGenerationMode, selectedImageModelId, selectedPlatformId, selectedStyleId, styleSource, styles, uploadedFiles, userTemplates]);
 
   // Mark dirty when new images are generated
   useEffect(() => {
@@ -895,9 +908,11 @@ export default function Home() {
             selectedPlatformId={selectedPlatformId}
             templates={allTemplates}
             selectedImageModelId={selectedImageModelId}
+            generationMode={selectedGenerationMode}
             onPromotionInfoChange={setPromotionInfo}
             onPlatformChange={setSelectedPlatformId}
             onImageModelChange={setSelectedImageModelId}
+            onGenerationModeChange={setSelectedGenerationMode}
             onTemplateApply={applyProjectTemplate}
             onTemplateSave={saveCurrentTemplate}
             onImageGroupChange={setActiveImageGroup}

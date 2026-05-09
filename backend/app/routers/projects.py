@@ -24,6 +24,8 @@ from app.services.text_model import call_text_model
 logger = logging.getLogger("detail_image_generation")
 MODEL_GATEWAY_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
 WHITE_BACKGROUND_MODULE_IDS = {"main_white_bg", "campaign_white_bg"}
+REFERENCE_GENERATE_MODE = "reference_generate"
+FIXED_PRODUCT_COMPOSITE_MODE = "fixed_product_composite"
 STYLE_SAMPLE_IMAGE_SIZE = "1024x1024"
 GENERATION_JOBS: dict[str, dict[str, Any]] = {}
 GENERATION_JOB_TTL_SECONDS = 3600  # 1 hour
@@ -446,6 +448,20 @@ async def generate_custom_style_sample(style: dict[str, Any], product_info: dict
     return {"source": "error", "error": "image model returned empty content", "warnings": warnings}
 
 
+def build_fixed_product_composite_prompt(module: dict[str, Any], background_url: str | None = None) -> str:
+    background_line = f"参考已生成的背景/版式方向：{background_url}" if background_url else "按当前模块提示词中的背景、版式和文案方向完成画面。"
+    return "\n".join(
+        [
+            "请基于用户上传的产品图制作电商商品图，采用固定产品主体合成模式。",
+            "固定产品主体：必须保持产品瓶型、包装颜色、Logo、标签位置、标签文字、图案和比例，不要重绘成另一个相似产品。",
+            "可以生成或融合背景、文案区域、氛围装饰、自然投影、接触阴影、环境反光和轻微色温匹配，让产品与画面协调。",
+            "不要让背景元素遮挡产品标签，不要生成乱码、水印、虚假品牌或不可读密集小字。",
+            f"当前模块：{module.get('name') or module.get('id')}",
+            background_line,
+        ]
+    )
+
+
 async def _generate_module_image(
     *,
     settings: Any,
@@ -460,6 +476,7 @@ async def _generate_module_image(
     total_modules: int,
     platform_size: str | None = None,
     image_model_id: str | None = None,
+    generation_mode: str = REFERENCE_GENERATE_MODE,
 ) -> tuple[dict[str, str] | None, str | None]:
     logger.info("detail image generation start %s/%s module=%s", module_index, total_modules, module["id"])
     module_id = str(module["id"])
@@ -493,6 +510,23 @@ async def _generate_module_image(
             return None, f"{module['id']}: primary failed: {primary_exc}; fallback failed: {fallback_exc}"
 
     if urls:
+        if generation_mode == FIXED_PRODUCT_COMPOSITE_MODE and reference_images:
+            try:
+                product_bytes = await _read_image_bytes(reference_images[0])
+                composite_urls = await call_image_edit_model(
+                    image_settings,
+                    build_fixed_product_composite_prompt(module, urls[0]),
+                    image_bytes=product_bytes,
+                    size=platform_size,
+                )
+            except Exception as composite_exc:
+                logger.warning("fixed product composite failed %s/%s module=%s error=%s", module_index, total_modules, module["id"], composite_exc)
+                return None, f"{module['id']}: fixed product composite failed: {composite_exc}"
+            if composite_urls:
+                image_url = await upload_image_url_if_configured(composite_urls[0], f"generated/{module_id}")
+                logger.info("detail image generation done %s/%s module=%s mode=fixed_product_composite", module_index, total_modules, module["id"])
+                return {"module_id": module["id"], "url": image_url}, None
+            return None, f"{module['id']}: fixed product composite returned empty content"
         image_url = await upload_image_url_if_configured(urls[0], f"generated/{module_id}")
         logger.info("detail image generation done %s/%s module=%s", module_index, total_modules, module["id"])
         return {"module_id": module["id"], "url": image_url}, None
@@ -509,6 +543,7 @@ async def generate_detail_images(
     promotion_info: str | None = None,
     platform_size: str | None = None,
     image_model_id: str | None = None,
+    generation_mode: str | None = REFERENCE_GENERATE_MODE,
 ) -> dict[str, Any]:
     settings = get_model_settings()
     image_settings = settings.image_options.get(image_model_id or settings.image.id, settings.image)
@@ -543,6 +578,7 @@ async def generate_detail_images(
                     total_modules=total_modules,
                     platform_size=platform_size,
                     image_model_id=image_model_id,
+                    generation_mode=generation_mode or REFERENCE_GENERATE_MODE,
                 )
                 for index, module in enumerate(enabled_modules, start=1)
             )
@@ -748,6 +784,7 @@ try:
         promotion_info: str | None = None
         platform_size: str | None = None
         image_model_id: str | None = None
+        generation_mode: str | None = REFERENCE_GENERATE_MODE
 
     def _generation_payload_from_request(request: GenerateRequest) -> dict[str, Any]:
         return {
@@ -760,6 +797,7 @@ try:
             "promotion_info": request.promotion_info,
             "platform_size": request.platform_size,
             "image_model_id": request.image_model_id,
+            "generation_mode": request.generation_mode,
         }
 
     async def run_generation_job(job_id: str, payload: dict[str, Any]) -> None:
@@ -788,6 +826,7 @@ try:
                 promotion_info=payload.get("promotion_info"),
                 platform_size=payload.get("platform_size"),
                 image_model_id=payload.get("image_model_id"),
+                generation_mode=payload.get("generation_mode") or REFERENCE_GENERATE_MODE,
             )
             job.update(
                 {
@@ -869,6 +908,7 @@ try:
             promotion_info=request.promotion_info,
             platform_size=request.platform_size,
             image_model_id=request.image_model_id,
+            generation_mode=request.generation_mode,
         )
 
     @router.post("/generate/jobs")

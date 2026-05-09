@@ -1,5 +1,5 @@
 import { Check, ImageIcon, Lock, WandSparkles } from "lucide-react";
-import type { CommercePlatform, CommercePlatformId, ImageGroup, ModuleConfig, ProjectTemplate, PublicModelConfig, StyleOption, StyleSource } from "@/lib/types";
+import type { CommercePlatform, CommercePlatformId, GenerationMode, ImageGroup, ModuleConfig, ProjectTemplate, PublicModelConfig, StyleOption, StyleSource } from "@/lib/types";
 
 const imageGroups: ImageGroup[] = ["main", "campaign", "detail"];
 
@@ -52,9 +52,11 @@ export function ModulesStep({
   selectedPlatformId,
   templates,
   selectedImageModelId,
+  generationMode,
   onPromotionInfoChange,
   onPlatformChange,
   onImageModelChange,
+  onGenerationModeChange,
   onTemplateApply,
   onTemplateSave,
   onImageGroupChange,
@@ -74,9 +76,11 @@ export function ModulesStep({
   selectedPlatformId: CommercePlatformId;
   templates: ProjectTemplate[];
   selectedImageModelId: string;
+  generationMode: GenerationMode;
   onPromotionInfoChange: (value: string) => void;
   onPlatformChange: (id: CommercePlatformId) => void;
   onImageModelChange: (id: string) => void;
+  onGenerationModeChange: (mode: GenerationMode) => void;
   onTemplateApply: (template: ProjectTemplate) => void;
   onTemplateSave: () => void;
   onImageGroupChange: (group: ImageGroup) => void;
@@ -308,6 +312,22 @@ export function ModulesStep({
               </select>
               <p>
                 当前平台生成尺寸 {selectedPlatform.generationSize}，所选模型默认尺寸 {selectedImageModel.defaults.size}。
+              </p>
+              <label className="fieldLabel" htmlFor="generation-mode-select">
+                生成模式
+              </label>
+              <select
+                id="generation-mode-select"
+                className="selectInput"
+                value={generationMode}
+                onChange={(event) => onGenerationModeChange(event.target.value as GenerationMode)}
+                disabled={activeProgress.isGenerating}
+              >
+                <option value="reference_generate">AI 参考生成</option>
+                <option value="fixed_product_composite">固定产品合成</option>
+              </select>
+              <p>
+                AI 参考生成更自然；固定产品合成优先保持包装、瓶型和 Logo 一致，适合做对比。
               </p>
             </article>
           </div>

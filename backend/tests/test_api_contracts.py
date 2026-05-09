@@ -134,6 +134,33 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["images"], [])
         self.assertEqual(len(result["errors"]), 2)
 
+    async def test_fixed_product_composite_uses_product_reference_as_edit_source(self):
+        previous_key = environ.get("IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        try:
+            with patch("app.routers.projects.call_image_model", new=AsyncMock(return_value=["https://example.com/background.png"])) as generate_mock:
+                with patch("app.routers.projects._read_image_bytes", new=AsyncMock(return_value=b"product-bytes")):
+                    with patch("app.routers.projects.call_image_edit_model", new=AsyncMock(return_value=["https://example.com/composited.png"])) as edit_mock:
+                        result = await generate_detail_images(
+                            ["hero"],
+                            "green_repair",
+                            product_info={"product_name": "积雪草修护精华"},
+                            reference_images=["data:image/png;base64,original"],
+                            generation_mode="fixed_product_composite",
+                        )
+        finally:
+            if previous_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_key
+
+        self.assertEqual(result["source"], "model")
+        self.assertEqual(result["images"], [{"module_id": "hero", "url": "https://example.com/composited.png"}])
+        generate_mock.assert_called_once()
+        edit_mock.assert_called_once()
+        self.assertIn("固定产品主体", edit_mock.call_args.args[1])
+        self.assertEqual(edit_mock.call_args.kwargs["image_bytes"], b"product-bytes")
+
     async def test_generation_accepts_single_module_for_regeneration(self):
         previous_key = environ.get("IMAGE_GENERATION_API_KEY")
         environ["IMAGE_GENERATION_API_KEY"] = "test-key"

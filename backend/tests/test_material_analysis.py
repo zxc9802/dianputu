@@ -671,6 +671,7 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
                 promotion_info="",
                 platform_size="2048x2048",
                 image_model_id=None,
+                generation_mode="reference_generate",
             )
         finally:
             projects.GENERATION_JOBS.pop("generate_test", None)
