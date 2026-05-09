@@ -109,8 +109,13 @@ class MaterialAnalysisTests(unittest.TestCase):
         self.assertIn("规划一个全新的电商视觉风格", text)
         self.assertIn("全权规划", text)
         self.assertIn("不要从现有三套预设风格里选择", text)
+        self.assertIn("风格元素系统", text)
+        self.assertIn("材质、光影、构图、字体层级、图标/装饰元素、摄影或渲染质感", text)
+        self.assertIn("每张图可以根据模块内容使用不同颜色", text)
+        self.assertIn("primary_color 只是参考色", text)
         self.assertIn("积雪草修护精华", text)
         self.assertNotIn("产品包装主色", text)
+        self.assertNotIn("包装色", text)
         self.assertEqual(content[1]["type"], "image_url")
         self.assertTrue(content[1]["image_url"]["url"].startswith("data:image/png;base64,"))
 
@@ -312,6 +317,8 @@ class AnalyzeUploadedMaterialsConfigTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("风格样例图", prompt)
         self.assertIn("琉光云纱凝润美学", prompt)
         self.assertIn("LUMERA HYDRA CREAM", prompt)
+        self.assertIn("重点展示风格元素系统", prompt)
+        self.assertIn("参考色只作为局部点缀", prompt)
         self.assertIn("不要生成真实品牌 Logo", prompt)
 
 

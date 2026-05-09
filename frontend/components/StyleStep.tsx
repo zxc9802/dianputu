@@ -52,7 +52,7 @@ export function StyleStep({
               </span>
             ) : null}
             <h3 style={{ color: customStyle?.primary_color ?? "#1F8C43" }}>AI 自定义风格</h3>
-            <p>{customStyle ? customStyle.name : "让 AI 根据产品定位、卖点和包装色规划全新风格。"}</p>
+            <p>{customStyle ? customStyle.name : "让 AI 根据产品定位、卖点和质感规划统一视觉元素，每张图可按模块变化颜色。"}</p>
             {customStyle?.asset ? (
               <img src={customStyle.asset} alt={`${customStyle.name} 样例图`} />
             ) : (

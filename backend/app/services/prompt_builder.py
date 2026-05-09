@@ -95,6 +95,20 @@ def _format_effect_claims(value: Any) -> str:
     return "\n".join(lines)
 
 
+HYDRATION_EFFECT_KEYWORDS = ("水润", "补水", "保湿", "含水量", "水分", "锁水", "干燥")
+
+
+def _is_hydration_effect_context(product_info: dict[str, Any] | None) -> bool:
+    info = product_info or {}
+    values: list[str] = []
+    for key in ("product_name", "category", "spec"):
+        values.append(_text(info.get(key), ""))
+    for key in ("core_selling_points", "functions", "effect_claims"):
+        values.extend(_string_items(info.get(key)))
+    combined = " ".join(values)
+    return any(keyword in combined for keyword in HYDRATION_EFFECT_KEYWORDS)
+
+
 def build_product_generation_brief(product_info: dict[str, Any] | None) -> str:
     info = product_info or {}
     return "\n".join(
@@ -237,7 +251,27 @@ def build_module_specific_brief(product_info: dict[str, Any] | None, module: dic
             ]
         )
 
-    return build_product_generation_brief(product_info)
+    if module_id == "pain_scene":
+        return "\n".join([*base_lines, "- 目标人群：", _limited_numbered_lines(info.get("target_users"), "日常护肤人群", 3), "- 解决方向（核心功效）：", _limited_numbered_lines(info.get("functions"), "补水保湿", 3)])
+
+    if module_id == "competitor_comparison":
+        return "\n".join([*base_lines, "- 核心卖点：", _limited_numbered_lines(info.get("core_selling_points"), "温和护理", 3), "- 核心功效：", _limited_numbered_lines(info.get("functions"), "补水保湿", 3)])
+
+    if module_id == "usage":
+        return "\n".join([*base_lines, "- 使用方法：", _limited_numbered_lines(info.get("usage_method"), "洁面后取适量涂抹", 4)])
+
+    # Fallback: inject comprehensive product context for detail modules
+    return "\n".join(
+        [
+            "【当前模块精简 brief】",
+            f"- 产品名称：{_text(info.get('product_name'), '当前护肤产品')}",
+            f"- 品类：{_text(info.get('category'), '护肤品')}",
+            "- 核心卖点：",
+            _limited_numbered_lines(info.get("core_selling_points"), "温和护理", 3),
+            "- 核心功效：",
+            _limited_numbered_lines(info.get("functions"), "补水保湿", 3),
+        ]
+    )
 
 
 def _module_visual_constraints(module: dict[str, Any]) -> str:
@@ -268,6 +302,49 @@ def _detail_text_guardrails() -> str:
             "- 纸质资质只作为辅助物件；当报告出现时只能做成真实纸质材质：纸张、证书页、装订报告册、桌面文件夹或盖章文件；正文必须是不可读纹理、抽象线条或极短泛化标签，不能生成可阅读的长句说明。",
         ]
     )
+
+
+def _people_realism_guardrails(module: dict[str, Any]) -> str:
+    module_id = str(module.get("id"))
+    if module_id in {"main_white_bg", "campaign_white_bg"}:
+        return ""
+
+    return "\n".join(
+        [
+            "【人物真实感约束】",
+            "- 如画面出现人物、面部、手部或使用动作，人物必须是真实自然的普通消费者或真实模特，不要像 AI 精修人像。",
+            "- 保留自然肤质、毛孔、细纹、轻微肤色不均和真实表情；妆容自然，光线像真实电商摄影或生活方式摄影。",
+            "- 不要生成过度漂亮、网红脸、AI感强、磨皮严重、五官完美对称、大眼尖下巴、玻璃皮、塑料皮肤或杂志大片式人物。",
+            "- 人物只服务于产品使用场景和效果表达，不能喧宾夺主；主图和活动图中优先使用手部、半身、局部面部或真实使用动作。",
+        ]
+    )
+
+
+def _effect_comparison_layout_guardrails(module: dict[str, Any], product_info: dict[str, Any] | None) -> str:
+    module_id = str(module.get("id"))
+    if module_id not in {"main_effect", "campaign_effect", "effect_comparison"}:
+        return ""
+
+    if module_id == "effect_comparison":
+        area_rule = "局部前后对比组件建议约 30%-45% 画面面积"
+    else:
+        area_rule = "局部前后对比组件建议约 20%-35% 画面面积"
+
+    lines = [
+        "【效果对比构图约束】",
+        f"- 采用局部前后对比组件，{area_rule}，不要让左右对比占满整张画面，不做整张图一左一右的纯前后拼图。",
+        "- 画面必须同时包含产品主体、标题、使用前/使用后局部对比卡片，以及功效说明或数据指标区。",
+        "- 对比卡片可以放在产品两侧、中部或下方信息区，必须清晰可见，但只是完整电商图的一部分。",
+        "- 前后变化要明显但可信：使用前可表现干燥、暗沉、粗糙、紧绷或泛红；使用后表现更水润、平滑、均匀、透亮，但不能像换脸或医疗治愈。",
+    ]
+    if _is_hydration_effect_context(product_info):
+        lines.extend(
+            [
+                "- 水润数据指标区必须使用醒目大数字表达，例如「增加了 XX%」「提升 XX%」，数字字号要明显大于说明文字。",
+                "- 优先使用已有百分比数据和对应指标名，例如肌肤含水量、保湿力、水润度；不要为了画面效果编造百分比。",
+            ]
+        )
+    return "\n".join(lines)
 
 
 def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | None) -> str:
@@ -350,7 +427,9 @@ def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | 
             "场景需围绕目标人群与使用方法展开，不编造用户未填写的具体价格、折扣或活动日期。",
         ],
         "hero": [
+            "这是详情页首图——用户点进详情后看到的第一张沉浸式大图，宽高比偏纵向（不是 1:1），需要更大的氛围空间和更完整的信息承载。",
             "用产品大图作为视觉中心，突出产品名称、品类、规格和 2-3 个核心卖点。",
+            "与货架主图的差异：详情首图可以有更丰富的背景层次、更多文案信息和更强的品牌氛围感，不需要像主图那样在 0.3 秒抓注意力。",
             "不要塞入权威报告、效果对比表或使用步骤，这些属于其他模块。",
         ],
         "authority": [
@@ -367,8 +446,13 @@ def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | 
             "版式建议：科学家实验室研究场景 + 画面一角局部纸质资质 + 简洁模块标题；不做底部说明区、资料建议区或风险提示类文字。",
         ],
         "pain_scene": [
-            "画面只呈现目标人群的护肤痛点场景，突出困扰、情绪和产品解决方向。",
-            "痛点来自目标人群与核心功效，不要提前展示效果数据或权威报告。",
+            "画面只呈现目标人群的护肤痛点场景，突出皮肤困扰、情绪压力和已经尝试无效的经历。",
+            "必须参考以下目标人群来构建痛点场景：",
+            _numbered_lines(_string_items(info.get("target_users")), "日常护肤人群"),
+            "产品解决方向来自以下核心功效：",
+            _numbered_lines(_string_items(info.get("functions")), "补水保湿"),
+            "痛点要真实可信，不要夸大或编造极端皮肤问题。",
+            "不要提前展示效果数据或权威报告，这些属于后续模块。",
         ],
         "effect_comparison": [
             "画面只呈现效果对比，必须像小报告一样写清楚每条效果数据。",
@@ -377,8 +461,12 @@ def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | 
             "如果数据不完整，画面用体验型视觉和进度条表达；避免绝对化医疗表达，不写治愈、根治、永久有效。",
         ],
         "competitor_comparison": [
-            "画面只呈现本产品与普通同类产品的对比，不指名真实竞品品牌。",
-            "对比维度建议：成分思路、肤感、使用体验、适合人群、卖点完整度。",
+            "画面只呈现竞品对比模块，展示本产品与普通同类产品的差异化优势，不能指名真实竞品品牌。",
+            "对比维度按以下参考：质地、成分思路、效果、负面体验、使用体验和适合人群。",
+            "必须参考以下产品信息来构建本产品的对比优势：",
+            "核心卖点：" + _numbered_lines(_string_items(info.get("core_selling_points")), "温和护理"),
+            "核心功效：" + _numbered_lines(_string_items(info.get("functions")), "补水保湿"),
+            "左栏展示「普通同类产品」的常见痛点或不足，右栏展示本产品的差异化优势和卖点。",
         ],
         "ingredient": [
             "画面只呈现成分页，必须把核心成分和对应作用讲清楚。",
@@ -390,6 +478,8 @@ def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | 
         ],
         "usage": [
             "画面只呈现使用方法，用清晰步骤展示用量、顺序、手法和使用频率。",
+            "必须参考以下使用步骤：",
+            _numbered_lines(_string_items(info.get("usage_method")), "洁面后取适量涂抹"),
             "可以搭配手部涂抹、滴管、面部轻拍等示意画面。",
         ],
     }
@@ -426,6 +516,7 @@ def build_module_image_prompt(
             [
                 "- 只生成当前主图，不要拼接成长图，不要加入详情页模块边框或长段说明。",
                 "- 画面建议为 1:1 电商货架主图构图，产品主体清晰、可点击率高、信息聚焦。",
+                f"- 这是同一套 {total_modules} 张主图中的第 {module_index} 张，所有主图共享统一的材质、字体层级、光影氛围、装饰元素、图标语言和视觉质感；每张图可以根据模块内容使用不同主色、背景色或辅助色。",
             ]
         )
         if is_campaign_image:
@@ -435,6 +526,8 @@ def build_module_image_prompt(
             [
                 "- 只生成当前模块，不能新增一级模块，不能把其他模块的内容混入当前画面。",
                 "- 画面以核心视觉为主，可搭配短标题和少量视觉标签；不要做成带大段文字的说明板。",
+                f"- 本图是第 {module_index}/{total_modules} 张详情模块，与其他模块共同组成一套详情长图，材质、光影、字体、标题层级、装饰元素和图标风格必须与首图保持一致；色彩可以按模块内容变化。",
+                "- 画面构图按竖向详情页模块比例，信息从上到下纵向排布。",
             ]
         )
     # White background modules should NOT have style colors/keywords injected
@@ -464,7 +557,7 @@ def build_module_image_prompt(
             style_section = [
                 "【统一视觉风格】",
                 f"- 风格名称：{_text(style.get('name'), '绿色修护风')}",
-                f"- 主色：{_text(style.get('primary_color'), '根据风格选择主色')}",
+                f"- 风格参考色：{_text(style.get('primary_color'), '根据风格选择参考色')}，只作为局部点缀和 UI 兼容参考，不是整套图片的强制背景色或统一主色。",
                 f"- 视觉关键词：{style_keywords}",
                 *(
                     [
@@ -474,6 +567,7 @@ def build_module_image_prompt(
                     if style.get("id") == "ai_custom"
                     else []
                 ),
+                "- 每张图可以根据模块内容使用不同主色、背景色或辅助色，但材质、光影、版式、字体层级、装饰元素和图标语言必须一致。",
                 "- 中文电商视觉，高级、干净、统一；产品外观如有参考图必须保持一致。",
                 readable_text_rule,
                 "- 所有可见文字必须像可直接用于店铺上架的成品图文案，不写信息缺失、核验提醒、补全提醒或半成品提示。",
@@ -481,11 +575,13 @@ def build_module_image_prompt(
             ]
 
     visual_constraints = _module_visual_constraints(module)
+    effect_layout_guardrails = _effect_comparison_layout_guardrails(module, product_info)
+    people_realism_guardrails = _people_realism_guardrails(module)
     detail_text_guardrails = _detail_text_guardrails() if not is_main_image else ""
 
     return "\n".join(
         [
-            f"你是电商护肤详情页视觉生成模型。请根据以下隐藏提示词生成 1 张{module_kind}。",
+            f"你是电商护肤{'商品主图' if is_main_image else '详情页'}视觉生成模型。请根据以下隐藏提示词生成 1 张{module_kind}。",
             "",
             "【固定模块结构】",
             *structure_lines,
@@ -504,6 +600,8 @@ def build_module_image_prompt(
             "【当前模块内容要求】",
             _module_requirements(module, product_info),
             *(["", visual_constraints] if visual_constraints else []),
+            *(["", effect_layout_guardrails] if effect_layout_guardrails else []),
+            *(["", people_realism_guardrails] if people_realism_guardrails else []),
             *(["", detail_text_guardrails] if detail_text_guardrails else []),
             "",
             *style_section,

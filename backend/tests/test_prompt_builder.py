@@ -129,6 +129,61 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertNotIn("ai_generated", prompt)
         self.assertIn("体验型视觉", prompt)
         self.assertIn("避免绝对化医疗表达", prompt)
+        self.assertIn("局部前后对比组件", prompt)
+        self.assertIn("不要让左右对比占满整张画面", prompt)
+        self.assertIn("产品主体、标题、使用前/使用后局部对比卡片", prompt)
+        self.assertIn("功效说明或数据指标区", prompt)
+        self.assertIn("约 30%-45%", prompt)
+        self.assertNotIn("全屏左右分屏", prompt)
+
+    def test_hydration_effect_prompt_uses_prominent_increase_percent_metric(self):
+        build_module_image_prompt = load_prompt_builder()
+        effect_module = next(module for module in DEFAULT_MODULES if module["id"] == "effect_comparison")
+
+        prompt = build_module_image_prompt(
+            product_info={
+                "product_name": "水润保湿精华",
+                "functions": ["补水保湿", "改善干燥"],
+                "effect_claims": [
+                    {"claim": "肌肤含水量提升", "value": "92%", "source_type": "14 天人体功效测试"},
+                ],
+            },
+            style=STYLE_OPTIONS[0],
+            module=effect_module,
+            module_index=4,
+            total_modules=7,
+        )
+
+        self.assertIn("水润数据指标区", prompt)
+        self.assertIn("醒目大数字", prompt)
+        self.assertIn("增加了 XX%", prompt)
+        self.assertIn("提升 XX%", prompt)
+        self.assertIn("优先使用已有百分比数据", prompt)
+        self.assertIn("不要为了画面效果编造百分比", prompt)
+
+    def test_prompts_enforce_realistic_people_when_people_may_appear(self):
+        build_module_image_prompt = load_prompt_builder()
+        usage_module = next(module for module in DEFAULT_MODULES if module["id"] == "usage")
+
+        prompt = build_module_image_prompt(
+            product_info={
+                "product_name": "水润保湿精华",
+                "target_users": ["日常护肤人群"],
+                "usage_method": ["洁面后取适量涂抹"],
+            },
+            style=STYLE_OPTIONS[0],
+            module=usage_module,
+            module_index=7,
+            total_modules=7,
+        )
+
+        self.assertIn("人物真实感约束", prompt)
+        self.assertIn("真实自然的普通消费者或真实模特", prompt)
+        self.assertIn("保留自然肤质、毛孔、细纹", prompt)
+        self.assertIn("不要生成过度漂亮", prompt)
+        self.assertIn("网红脸", prompt)
+        self.assertIn("AI感强", prompt)
+        self.assertIn("磨皮严重", prompt)
 
     def test_style_reference_prompt_overrides_preset_style_for_non_white_background_images(self):
         build_module_image_prompt = load_prompt_builder()
@@ -148,6 +203,32 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("不要混入预设风格", prompt)
         self.assertNotIn("预设风格只作为兜底", prompt)
         self.assertNotIn("绿色修护风", prompt)
+
+    def test_custom_style_prompt_keeps_style_elements_consistent_without_forcing_one_color(self):
+        build_module_image_prompt = load_prompt_builder()
+        hero_module = next(module for module in DEFAULT_MODULES if module["id"] == "hero")
+
+        prompt = build_module_image_prompt(
+            product_info={"product_name": "积雪草修护精华"},
+            style={
+                "id": "ai_custom",
+                "name": "微晶冻感修护风",
+                "primary_color": "#8ECFE6",
+                "keywords": ["微晶", "冻感"],
+                "visual_direction": "透明凝胶质感、冷感光影、柔雾摄影",
+                "layout_guidance": "统一使用半透明凝胶纹理、细线图标和柔和卡片层级",
+            },
+            module=hero_module,
+            module_index=1,
+            total_modules=7,
+        )
+
+        self.assertIn("风格参考色", prompt)
+        self.assertIn("只作为局部点缀和 UI 兼容参考", prompt)
+        self.assertIn("每张图可以根据模块内容使用不同主色、背景色或辅助色", prompt)
+        self.assertIn("材质、光影、版式、字体层级、装饰元素和图标语言必须一致", prompt)
+        self.assertNotIn("共享统一的背景色调", prompt)
+        self.assertNotIn("- 主色：#8ECFE6", prompt)
 
     def test_ingredient_prompt_is_store_ready_without_placeholder_copy(self):
         build_module_image_prompt = load_prompt_builder()

@@ -165,6 +165,9 @@ assertIncludes("app/page.tsx", "styleSource === \"ai_custom\" ? customStyle", "g
 assertIncludes("components/StyleStep.tsx", "customStyle.asset", "AI custom style card must render the generated GPT image sample when available");
 assertIncludes("components/StyleStep.tsx", "让 AI 规划风格", "AI custom style action must only communicate style planning");
 assertIncludes("components/StyleStep.tsx", "生成样例图", "AI custom style card must expose separate sample generation");
+assertIncludes("components/StyleStep.tsx", "规划统一视觉元素", "AI custom style copy should emphasize style elements instead of one overall color");
+assertIncludes("components/StyleStep.tsx", "每张图可按模块变化颜色", "AI custom style copy should say colors may vary by module");
+assertNotIncludes("components/StyleStep.tsx", "包装色规划", "AI custom style copy should not imply planning one overall color from packaging");
 assertNotIncludes("app/page.tsx", "WHITE_BACKGROUND_MODULE_IDS", "product image requirements should apply to every generated image, not only white-background modules");
 assertNotIncludes("app/page.tsx", "白底图需要先上传产品图", "product image requirement copy should not imply only white-background modules need the original product image");
 assertIncludes("lib/types.ts", "uploadedFiles: UploadedFileInfo[]", "persisted project state must include uploaded files so history can restore product images");
