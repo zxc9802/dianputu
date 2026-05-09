@@ -105,6 +105,11 @@ assertIncludes("app/page.tsx", "generationProgress", "page must track generation
 assertIncludes("app/page.tsx", "promotionInfo", "page must persist campaign promotion text");
 assertIncludes("app/page.tsx", "currentHistoryId", "page must keep the saved history id for later autosaves");
 assertIncludes("app/page.tsx", "id: resolveReusableHistoryId(currentHistoryId, null)", "history autosave must reuse the current history id instead of inserting duplicates");
+assertIncludes("app/page.tsx", "trackSavedHistoryId: false", "background save before loading a history copy must not reattach the copy workspace to the original history id");
+assertIncludes("app/page.tsx", "canSaveHistory={Boolean(productInfo && hasAiProductInfo && generatedImages.length)}", "preview save action must require parsed product information, matching the topbar save action");
+assertIncludes("components/PreviewStep.tsx", "canSaveHistory", "preview step must receive an explicit save eligibility flag");
+assertIncludes("components/PreviewStep.tsx", "disabled={isSavingHistory || !canSaveHistory}", "preview save action must disable when product info is missing");
+assertNotIncludes("components/HistoryDrawer.tsx", "生成图片后会自动保存到这里", "history empty state must not promise autosave after switching to manual save");
 assertIncludes("lib/historyApi.ts", "LOCAL_HISTORY_STORAGE_KEY", "history API must keep a local fallback when PostgreSQL is not configured");
 assertIncludes("lib/historyApi.ts", "getScopedLocalHistoryStorageKey", "history local fallback key must be scoped by session user");
 assertIncludes("lib/historyApi.ts", "detail-image-agent-history:", "history local fallback key must include the current user id");
@@ -175,5 +180,7 @@ assertIncludes("components/PreviewStep.tsx", "onGenerateModule", "preview step m
 assertIncludes("components/ModulesStep.tsx", "role=\"button\"", "module rows must remain keyboard-accessible after adding nested action buttons");
 assertIncludes("components/ModulesStep.tsx", "preventDefault", "keyboard module toggles must not scroll the page");
 assertIncludes("components/PreviewStep.tsx", "重新生成", "preview step must expose regenerate actions");
+assertNotIncludes("components/PreviewStep.tsx", 'moduleUrl ? "重新生成" : "生成"', "preview directory must not render regenerate buttons");
+assertIncludes("components/PreviewStep.tsx", "directoryDownloadSlot", "preview directory download buttons must use an aligned action slot");
 
 console.log("Static UI contract checks passed.");

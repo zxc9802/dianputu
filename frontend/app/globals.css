@@ -1386,6 +1386,13 @@ a {
   font-weight: 800;
 }
 
+.directoryDownloadSlot {
+  width: 66px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .mainImageEmpty {
   min-height: 100%;
   width: 100%;
@@ -1463,7 +1470,7 @@ a {
   padding-left: 18px;
 }
 
-.directoryList span {
+.directoryList div > span:first-child {
   width: 34px;
   height: 34px;
   border-radius: 50%;

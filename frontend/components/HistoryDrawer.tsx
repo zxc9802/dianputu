@@ -132,7 +132,7 @@ export function HistoryDrawer({
             <div className="historyEmptyState">
               <Clock size={32} />
               <p>{searchQuery ? "没有找到匹配的记录" : "暂无历史记录"}</p>
-              <span>{searchQuery ? "试试其他关键词" : "生成图片后会自动保存到这里"}</span>
+              <span>{searchQuery ? "试试其他关键词" : "生成图片后点击保存，会出现在这里"}</span>
             </div>
           ) : (
             filteredItems.map((item) => (

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Download, FileImage, Monitor, Smartphone } from "lucide-react";
+import { Download, FileImage, Monitor, Save, Smartphone } from "lucide-react";
 import { createComposeLongImageJob, downloadComposeLongImageJob, downloadImage, fetchComposeLongImageJob, prepareComposeLongImageSources } from "@/lib/api";
 import type { CommercePlatform, GeneratedImageVersionState, ImageGroup, ModuleConfig } from "@/lib/types";
 
@@ -86,10 +86,13 @@ export function PreviewStep({
   selectedVersionIds,
   generationProgress,
   selectedPlatform,
+  isSavingHistory,
+  canSaveHistory,
   onImageGroupChange,
   onGenerateModule,
   onSelectVersion,
   onEditImage,
+  onSaveToHistory,
   onBack
 }: {
   modules: ModuleConfig[];
@@ -99,10 +102,13 @@ export function PreviewStep({
   selectedVersionIds: Record<string, string>;
   generationProgress: GenerationProgressMap;
   selectedPlatform: CommercePlatform;
+  isSavingHistory: boolean;
+  canSaveHistory: boolean;
   onImageGroupChange: (group: ImageGroup) => void;
   onGenerateModule: (group: ImageGroup, moduleId: string) => void;
   onSelectVersion: (moduleId: string, versionId: string) => void;
   onEditImage: (moduleId: string, imageUrl: string, instruction: string) => void;
+  onSaveToHistory: () => void;
   onBack: () => void;
 }) {
   const [isComposing, setIsComposing] = useState(false);
@@ -356,20 +362,11 @@ export function PreviewStep({
           <div className="directoryList">
             {visibleModules.map((module, index) => {
               const moduleUrl = generatedByModule.get(module.id);
-              const isCurrent = (activeProgress.runningModuleIds ?? []).includes(module.id);
               return (
                 <div key={module.id}>
                   <span>{index + 1}</span>
                   <b>{module.name}</b>
-                  <span className="directoryActions">
-                    <button
-                      className="inlineActionButton"
-                      disabled={activeProgress.isGenerating}
-                      onClick={() => onGenerateModule(activeImageGroup, module.id)}
-                      type="button"
-                    >
-                      {isCurrent ? "生成中" : moduleUrl ? "重新生成" : "生成"}
-                    </button>
+                  <span className="directoryDownloadSlot">
                     {moduleUrl ? (
                       <button className="inlineActionButton" onClick={() => fetchAndDownload(moduleUrl, `${String(index + 1).padStart(2, "0")}-${module.id}.png`)} type="button">
                         下载
@@ -407,6 +404,10 @@ export function PreviewStep({
       <footer className="bottomActions">
         <button className="ghostButton" onClick={onBack}>
           上一步
+        </button>
+        <button className="primaryButton" onClick={onSaveToHistory} disabled={isSavingHistory || !canSaveHistory} type="button">
+          <Save size={18} />
+          {isSavingHistory ? "保存中..." : "保存到历史记录"}
         </button>
       </footer>
     </>

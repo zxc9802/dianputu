@@ -34,6 +34,7 @@ const {
   applyTemplateToModules,
   enableModuleForSingleGeneration,
   resolveReusableHistoryId,
+  resolveHistoryIdAfterSave,
   getSelectedGeneratedImages,
   resolveImageGenerationConcurrencyLimit,
   runParallelImageGeneration
@@ -57,6 +58,10 @@ assert.deepEqual(JSON.parse(JSON.stringify(selected)), [{ module_id: "hero", url
 assert.equal(resolveReusableHistoryId(null, null), undefined);
 assert.equal(resolveReusableHistoryId(null, "history-1"), "history-1");
 assert.equal(resolveReusableHistoryId("history-1", "history-2"), "history-1");
+assert.equal(resolveHistoryIdAfterSave(null, "history-1"), "history-1");
+assert.equal(resolveHistoryIdAfterSave("history-1", "history-2"), "history-1");
+assert.equal(resolveHistoryIdAfterSave(null, "history-1", { trackSavedHistoryId: false }), null);
+assert.equal(resolveHistoryIdAfterSave("copy-history", "original-history", { trackSavedHistoryId: false }), "copy-history");
 assert.equal(resolveImageGenerationConcurrencyLimit(), 2);
 sandbox.process.env.NEXT_PUBLIC_IMAGE_GENERATION_CONCURRENCY = "7";
 assert.equal(resolveImageGenerationConcurrencyLimit(), 7);

@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, Clock, CornerUpLeft } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, CheckCircle2, Clock, CornerUpLeft, Save } from "lucide-react";
 import { HistoryDrawer } from "@/components/HistoryDrawer";
 import { ModulesStep } from "@/components/ModulesStep";
 import { PreviewStep } from "@/components/PreviewStep";
@@ -34,6 +34,7 @@ import {
   createTemplateFromProject,
   enableModuleForSingleGeneration,
   getSelectedGeneratedImages,
+  resolveHistoryIdAfterSave,
   resolveReusableHistoryId,
   runParallelImageGeneration,
   selectImageVersion
@@ -243,7 +244,9 @@ export default function Home() {
   const [hasRestoredProjectState, setHasRestoredProjectState] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
+  const [isSavingHistory, setIsSavingHistory] = useState(false);
   const [returnWorkspaceSnapshot, setReturnWorkspaceSnapshot] = useState<WorkspaceSnapshot | null>(null);
+  const hasUnsavedImages = useRef(false);
   const [defaultModules, setDefaultModules] = useState<ModuleConfig[]>([]);
 
   useEffect(() => {
@@ -674,52 +677,76 @@ export default function Home() {
     }
   }
 
-  const saveToHistory = useCallback(async () => {
-    if (!productInfo || !hasAiProductInfo) return;
+  const saveToHistory = useCallback(async (options: { trackSavedHistoryId?: boolean } = {}) => {
+    if (!productInfo || !hasAiProductInfo) {
+      setStatusText("请先用 AI 解析产品信息后再保存");
+      return;
+    }
     const currentImages = getSelectedGeneratedImages(imageVersionStore.versions, imageVersionStore.selectedVersionIds);
-    if (currentImages.length === 0) return;
-    const resolvedStyle = styleSource === "ai_custom" && customStyle ? customStyle : styles.find((s) => s.id === selectedStyleId);
-    const thumbnail = currentImages[0]?.url ?? "";
-    const saved = await saveHistory({
-      id: resolveReusableHistoryId(currentHistoryId, null),
-      product_name: productInfo.product_name || "未命名项目",
-      category: productInfo.category || "",
-      style_id: selectedStyleId,
-      style_name: resolvedStyle?.name ?? selectedStyleId,
-      platform_id: selectedPlatformId,
-      thumbnail,
-      image_count: currentImages.length,
-      state: {
-        productInfo,
-        hasAiProductInfo,
-        selectedStyleId,
-        customStyle,
-        styleSource,
-        selectedCategory,
-        selectedPlatformId,
-        selectedImageModelId,
-        activeImageGroup,
-        promotionInfo,
-        modules,
-        generatedImages: currentImages,
-        generatedImageVersions: imageVersionStore.versions,
-        selectedVersionIds: imageVersionStore.selectedVersionIds,
-        userTemplates,
-        statusText: "已从历史恢复"
-      }
-    });
-    setCurrentHistoryId((existingId) => resolveReusableHistoryId(existingId, saved?.id ?? null) ?? null);
-  }, [activeImageGroup, currentHistoryId, customStyle, hasAiProductInfo, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedImageModelId, selectedPlatformId, selectedStyleId, statusText, styleSource, styles, userTemplates]);
+    if (currentImages.length === 0) {
+      setStatusText("暂无生成图片可保存");
+      return;
+    }
+    setIsSavingHistory(true);
+    try {
+      const resolvedStyle = styleSource === "ai_custom" && customStyle ? customStyle : styles.find((s) => s.id === selectedStyleId);
+      const thumbnail = currentImages[0]?.url ?? "";
+      const saved = await saveHistory({
+        id: resolveReusableHistoryId(currentHistoryId, null),
+        product_name: productInfo.product_name || "未命名项目",
+        category: productInfo.category || "",
+        style_id: selectedStyleId,
+        style_name: resolvedStyle?.name ?? selectedStyleId,
+        platform_id: selectedPlatformId,
+        thumbnail,
+        image_count: currentImages.length,
+        state: {
+          productInfo,
+          hasAiProductInfo,
+          selectedStyleId,
+          customStyle,
+          styleSource,
+          selectedCategory,
+          selectedPlatformId,
+          selectedImageModelId,
+          activeImageGroup,
+          promotionInfo,
+          modules,
+          generatedImages: currentImages,
+          generatedImageVersions: imageVersionStore.versions,
+          selectedVersionIds: imageVersionStore.selectedVersionIds,
+          userTemplates,
+          statusText: "已从历史恢复"
+        }
+      });
+      setCurrentHistoryId((existingId) => resolveHistoryIdAfterSave(existingId, saved?.id ?? null, options));
+      hasUnsavedImages.current = false;
+      setStatusText("已保存到历史记录");
+    } catch {
+      setStatusText("保存历史记录失败");
+    } finally {
+      setIsSavingHistory(false);
+    }
+  }, [activeImageGroup, currentHistoryId, customStyle, hasAiProductInfo, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedImageModelId, selectedPlatformId, selectedStyleId, styleSource, styles, userTemplates]);
 
-  // Auto-save to history when new images are generated
+  // Mark dirty when new images are generated
   useEffect(() => {
     const currentImages = getSelectedGeneratedImages(imageVersionStore.versions, imageVersionStore.selectedVersionIds);
-    const anyGenerating = Object.values(generationProgress).some((p) => p.isGenerating);
-    if (!anyGenerating && currentImages.length > 0 && hasAiProductInfo) {
-      const timer = window.setTimeout(() => void saveToHistory(), 2000);
-      return () => window.clearTimeout(timer);
+    if (currentImages.length > 0 && hasAiProductInfo) {
+      hasUnsavedImages.current = true;
     }
-  }, [generationProgress, imageVersionStore, hasAiProductInfo, saveToHistory]);
+  }, [imageVersionStore, hasAiProductInfo]);
+
+  // Warn before leaving if there are unsaved generated images
+  useEffect(() => {
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      if (hasUnsavedImages.current) {
+        event.preventDefault();
+      }
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
 
   async function restoreCopyFromHistory(state: PersistedProjectState, historyId?: string) {
     const originalState = createCurrentProjectState();
@@ -731,7 +758,7 @@ export default function Home() {
       analysisSource,
       activeStep
     });
-    void saveToHistory();
+    void saveToHistory({ trackSavedHistoryId: false });
     setCurrentHistoryId(null);
     applyProjectState(state, { statusText: "已载入历史副本" });
     setUploadedFiles([]);
@@ -779,6 +806,10 @@ export default function Home() {
           <button className="historyButton" onClick={() => setIsHistoryOpen(true)} type="button">
             <Clock size={16} />
             历史记录
+          </button>
+          <button className="historyButton" onClick={() => void saveToHistory()} disabled={isSavingHistory || generatedImages.length === 0 || !hasAiProductInfo} type="button">
+            <Save size={16} />
+            {isSavingHistory ? "保存中..." : "保存"}
           </button>
           <button className="backButton" onClick={startNewProject} type="button">
             新建项目
@@ -879,10 +910,13 @@ export default function Home() {
             selectedVersionIds={imageVersionStore.selectedVersionIds}
             generationProgress={generationProgress}
             selectedPlatform={selectedPlatform}
+            isSavingHistory={isSavingHistory}
+            canSaveHistory={Boolean(productInfo && hasAiProductInfo && generatedImages.length)}
             onGenerateModule={(group, moduleId) => handleGenerate(group, moduleId)}
             onSelectVersion={selectVersion}
             onEditImage={handleEditImage}
             onImageGroupChange={setActiveImageGroup}
+            onSaveToHistory={() => void saveToHistory()}
             onBack={() => go(previousStep(activeStep))}
           />
         ) : null}

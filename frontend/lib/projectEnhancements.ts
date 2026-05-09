@@ -65,6 +65,17 @@ export function resolveReusableHistoryId(currentHistoryId: string | null, savedH
   return currentHistoryId ?? savedHistoryId ?? undefined;
 }
 
+export function resolveHistoryIdAfterSave(
+  currentHistoryId: string | null,
+  savedHistoryId: string | null,
+  options: { trackSavedHistoryId?: boolean } = {}
+) {
+  if (options.trackSavedHistoryId === false) {
+    return currentHistoryId;
+  }
+  return resolveReusableHistoryId(currentHistoryId, savedHistoryId) ?? null;
+}
+
 export function resolveImageGenerationConcurrencyLimit(
   rawValue = process.env.NEXT_PUBLIC_IMAGE_GENERATION_CONCURRENCY
 ) {
