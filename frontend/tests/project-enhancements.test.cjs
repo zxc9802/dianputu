@@ -29,6 +29,26 @@ const sandbox = {
 sandbox.exports = sandbox.module.exports;
 vm.runInNewContext(compiled, sandbox, { filename: sourcePath });
 
+const constantsPath = path.join(root, "lib", "constants.ts");
+const constantsSource = fs.readFileSync(constantsPath, "utf8");
+const compiledConstants = ts.transpileModule(constantsSource, {
+  compilerOptions: {
+    module: ts.ModuleKind.CommonJS,
+    target: ts.ScriptTarget.ES2019,
+    esModuleInterop: true
+  }
+}).outputText;
+const constantsSandbox = {
+  exports: {},
+  module: { exports: {} },
+  require(request) {
+    if (request === "@/lib/types" || request === "./types") return {};
+    throw new Error(`Unexpected require: ${request}`);
+  }
+};
+constantsSandbox.exports = constantsSandbox.module.exports;
+vm.runInNewContext(compiledConstants, constantsSandbox, { filename: constantsPath });
+
 const {
   appendImageVersions,
   applyTemplateToModules,
@@ -37,6 +57,7 @@ const {
   resolveHistoryIdAfterSave,
   getSelectedGeneratedImages,
   formatImageGenerationSummaryStatus,
+  normalizeDetailIngredientModuleOrder,
   resolveImageGenerationConcurrencyLimit,
   runParallelImageGeneration
   ,
@@ -44,6 +65,7 @@ const {
   selectLanguageVersion,
   replaceUploadedFileDataUrlsWithMaterialUrls
 } = sandbox.module.exports;
+const { OFFICIAL_PROJECT_TEMPLATES } = constantsSandbox.module.exports;
 
 const versionState = { versions: {}, selectedVersionIds: {} };
 const first = appendImageVersions(versionState, [{ module_id: "hero", url: "v1.png" }], "model", 1000);
@@ -199,6 +221,35 @@ assert.deepEqual(
     { id: "hero", enabled: true, order: 1 },
     { id: "usage", enabled: false, order: 2 }
   ]
+);
+
+for (const template of OFFICIAL_PROJECT_TEMPLATES) {
+  const moduleIds = template.modules.map((module) => module.id);
+  assert.ok(moduleIds.includes("ingredient_overview"), `${template.id} must keep the ingredient overview page`);
+  assert.ok(moduleIds.includes("ingredient_1"), `${template.id} must keep ingredient explanation page 1`);
+  assert.ok(moduleIds.includes("ingredient_2"), `${template.id} must keep ingredient explanation page 2`);
+  assert.ok(moduleIds.includes("ingredient_3"), `${template.id} must keep ingredient explanation page 3`);
+}
+
+const restoredBadIngredientOrder = normalizeDetailIngredientModuleOrder([
+  { id: "hero", name: "详情首图", description: "", enabled: true, order: 1, image_group: "detail" },
+  { id: "authority", name: "权威资质展示", description: "", enabled: true, order: 2, image_group: "detail" },
+  { id: "pain_scene", name: "痛点场景", description: "", enabled: true, order: 3, image_group: "detail" },
+  { id: "effect_comparison", name: "效果对比", description: "", enabled: true, order: 4, image_group: "detail" },
+  { id: "competitor_comparison", name: "竞品对比", description: "", enabled: true, order: 5, image_group: "detail" },
+  { id: "ingredient_overview", name: "成分总览", description: "", enabled: true, order: 6, image_group: "detail" },
+  { id: "ingredient_1", name: "成分 1 讲解", description: "", enabled: true, order: 7, image_group: "detail" },
+  { id: "usage", name: "使用方法", description: "", enabled: true, order: 8, image_group: "detail" },
+  { id: "ingredient_2", name: "成分 2 讲解", description: "", enabled: true, order: 9, image_group: "detail" },
+  { id: "ingredient_3", name: "成分 3 讲解", description: "", enabled: true, order: 10, image_group: "detail" }
+]);
+assert.deepEqual(
+  restoredBadIngredientOrder
+    .filter((module) => module.image_group === "detail")
+    .sort((a, b) => a.order - b.order)
+    .map((module) => module.id)
+    .slice(5),
+  ["ingredient_overview", "ingredient_1", "ingredient_2", "ingredient_3", "usage"]
 );
 
 const singleGenerateModules = [

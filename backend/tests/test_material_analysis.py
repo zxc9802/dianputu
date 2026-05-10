@@ -96,6 +96,30 @@ class MaterialAnalysisTests(unittest.TestCase):
         self.assertEqual(product_info["material_highlights"][0], "14 天测试显示细纹观感改善")
         self.assertEqual(product_info["confirmation_status"], "pending")
 
+    def test_model_json_normalizes_only_top_three_core_ingredients_with_safe_benefits(self):
+        product_info = normalize_product_info_from_model(
+            """
+            {
+              "product_name": "水润保湿面霜",
+              "ingredients": [
+                {"name": "透明质酸钠", "benefit": ""},
+                {"name": "烟酰胺", "benefit": "待确认"},
+                {"name": "积雪草提取物", "benefit": "帮助舒缓干燥不适"},
+                {"name": "泛醇", "benefit": "辅助保湿维稳"}
+              ]
+            }
+            """
+        )
+
+        self.assertEqual(
+            product_info["ingredients"],
+            [
+                {"name": "透明质酸钠", "benefit": "帮助提升水润肤感"},
+                {"name": "烟酰胺", "benefit": "帮助提亮肤色观感"},
+                {"name": "积雪草提取物", "benefit": "帮助舒缓干燥不适"},
+            ],
+        )
+
     def test_missing_model_fields_do_not_use_demo_product_copy(self):
         product_info = normalize_product_info_from_model('{"product_name": "Only Name"}')
 
@@ -143,7 +167,7 @@ class MaterialAnalysisTests(unittest.TestCase):
         text = content[0]["text"]
         self.assertIn("规划一个全新的电商视觉风格", text)
         self.assertIn("全权规划", text)
-        self.assertIn("不要从现有三套预设风格里选择", text)
+        self.assertIn("不要从现有固定预设风格里选择", text)
         self.assertIn("风格元素系统", text)
         self.assertIn("材质、光影、构图、字体层级、图标/装饰元素、摄影或渲染质感", text)
         self.assertIn("每张图可以根据模块内容使用不同颜色", text)
@@ -164,6 +188,31 @@ class MaterialAnalysisTests(unittest.TestCase):
         text = messages[0]["content"][0]["text"]
         self.assertNotIn("品类：护肤精华", text)
         self.assertIn("请自行识别产品品类", text)
+
+    def test_model_json_normalization_keeps_custom_style_element_system(self):
+        style = normalize_style_plan_from_model(
+            """
+            {
+              "name": "黑金奢华风",
+              "primary_color": "#C8A24A",
+              "keywords": ["黑金", "高奢", "抗老"],
+              "theme": "黑金高奢护肤视觉",
+              "best_for": ["抗老面霜"],
+              "visual_elements": ["黑色丝绒背景", "鎏金线条"],
+              "materials": ["黑色丝绒", "拉丝金属"],
+              "lighting": ["低调暗场光", "金色边缘光"],
+              "module_usage": {"首图": "黑色高级背景 + 金色轮廓光"},
+              "forbidden": ["土豪金大面积铺满"]
+            }
+            """
+        )
+
+        self.assertEqual(style["id"], "ai_custom")
+        self.assertEqual(style["seed_id"], "")
+        self.assertEqual(style["theme"], "黑金高奢护肤视觉")
+        self.assertEqual(style["visual_elements"], ["黑色丝绒背景", "鎏金线条"])
+        self.assertEqual(style["module_usage"]["首图"], "黑色高级背景 + 金色轮廓光")
+        self.assertEqual(style["forbidden"], ["土豪金大面积铺满"])
 
 
     def test_main_image_prompts_use_module_specific_briefs_and_visual_constraints(self):

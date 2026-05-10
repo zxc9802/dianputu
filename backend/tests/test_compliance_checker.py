@@ -163,6 +163,10 @@ class ImageComplianceCheckerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(report["summary"]["review_count"], 1)
         self.assertEqual(report["issues"][0]["id"], "image_ai_review_unavailable")
         self.assertEqual(report["issues"][0]["severity"], "review")
+        self.assertIn("Gemini", report["issues"][0]["term"])
+        self.assertIn("Gemini", report["issues"][0]["reason"])
+        self.assertIn("Gemini 3.1 Pro", report["issues"][0]["suggestion"])
+        self.assertNotIn("OCR", report["issues"][0]["reason"])
         self.assertIn("TEXT_ANALYSIS_API_KEY", report["issues"][0]["reason"])
 
 

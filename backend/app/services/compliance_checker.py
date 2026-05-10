@@ -440,7 +440,7 @@ async def check_image_items(
                     issue_id="image_read_failed",
                     category="image_ai_review",
                     term="图片读取失败",
-                    reason=f"图片无法读取，未完成 AI 图片合规复查：{reason}",
+                    reason=f"图片无法读取，未完成 Gemini 图片合规复查：{reason}",
                     suggestion="请重新生成或重新上传图片后再复查，导出前建议人工确认。",
                     location=location,
                     platform_id=platform_id,
@@ -463,8 +463,8 @@ async def check_image_items(
                 _review_issue(
                     issue_id="image_ai_review_unavailable",
                     category="image_ai_review",
-                    term="AI 图片合规复查未完成",
-                    reason=f"AI 图片合规复查未完成：{reason}",
+                    term="Gemini 图片合规复查未完成",
+                    reason=f"Gemini 图片合规复查未完成：{reason}",
                     suggestion="请配置可识别图片的 Gemini 3.1 Pro 文本模型，或在导出前人工核对成图内容。",
                     location=location,
                     platform_id=platform_id,
@@ -478,9 +478,9 @@ async def check_image_items(
                 _review_issue(
                     issue_id="image_ai_review_failed",
                     category="image_ai_review",
-                    term="AI 图片合规复查失败",
-                    reason=f"AI 图片合规复查失败：{reason}",
-                    suggestion="请重试图片合规检查，若仍失败则导出前人工核对成图内容。",
+                    term="Gemini 图片合规复查失败",
+                    reason=f"Gemini 图片合规复查失败：{reason}",
+                    suggestion="请重试 Gemini 图片合规复查，若仍失败则导出前人工核对成图内容。",
                     location=location,
                     platform_id=platform_id,
                 )

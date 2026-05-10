@@ -65,7 +65,7 @@ const uploadSlots: Array<{
 const manualRows = [
   { key: "product_name", label: "产品名称", icon: Tags, placeholder: "例如：修护精华 / 面霜 / 洁面乳" },
   { key: "core_selling_points", label: "核心卖点", icon: Sparkles, placeholder: "每行一个，或用 / 分隔" },
-  { key: "ingredients", label: "核心成分", icon: Beaker, placeholder: "例如：主打成分 / 复配成分" },
+  { key: "ingredients", label: "核心成分", icon: Beaker, placeholder: "例如：透明质酸钠：帮助提升水润肤感 / 烟酰胺：帮助提亮肤色观感" },
   { key: "functions", label: "功效", icon: Shield, placeholder: "例如：主要功效 / 辅助功效" },
   { key: "usage_method", label: "使用方法", icon: Droplet, placeholder: "例如：洁面后使用 / 轻拍至吸收" },
   { key: "effect_claims", label: "效果数据", icon: LineChart, placeholder: "例如：保湿力提升 92%" },

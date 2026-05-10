@@ -528,7 +528,7 @@ export function PreviewStep({
               type="button"
             >
               <FileImage size={20} />
-              {isCheckingImageCompliance ? "AI 复查中" : "AI 图片合规复查"}
+              {isCheckingImageCompliance ? "Gemini 复查中" : "Gemini 图片合规复查"}
             </button>
             {activeImageGroup === "detail" ? (
               <>

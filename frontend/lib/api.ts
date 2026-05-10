@@ -333,7 +333,7 @@ export async function checkImageCompliance(imageUrls: string[], platformId: Comm
           category: "image_ai_review",
           term: "图片合规检查失败",
           reason: error instanceof Error ? error.message : "图片合规检查请求失败",
-          suggestion: "请重试 AI 图片合规复查，导出前建议人工核对成图内容。"
+          suggestion: "请重试 Gemini 图片合规复查，导出前建议人工核对成图内容。"
         }
       ]
     };

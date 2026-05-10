@@ -67,6 +67,47 @@ def _first(value: Any, fallback: str) -> str:
     return (_string_items(value) or [fallback])[0]
 
 
+PLACEHOLDER_INGREDIENT_BENEFITS = (
+    "待确认",
+    "待说明",
+    "待补充",
+    "作用待确认",
+    "功效待确认",
+    "效果待确认",
+    "资料不足",
+    "未提供",
+    "未知",
+    "不详",
+    "n/a",
+)
+
+
+def _is_placeholder_ingredient_benefit(value: str) -> bool:
+    cleaned = value.strip().lower()
+    return not cleaned or any(keyword in cleaned for keyword in PLACEHOLDER_INGREDIENT_BENEFITS)
+
+
+def _ingredient_default_benefit(name: str) -> str:
+    normalized = name.lower()
+    if any(keyword in normalized for keyword in ("透明质酸", "玻尿酸", "hyaluronic")):
+        return "帮助提升水润肤感"
+    if any(keyword in normalized for keyword in ("烟酰胺", "niacinamide")):
+        return "帮助提亮肤色观感"
+    if any(keyword in normalized for keyword in ("积雪草", "cica", "centella")):
+        return "帮助舒缓干燥不适"
+    if any(keyword in normalized for keyword in ("神经酰胺", "ceramide", "泛醇", "panthenol")):
+        return "帮助维持肌肤屏障舒适"
+    if any(keyword in normalized for keyword in ("胶原", "胜肽", "肽", "玻色因", "pro-xylane")):
+        return "帮助支撑紧致弹润肤感"
+    if any(keyword in normalized for keyword in ("甘油", "角鲨烷", "squalane")):
+        return "帮助提升滋润肤感"
+    return "辅助日常肌肤护理"
+
+
+def _safe_ingredient_benefit(name: str, benefit: str) -> str:
+    return _ingredient_default_benefit(name) if _is_placeholder_ingredient_benefit(benefit) else benefit
+
+
 def _ingredient_names(value: Any) -> list[str]:
     names: list[str] = []
     if isinstance(value, list):
@@ -74,12 +115,11 @@ def _ingredient_names(value: Any) -> list[str]:
             if isinstance(item, dict):
                 name = _clean_text(item.get("name"))
                 benefit = _clean_text(item.get("benefit"))
-                if name and benefit:
-                    names.append(f"{name} {benefit}")
-                elif name:
-                    names.append(name)
+                if name:
+                    names.append(f"{name} {_safe_ingredient_benefit(name, benefit)}")
             elif _clean_text(item):
-                names.append(_clean_text(item))
+                name = _clean_text(item)
+                names.append(f"{name} {_ingredient_default_benefit(name)}")
     return names[:3]
 
 

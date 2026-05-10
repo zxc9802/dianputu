@@ -26,7 +26,7 @@ const sandbox = {
 sandbox.exports = sandbox.module.exports;
 vm.runInNewContext(compiled, sandbox, { filename: sourcePath });
 
-const { applyProductInfoDraft, createEmptyProductInfo, mergeProductInfoWithManualPriority } = sandbox.module.exports;
+const { applyProductInfoDraft, createEmptyProductInfo, mergeProductInfoWithManualPriority, productInfoValueFor } = sandbox.module.exports;
 
 assert.equal(createEmptyProductInfo().category, "", "empty product info must not assume a fixed skincare category");
 
@@ -70,5 +70,31 @@ const emptyManual = applyProductInfoDraft(current, "product_name", "");
 const filledFromAi = mergeProductInfoWithManualPriority(emptyManual, aiResult, ["product_name"]);
 
 assert.equal(filledFromAi.product_name, "AI 识别名称");
+
+assert.equal(
+  productInfoValueFor(
+    {
+      ...current,
+      ingredients: [
+        { name: "透明质酸钠", benefit: "帮助提升水润肤感" },
+        { name: "烟酰胺", benefit: "帮助提亮肤色观感" }
+      ]
+    },
+    "ingredients"
+  ),
+  "透明质酸钠：帮助提升水润肤感 / 烟酰胺：帮助提亮肤色观感"
+);
+
+const ingredientDraft = applyProductInfoDraft(
+  current,
+  "ingredients",
+  "透明质酸钠：帮助提升水润肤感 / 烟酰胺 - 帮助提亮肤色观感 / 积雪草提取物"
+);
+
+assert.deepEqual(JSON.parse(JSON.stringify(ingredientDraft.ingredients)), [
+  { name: "透明质酸钠", benefit: "帮助提升水润肤感" },
+  { name: "烟酰胺", benefit: "帮助提亮肤色观感" },
+  { name: "积雪草提取物", benefit: "帮助舒缓干燥不适" }
+]);
 
 console.log("Product info merge checks passed.");

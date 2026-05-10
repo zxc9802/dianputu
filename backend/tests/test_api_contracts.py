@@ -57,9 +57,27 @@ class ApiContractTests(unittest.TestCase):
 
         self.assertTrue(required.issubset(DEFAULT_PRODUCT_INFO.keys()))
 
-    def test_three_style_options_are_available(self):
-        self.assertEqual([style["id"] for style in STYLE_OPTIONS], ["green_repair", "blue_hydration", "gold_antiaging"])
-        self.assertTrue(all(style.get("asset", "").startswith("/assets/") for style in STYLE_OPTIONS))
+    def test_preset_style_options_include_structured_skincare_themes(self):
+        self.assertEqual(
+            [style["id"] for style in STYLE_OPTIONS],
+            [
+                "space_repair",
+                "deep_sea_hydration",
+                "lab_clinical_tech",
+                "oriental_herbal",
+                "glacier_cooling",
+                "floral_fragrance",
+                "black_gold_luxury",
+            ],
+        )
+        self.assertTrue(all(style.get("asset", "").startswith("/assets/style-") for style in STYLE_OPTIONS))
+        self.assertTrue(all(style.get("asset", "").endswith(".png") for style in STYLE_OPTIONS))
+        black_gold = STYLE_OPTIONS[-1]
+        self.assertEqual(black_gold["name"], "黑金奢华风")
+        self.assertIn("黑金高奢护肤视觉", black_gold["theme"])
+        self.assertIn("module_usage", black_gold)
+        self.assertIn("首图", black_gold["module_usage"])
+        self.assertIn("forbidden", black_gold)
 
     def test_demo_image_urls_point_to_frontend_assets(self):
         self.assertEqual(set(DEMO_IMAGE_URLS), {module["id"] for module in DEFAULT_MODULES})
@@ -415,6 +433,26 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["url"].startswith("data:image/png;base64,"))
         self.assertTrue(result["text_layers"])
         self.assertIn("zh-CN", result["language_versions"])
+
+    async def test_single_ingredient_text_layers_use_specific_benefit_not_placeholder(self):
+        layers = build_text_layers(
+            {
+                "product_name": "水润保湿面霜",
+                "category": "面霜",
+                "ingredients": [
+                    {"name": "透明质酸钠", "benefit": "待确认"},
+                    {"name": "烟酰胺", "benefit": ""},
+                    {"name": "积雪草提取物", "benefit": "帮助舒缓干燥不适"},
+                    {"name": "泛醇", "benefit": "辅助保湿维稳"},
+                ],
+            },
+            next(module for module in DEFAULT_MODULES if module["id"] == "ingredient_1"),
+        )
+
+        layer_text = " / ".join(layer["text"] for layer in layers)
+        self.assertIn("透明质酸钠 帮助提升水润肤感", layer_text)
+        self.assertNotIn("待确认", layer_text)
+        self.assertNotIn("泛醇", layer_text)
 
     async def test_render_language_version_translates_then_reuses_base_image(self):
         image = Image.new("RGB", (320, 320), (240, 240, 255))
