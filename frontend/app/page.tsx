@@ -39,6 +39,7 @@ import {
   enableModuleForSingleGeneration,
   formatImageGenerationSummaryStatus,
   getSelectedGeneratedImages,
+  replaceUploadedFileDataUrlsWithMaterialUrls,
   resolveHistoryIdAfterSave,
   resolveReusableHistoryId,
   runParallelImageGeneration,
@@ -694,6 +695,7 @@ export default function Home() {
       return;
     }
     const materials: MaterialPayload[] = uploadedFiles.map((file) => ({
+      id: file.id,
       slot: file.slot,
       filename: file.name,
       content_type: file.type,
@@ -710,6 +712,9 @@ export default function Home() {
           : `AI 暂未返回有效结果，请检查上传资料或稍后重试。${result.error ? `原因：${result.error}` : ""}`
       );
       if (result.source === "model" && result.product_info) {
+        if (result.uploaded_materials?.length) {
+          setUploadedFiles((current) => replaceUploadedFileDataUrlsWithMaterialUrls(current, result.uploaded_materials));
+        }
         const mergedProductInfo = productInfo
           ? mergeProductInfoWithManualPriority(productInfo, result.product_info, manualFieldKeys)
           : result.product_info;

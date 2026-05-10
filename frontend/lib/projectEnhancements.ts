@@ -5,7 +5,8 @@ import type {
   LanguageCode,
   LanguageVersion,
   ModuleConfig,
-  ProjectTemplate
+  ProjectTemplate,
+  UploadedFileInfo
 } from "@/lib/types";
 
 const MAX_IMAGE_VERSIONS = 3;
@@ -21,6 +22,11 @@ type LayeredGeneratedImageInput = GeneratedImageInput & {
 type ImageGenerationResult = { source: string; images: LayeredGeneratedImageInput[]; errors?: string[] };
 type ParallelGenerationProgress = { completed: number; total: number; errorCount: number; errors: string[] };
 type ImageVersionSelection = Record<string, string>;
+type UploadedMaterialUrl = { id?: string; slot?: string; filename?: string; content_type?: string; url?: string };
+
+function isRemoteImageUrl(value: string | undefined) {
+  return Boolean(value && /^https?:\/\//i.test(value));
+}
 
 function errorWithModuleId(moduleId: string, error: string) {
   return error.startsWith(`${moduleId}:`) ? error : `${moduleId}: ${error}`;
@@ -74,6 +80,18 @@ export function appendImageVersions(
   });
 
   return { versions, selectedVersionIds };
+}
+
+export function replaceUploadedFileDataUrlsWithMaterialUrls(uploadedFiles: UploadedFileInfo[], uploadedMaterials: UploadedMaterialUrl[] = []) {
+  if (!uploadedMaterials.length) return uploadedFiles;
+  return uploadedFiles.map((file) => {
+    const replacement = uploadedMaterials.find((material) => {
+      if (!isRemoteImageUrl(material.url)) return false;
+      if (material.id && material.id === file.id) return true;
+      return material.slot === file.slot && material.filename === file.name && material.content_type === file.type;
+    });
+    return replacement?.url ? { ...file, dataUrl: replacement.url } : file;
+  });
 }
 
 export function selectImageVersion(selectedVersionIds: ImageVersionSelection, moduleId: string, versionId: string) {

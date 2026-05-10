@@ -120,16 +120,23 @@ export const DEMO_MODEL_CONFIG = {
     defaults: { max_tokens: 4096, temperature: 0.7 }
   },
   imageGeneration: {
-    model: "gpt-image-2",
+    model: "gpt-image-2-vip",
     configured: false,
     defaultOptionId: "primary",
     options: [
       {
         id: "primary",
-        label: "GPT Image 2",
-        model: "gpt-image-2",
+        label: "gpt image2(1)",
+        model: "gpt-image-2-vip",
         configured: false,
-        defaults: { size: "2048x2048", n: 1, quality: "high", output_format: "png", response_format: "b64_json" }
+        defaults: { size: "2048x2048", n: 0, quality: "", output_format: "png", response_format: "url" }
+      },
+      {
+        id: "fallback",
+        label: "gpt image2(2)",
+        model: "gpt-image-2-all",
+        configured: false,
+        defaults: { size: "2048x2048", n: 1, quality: "", output_format: "", response_format: "" }
       },
       {
         id: "gemini_flash_image",
@@ -139,8 +146,9 @@ export const DEMO_MODEL_CONFIG = {
         defaults: { size: "2048x2048", n: 1, response_format: "b64_json" }
       }
     ],
-    defaults: { size: "2048x2048", n: 1, quality: "high", output_format: "png", response_format: "b64_json" },
+    defaults: { size: "2048x2048", n: 0, quality: "", output_format: "png", response_format: "url" },
     fallback: {
+      label: "gpt image2(2)",
       model: "gpt-image-2-all",
       configured: false,
       defaults: { size: "2048x2048", n: 1 }

@@ -30,7 +30,7 @@ class ImageGenerationSettings:
     output_format: str = ""
     response_format: str = ""
     id: str = "primary"
-    label: str = "GPT Image 2"
+    label: str = "gpt image2(1)"
     endpoint_path: str = "/images/generations"
 
     @property
@@ -104,20 +104,20 @@ def get_model_settings(env: Mapping[str, str] | None = None, env_file: Path | st
     source = _merge_env(dotenv_values, environ if env is None else env)
     primary_image = ImageGenerationSettings(
         id="primary",
-        label=_read(source, "IMAGE_GENERATION_LABEL", "GPT Image 2"),
+        label=_read(source, "IMAGE_GENERATION_LABEL", "gpt image2(1)"),
         api_key=_read(source, "IMAGE_GENERATION_API_KEY", ""),
-        base_url=_read(source, "IMAGE_GENERATION_BASE_URL", "https://api-xai.ainaibahub.com/v1"),
+        base_url=_read(source, "IMAGE_GENERATION_BASE_URL", "https://api.apiyi.com/v1"),
         endpoint_path=_read(source, "IMAGE_GENERATION_ENDPOINT_PATH", "/images/generations"),
-        model=_read(source, "IMAGE_GENERATION_MODEL", "gpt-image-2"),
+        model=_read(source, "IMAGE_GENERATION_MODEL", "gpt-image-2-vip"),
         size=_read(source, "IMAGE_GENERATION_SIZE", "2048x2048"),
-        n=int(_read(source, "IMAGE_GENERATION_N", "1")),
-        quality=_read(source, "IMAGE_GENERATION_QUALITY", "high"),
+        n=int(_read(source, "IMAGE_GENERATION_N", "0")),
+        quality=_read(source, "IMAGE_GENERATION_QUALITY", ""),
         output_format=_read(source, "IMAGE_GENERATION_OUTPUT_FORMAT", "png"),
-        response_format=_read(source, "IMAGE_GENERATION_RESPONSE_FORMAT", "b64_json"),
+        response_format=_read(source, "IMAGE_GENERATION_RESPONSE_FORMAT", "url"),
     )
     fallback_image = ImageGenerationSettings(
         id="fallback",
-        label=_read(source, "FALLBACK_IMAGE_GENERATION_LABEL", "GPT Image 2 All"),
+        label=_read(source, "FALLBACK_IMAGE_GENERATION_LABEL", "gpt image2(2)"),
         api_key=_read(source, "FALLBACK_IMAGE_GENERATION_API_KEY", _read(source, "LEGACY_IMAGE_GENERATION_API_KEY", "")),
         base_url=_read(source, "FALLBACK_IMAGE_GENERATION_BASE_URL", _read(source, "LEGACY_IMAGE_GENERATION_BASE_URL", "https://yunwu.ai/v1")),
         endpoint_path=_read(source, "FALLBACK_IMAGE_GENERATION_ENDPOINT_PATH", "/images/generations"),
@@ -148,6 +148,7 @@ def get_model_settings(env: Mapping[str, str] | None = None, env_file: Path | st
         fallback_image=fallback_image,
         image_options={
             primary_image.id: primary_image,
+            fallback_image.id: fallback_image,
             gemini_flash_image.id: gemini_flash_image,
         },
     )

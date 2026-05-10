@@ -51,6 +51,7 @@ def build_public_model_config() -> dict[str, Any]:
             "defaultOptionId": settings.image.id,
             "options": image_options,
             "fallback": {
+                "label": settings.fallback_image.label,
                 "baseUrl": settings.fallback_image.base_url,
                 "endpoint": settings.fallback_image.endpoint_path,
                 "model": settings.fallback_image.model,

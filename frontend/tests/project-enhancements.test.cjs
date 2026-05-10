@@ -41,7 +41,8 @@ const {
   runParallelImageGeneration
   ,
   addLanguageVersion,
-  selectLanguageVersion
+  selectLanguageVersion,
+  replaceUploadedFileDataUrlsWithMaterialUrls
 } = sandbox.module.exports;
 
 const versionState = { versions: {}, selectedVersionIds: {} };
@@ -87,6 +88,38 @@ assert.equal(layeredVersion.selectedLanguage, "zh-CN");
 assert.equal(layeredVersion.languageVersions["zh-CN"].url, "hero-zh.png");
 assert.equal(layeredVersion.compliance.summary.status, "block");
 assert.equal(layeredVersion.languageVersions["zh-CN"].compliance.summary.status, "block");
+
+const uploadedFilesWithLocalImage = [
+  {
+    id: "file-1",
+    slot: "product_image",
+    name: "main.png",
+    size: 4096,
+    type: "image/png",
+    lastModified: 1,
+    dataUrl: "data:image/png;base64,abc"
+  },
+  {
+    id: "file-2",
+    slot: "documents",
+    name: "report.pdf",
+    size: 4096,
+    type: "application/pdf",
+    lastModified: 2,
+    dataUrl: "data:application/pdf;base64,abc"
+  }
+];
+const uploadedFilesWithRemoteImage = replaceUploadedFileDataUrlsWithMaterialUrls(uploadedFilesWithLocalImage, [
+  {
+    id: "file-1",
+    slot: "product_image",
+    filename: "main.png",
+    content_type: "image/png",
+    url: "https://img.example.com/prod/materials/main.png"
+  }
+]);
+assert.equal(uploadedFilesWithRemoteImage[0].dataUrl, "https://img.example.com/prod/materials/main.png");
+assert.equal(uploadedFilesWithRemoteImage[1].dataUrl, "data:application/pdf;base64,abc");
 
 const withEnglish = addLanguageVersion(layered, "hero", layeredVersion.id, {
   language: "en",

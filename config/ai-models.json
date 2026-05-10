@@ -13,30 +13,38 @@
   "imageGeneration": {
     "purpose": "Primary product detail image generation endpoint; each image tries this endpoint first",
     "apiKeyEnv": "IMAGE_GENERATION_API_KEY",
-    "baseUrl": "https://api-xai.ainaibahub.com/v1",
+    "baseUrl": "https://api.apiyi.com/v1",
     "endpoint": "/images/generations",
-    "model": "gpt-image-2",
+    "model": "gpt-image-2-vip",
     "defaults": {
       "size": "2048x2048",
-      "n": 1,
-      "quality": "high",
       "output_format": "png",
-      "response_format": "b64_json"
+      "response_format": "url"
     },
     "options": [
       {
         "id": "primary",
-        "label": "GPT Image 2",
+        "label": "gpt image2(1)",
         "apiKeyEnv": "IMAGE_GENERATION_API_KEY",
-        "baseUrl": "https://api-xai.ainaibahub.com/v1",
+        "baseUrl": "https://api.apiyi.com/v1",
         "endpoint": "/images/generations",
-        "model": "gpt-image-2",
+        "model": "gpt-image-2-vip",
         "defaults": {
           "size": "2048x2048",
-          "n": 1,
-          "quality": "high",
           "output_format": "png",
-          "response_format": "b64_json"
+          "response_format": "url"
+        }
+      },
+      {
+        "id": "fallback",
+        "label": "gpt image2(2)",
+        "apiKeyEnv": "FALLBACK_IMAGE_GENERATION_API_KEY",
+        "baseUrl": "https://yunwu.ai/v1",
+        "endpoint": "/images/generations",
+        "model": "gpt-image-2-all",
+        "defaults": {
+          "size": "2048x2048",
+          "n": 1
         }
       },
       {
@@ -58,6 +66,7 @@
       "apiKeyEnv": "FALLBACK_IMAGE_GENERATION_API_KEY",
       "baseUrl": "https://yunwu.ai/v1",
       "endpoint": "/images/generations",
+      "label": "gpt image2(2)",
       "model": "gpt-image-2-all",
       "defaults": {
         "size": "2048x2048",

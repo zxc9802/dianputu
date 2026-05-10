@@ -142,6 +142,7 @@ class UploadedMaterial:
     slot: str = "documents"
     text: str = ""
     data_url: str = ""
+    material_id: str = ""
 
 
 def _data_uri(material: UploadedMaterial) -> str:
@@ -151,14 +152,27 @@ def _data_uri(material: UploadedMaterial) -> str:
     return f"data:{material.content_type};base64,{encoded}"
 
 
+def _is_remote_url(value: str) -> bool:
+    return value.startswith(("http://", "https://"))
+
+
+def _material_image_url(material: UploadedMaterial) -> str:
+    if material.data_url:
+        return material.data_url
+    return _data_uri(material)
+
+
 def uploaded_material_from_payload(payload: Any) -> UploadedMaterial:
     content_type = payload.content_type or "application/octet-stream"
     data = b""
     if payload.data_url:
-        header, _, encoded = payload.data_url.partition(",")
-        if header.startswith("data:") and ";base64" in header:
-            content_type = header.removeprefix("data:").split(";", 1)[0] or content_type
-        data = base64.b64decode(encoded or payload.data_url, validate=False)
+        if _is_remote_url(payload.data_url):
+            data = b""
+        else:
+            header, _, encoded = payload.data_url.partition(",")
+            if header.startswith("data:") and ";base64" in header:
+                content_type = header.removeprefix("data:").split(";", 1)[0] or content_type
+            data = base64.b64decode(encoded or payload.data_url, validate=False)
     elif payload.text:
         data = payload.text.encode("utf-8")
 
@@ -169,6 +183,7 @@ def uploaded_material_from_payload(payload: Any) -> UploadedMaterial:
         slot=payload.slot or "documents",
         text=payload.text or "",
         data_url=payload.data_url or "",
+        material_id=str(getattr(payload, "id", "") or ""),
     )
 
 
@@ -192,8 +207,8 @@ def build_material_analysis_messages(materials: list[UploadedMaterial]) -> list[
     )
     content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
     for material in materials:
-        if material.content_type.startswith("image/") and material.data:
-            content.append({"type": "image_url", "image_url": {"url": _data_uri(material)}})
+        if material.content_type.startswith("image/") and (material.data or material.data_url):
+            content.append({"type": "image_url", "image_url": {"url": _material_image_url(material)}})
         elif material.content_type == "application/pdf" and material.data:
             # PDF: send as file to LLM API (native support), with PyMuPDF text as fallback context.
             content.append({"type": "file", "file": {"filename": material.filename, "file_data": _data_uri(material)}})
@@ -335,8 +350,8 @@ def build_style_planning_messages(
     )
     content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
     for material in (product_images or [])[:3]:
-        if material.content_type.startswith("image/") and material.data:
-            content.append({"type": "image_url", "image_url": {"url": _data_uri(material)}})
+        if material.content_type.startswith("image/") and (material.data or material.data_url):
+            content.append({"type": "image_url", "image_url": {"url": _material_image_url(material)}})
     return [{"role": "user", "content": content}]
 
 
@@ -404,9 +419,10 @@ async def analyze_uploaded_materials(materials: list[UploadedMaterial]) -> dict[
 
     try:
         model_materials: list[UploadedMaterial] = []
+        uploaded_materials: list[dict[str, str]] = []
         for material in materials:
-            if material.content_type.startswith("image/") and material.data:
-                image_url = await upload_material_image_if_configured(material)
+            if material.content_type.startswith("image/") and (material.data or material.data_url):
+                image_url = material.data_url if _is_remote_url(material.data_url) else await upload_material_image_if_configured(material)
                 model_materials.append(
                     UploadedMaterial(
                         filename=material.filename,
@@ -415,8 +431,19 @@ async def analyze_uploaded_materials(materials: list[UploadedMaterial]) -> dict[
                         slot=material.slot,
                         text=material.text,
                         data_url=image_url,
+                        material_id=material.material_id,
                     )
                 )
+                if _is_remote_url(image_url):
+                    uploaded_materials.append(
+                        {
+                            "id": material.material_id,
+                            "slot": material.slot,
+                            "filename": material.filename,
+                            "content_type": material.content_type,
+                            "url": image_url,
+                        }
+                    )
             else:
                 model_materials.append(material)
         content = await call_text_model_with_retry(settings, build_material_analysis_messages(model_materials))
@@ -425,7 +452,7 @@ async def analyze_uploaded_materials(materials: list[UploadedMaterial]) -> dict[
     if not content:
         return {"source": "error", "error": "text model returned empty content"}
 
-    return {"source": "model", "product_info": normalize_product_info_from_model(content), "raw": content}
+    return {"source": "model", "product_info": normalize_product_info_from_model(content), "raw": content, "uploaded_materials": uploaded_materials}
 
 
 async def plan_custom_style(
@@ -440,8 +467,8 @@ async def plan_custom_style(
     try:
         model_images: list[UploadedMaterial] = []
         for material in product_images or []:
-            if material.content_type.startswith("image/") and material.data:
-                image_url = await upload_material_image_if_configured(material)
+            if material.content_type.startswith("image/") and (material.data or material.data_url):
+                image_url = material.data_url if _is_remote_url(material.data_url) else await upload_material_image_if_configured(material)
                 model_images.append(
                     UploadedMaterial(
                         filename=material.filename,
@@ -450,6 +477,7 @@ async def plan_custom_style(
                         slot=material.slot,
                         text=material.text,
                         data_url=image_url,
+                        material_id=material.material_id,
                     )
                 )
         content = await call_text_model_with_retry(settings, build_style_planning_messages(product_info, category, model_images))
@@ -1064,6 +1092,7 @@ try:
         raw_text: str | None = None
 
     class MaterialPayload(BaseModel):
+        id: str | None = None
         slot: str = "documents"
         filename: str
         content_type: str = "application/octet-stream"

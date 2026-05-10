@@ -17,6 +17,7 @@ from app.routers.projects import (
     plan_custom_style,
     run_compose_job,
     run_generation_job,
+    uploaded_material_from_payload,
 )
 from app.services.prompt_builder import build_module_image_prompt
 
@@ -42,6 +43,34 @@ class MaterialAnalysisTests(unittest.TestCase):
         self.assertIn("资料亮点摘要", content[0]["text"])
         self.assertEqual(content[1]["type"], "image_url")
         self.assertTrue(content[1]["image_url"]["url"].startswith("data:image/png;base64,"))
+
+    def test_multimodal_message_accepts_uploaded_image_remote_url_without_bytes(self):
+        messages = build_material_analysis_messages(
+            [
+                UploadedMaterial(
+                    filename="main-product.png",
+                    content_type="image/png",
+                    data=b"",
+                    data_url="https://img.example.com/prod/materials/main.png",
+                )
+            ]
+        )
+
+        self.assertEqual(messages[0]["content"][1]["type"], "image_url")
+        self.assertEqual(messages[0]["content"][1]["image_url"]["url"], "https://img.example.com/prod/materials/main.png")
+
+    def test_uploaded_material_payload_accepts_remote_url_without_decoding_as_base64(self):
+        class Payload:
+            slot = "product_image"
+            filename = "main.png"
+            content_type = "image/png"
+            data_url = "https://img.example.com/prod/materials/main.png"
+            text = None
+
+        material = uploaded_material_from_payload(Payload())
+
+        self.assertEqual(material.data, b"")
+        self.assertEqual(material.data_url, "https://img.example.com/prod/materials/main.png")
 
     def test_model_json_is_normalized_to_product_info(self):
         product_info = normalize_product_info_from_model(
@@ -229,6 +258,18 @@ class AnalyzeUploadedMaterialsConfigTests(unittest.IsolatedAsyncioTestCase):
         upload_mocked.assert_awaited_once()
         content = captured_messages[0]["content"]
         self.assertEqual(content[1]["image_url"]["url"], "https://img.example.com/prod/materials/main.png")
+        self.assertEqual(
+            result["uploaded_materials"],
+            [
+                {
+                    "id": "",
+                    "slot": "documents",
+                    "filename": "main.png",
+                    "content_type": "image/png",
+                    "url": "https://img.example.com/prod/materials/main.png",
+                }
+            ],
+        )
 
     async def test_analyze_uploaded_materials_retries_gemini_with_backoff(self):
         calls = []
@@ -527,7 +568,7 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
 
         async def fake_call_image_model(settings, prompt, image=None, size=None):
             calls.append(settings.model)
-            if settings.model == "gpt-image-2" and len([model for model in calls if model == "gpt-image-2"]) == 1:
+            if settings.model == "gpt-image-2-vip" and len([model for model in calls if model == "gpt-image-2-vip"]) == 1:
                 raise RuntimeError("primary failed once")
             return [f"https://example.com/{settings.model}-{len(calls)}.png"]
 
@@ -553,9 +594,9 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
                 environ["FALLBACK_IMAGE_GENERATION_API_KEY"] = previous_fallback_key
 
         self.assertEqual(result["source"], "model")
-        self.assertEqual(calls, ["gpt-image-2", "gpt-image-2-all", "gpt-image-2"])
+        self.assertEqual(calls, ["gpt-image-2-vip", "gpt-image-2-all", "gpt-image-2-vip"])
         self.assertIn("gpt-image-2-all", result["images"][0]["url"])
-        self.assertIn("gpt-image-2", result["images"][1]["url"])
+        self.assertIn("gpt-image-2-vip", result["images"][1]["url"])
 
     async def test_generated_data_urls_are_uploaded_to_object_storage(self):
         previous_key = environ.get("IMAGE_GENERATION_API_KEY")

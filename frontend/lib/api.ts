@@ -342,7 +342,13 @@ export async function checkImageCompliance(imageUrls: string[], platformId: Comm
 
 export async function analyzeUploadedMaterials(materials: MaterialPayload[]) {
   try {
-    return await requestJson<{ source: string; product_info?: ProductInfo; raw?: string; error?: string }>(
+    return await requestJson<{
+      source: string;
+      product_info?: ProductInfo;
+      raw?: string;
+      error?: string;
+      uploaded_materials?: Array<{ id?: string; slot: string; filename: string; content_type: string; url: string }>;
+    }>(
       "/api/projects/analyze-materials",
       {
         method: "POST",

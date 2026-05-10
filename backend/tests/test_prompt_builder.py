@@ -282,6 +282,108 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("不要把中文、英文、泰语或马来语混排", prompt)
         self.assertNotIn("分层文字模式", prompt)
 
+    def test_main_image_recipes_use_premium_commercial_photography_language(self):
+        build_module_image_prompt = load_prompt_builder()
+        product_info = {
+            "product_name": "水润保湿精华",
+            "category": "护肤精华",
+            "core_selling_points": ["深层补水", "水润透亮"],
+            "functions": ["补水保湿"],
+            "ingredients": [{"name": "透明质酸钠", "benefit": "提升水润肤感"}],
+            "usage_method": ["洁面后取适量涂抹"],
+            "effect_claims": [{"claim": "肌肤含水量提升", "value": "92%", "source_type": "人体功效测试"}],
+        }
+
+        hero_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[1],
+            module=next(module for module in DEFAULT_MODULES if module["id"] == "main_hero_selling_point"),
+            module_index=2,
+            total_modules=5,
+        )
+        ingredient_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[1],
+            module=next(module for module in DEFAULT_MODULES if module["id"] == "main_ingredient"),
+            module_index=3,
+            total_modules=5,
+        )
+        effect_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[1],
+            module=next(module for module in DEFAULT_MODULES if module["id"] == "main_effect"),
+            module_index=4,
+            total_modules=5,
+        )
+        usage_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[1],
+            module=next(module for module in DEFAULT_MODULES if module["id"] == "main_usage_scene"),
+            module_index=5,
+            total_modules=5,
+        )
+
+        self.assertIn("空间透视", hero_prompt)
+        self.assertIn("质感陈列台", hero_prompt)
+        self.assertIn("商业香水/护肤品级布光", hero_prompt)
+        self.assertIn("强轮廓边缘光", hero_prompt)
+        self.assertIn("体积感环境光", hero_prompt)
+        self.assertIn("装饰元素控制在 2-4 个", hero_prompt)
+
+        self.assertIn("极浅景深超微距摄影", ingredient_prompt)
+        self.assertIn("晨露质感", ingredient_prompt)
+        self.assertIn("发光精华液滴", ingredient_prompt)
+        self.assertIn("清透高调色彩", ingredient_prompt)
+
+        self.assertIn("未来科技感玻璃拟态卡片", effect_prompt)
+        self.assertIn("极简几何细线", effect_prompt)
+        self.assertIn("顶级美妆摄影光影", effect_prompt)
+        self.assertIn("保留真实毛孔", effect_prompt)
+
+        self.assertIn("极简奢华浴室或梳妆台", usage_prompt)
+        self.assertIn("柔和自然窗光", usage_prompt)
+        self.assertIn("丁达尔光晕", usage_prompt)
+        self.assertIn("优雅手部姿态", usage_prompt)
+
+    def test_detail_authority_and_pain_scene_use_editorial_mood_without_ui_or_ugly_skin(self):
+        build_module_image_prompt = load_prompt_builder()
+        product_info = {
+            "product_name": "屏障修护精华",
+            "functions": ["舒缓泛红", "补水保湿"],
+            "target_users": ["换季泛红人群", "干燥紧绷人群"],
+            "authority_assets": ["第三方检测报告", "现代研发中心"],
+        }
+
+        authority_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[0],
+            module=next(module for module in DEFAULT_MODULES if module["id"] == "authority"),
+            module_index=2,
+            total_modules=7,
+        )
+        pain_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[0],
+            module=next(module for module in DEFAULT_MODULES if module["id"] == "pain_scene"),
+            module_index=3,
+            total_modules=7,
+        )
+
+        self.assertIn("冷峻克制的高科技蓝色/银色调", authority_prompt)
+        self.assertIn("极度整洁的现代研发中心", authority_prompt)
+        self.assertIn("玻璃器皿的锐利高光", authority_prompt)
+        self.assertIn("精密仪器金属质感", authority_prompt)
+        self.assertIn("非对称高级画册构图", authority_prompt)
+        self.assertIn("不要半透明 UI 卡片", authority_prompt)
+        self.assertNotIn("未来科技感玻璃拟态卡片", authority_prompt)
+
+        self.assertIn("情绪化电影灯光", pain_prompt)
+        self.assertIn("冷色调或暗调背景", pain_prompt)
+        self.assertIn("环境隐喻痛点", pain_prompt)
+        self.assertIn("干燥开裂纹理", pain_prompt)
+        self.assertIn("暗淡灯光隐喻肤色暗沉", pain_prompt)
+        self.assertIn("不要把脸画丑", pain_prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

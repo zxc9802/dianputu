@@ -151,6 +151,7 @@ export type ProjectTemplate = {
 };
 
 export type MaterialPayload = {
+  id?: string;
   slot: UploadSlot;
   filename: string;
   content_type: string;

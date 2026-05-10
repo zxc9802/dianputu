@@ -57,11 +57,21 @@ class ApiContractTests(unittest.TestCase):
         serialized = repr(config).lower()
 
         self.assertIn("gemini-3.1-pro-preview", serialized)
-        self.assertIn("gpt-image-2", serialized)
+        self.assertIn("gpt-image-2-vip", serialized)
+        self.assertIn("gpt image2(1)", serialized)
+        self.assertIn("gpt image2(2)", serialized)
         self.assertIn("gemini-3.1-flash-image-preview", serialized)
         self.assertIn("gpt-image-2-all", serialized)
         self.assertNotIn("api_key", serialized)
         self.assertNotIn("bearer", serialized)
+        self.assertEqual(config["imageGeneration"]["defaultOptionId"], "primary")
+        self.assertEqual(config["imageGeneration"]["options"][0]["id"], "primary")
+        self.assertEqual(config["imageGeneration"]["options"][0]["label"], "gpt image2(1)")
+        self.assertEqual(config["imageGeneration"]["options"][0]["model"], "gpt-image-2-vip")
+        self.assertEqual(config["imageGeneration"]["options"][0]["defaults"]["size"], "2048x2048")
+        self.assertEqual(config["imageGeneration"]["options"][0]["defaults"]["response_format"], "url")
+        self.assertEqual(config["imageGeneration"]["options"][1]["id"], "fallback")
+        self.assertEqual(config["imageGeneration"]["options"][1]["label"], "gpt image2(2)")
 
 
 class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
@@ -143,7 +153,7 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
 
         async def fake_call_image_model(settings, prompt, image=None, size=None):
             calls.append(settings.model)
-            if settings.model == "gpt-image-2":
+            if settings.model == "gpt-image-2-vip":
                 return []
             return ["https://example.com/fallback.png"]
 
@@ -166,7 +176,7 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["source"], "model")
         self.assertEqual(result["images"], [{"module_id": "hero", "url": "https://example.com/fallback.png"}])
-        self.assertEqual(calls, ["gpt-image-2", "gpt-image-2-all"])
+        self.assertEqual(calls, ["gpt-image-2-vip", "gpt-image-2-all"])
 
     async def test_fixed_product_composite_uses_local_product_compositor(self):
         previous_key = environ.get("IMAGE_GENERATION_API_KEY")

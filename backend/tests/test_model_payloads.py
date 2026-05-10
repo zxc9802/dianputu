@@ -2,9 +2,10 @@ import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
-from app.core.config import get_model_settings
-from app.services.image_model import build_chat_image_payload, build_image_generation_payload, extract_image_urls_from_response
+from app.core.config import ImageGenerationSettings, get_model_settings
+from app.services.image_model import build_chat_image_payload, build_image_generation_payload, call_image_model, extract_image_urls_from_response
 from app.services.text_model import build_chat_completion_payload
 
 
@@ -15,9 +16,19 @@ class ModelPayloadTests(unittest.TestCase):
         self.assertEqual(settings.text.model, "gemini-3.1-pro-preview")
         self.assertEqual(settings.text.max_tokens, 4096)
         self.assertFalse(hasattr(settings, "fallback_text"))
+        self.assertEqual(settings.image.label, "gpt image2(1)")
+        self.assertEqual(settings.image.base_url, "https://api.apiyi.com/v1")
+        self.assertEqual(settings.image.model, "gpt-image-2-vip")
         self.assertEqual(settings.image.size, "2048x2048")
+        self.assertEqual(settings.image.n, 0)
+        self.assertEqual(settings.image.quality, "")
+        self.assertEqual(settings.image.response_format, "url")
         self.assertEqual(settings.fallback_image.size, "2048x2048")
+        self.assertEqual(settings.fallback_image.label, "gpt image2(2)")
+        self.assertEqual(settings.fallback_image.model, "gpt-image-2-all")
+        self.assertIn("fallback", settings.image_options)
         self.assertIn("gemini_flash_image", settings.image_options)
+        self.assertEqual(list(settings.image_options)[:2], ["primary", "fallback"])
         self.assertEqual(settings.image_options["gemini_flash_image"].model, "gemini-3.1-flash-image-preview")
         self.assertEqual(settings.image_options["gemini_flash_image"].base_url, "https://www.shanbaob.net/v1")
         self.assertEqual(settings.image_options["gemini_flash_image"].endpoint_path, "/chat/completions")
@@ -64,6 +75,22 @@ class ModelPayloadTests(unittest.TestCase):
         )
 
         self.assertEqual(payload["size"], "600x600")
+
+    def test_vip_image_payload_omits_unsupported_quality_and_n(self):
+        payload = build_image_generation_payload(
+            prompt="生成 2K 店铺图",
+            model="gpt-image-2-vip",
+            size="2048x2048",
+            n=0,
+            quality="",
+            response_format="url",
+        )
+
+        self.assertEqual(payload["model"], "gpt-image-2-vip")
+        self.assertEqual(payload["size"], "2048x2048")
+        self.assertNotIn("n", payload)
+        self.assertNotIn("quality", payload)
+        self.assertEqual(payload["response_format"], "url")
 
     def test_chat_image_payload_contains_messages_and_reference_images(self):
         payload = build_chat_image_payload(
@@ -160,6 +187,115 @@ class ModelPayloadTests(unittest.TestCase):
             settings = get_model_settings({"TEXT_ANALYSIS_API_KEY": "text-key-from-env"}, env_file=env_path)
 
         self.assertEqual(settings.text.api_key, "text-key-from-env")
+
+
+class ImageModelReferenceInputTests(unittest.IsolatedAsyncioTestCase):
+    async def test_image_api_reference_inputs_use_edits_endpoint_multipart(self):
+        settings = ImageGenerationSettings(
+            id="primary",
+            label="GPT Image 2",
+            api_key="test-key",
+            base_url="https://example.com/v1",
+            endpoint_path="/images/generations",
+            model="gpt-image-2",
+            size="2048x2048",
+            n=1,
+            quality="high",
+            output_format="png",
+            response_format="b64_json",
+        )
+        posts = []
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"data": [{"b64_json": "abc123"}]}
+
+        class FakeAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                return None
+
+            async def post(self, url, *, headers=None, json=None, files=None, data=None):
+                posts.append({"url": url, "json": json, "files": files, "data": data})
+                return FakeResponse()
+
+        with patch("httpx.AsyncClient", FakeAsyncClient):
+            urls = await call_image_model(
+                settings,
+                "基于上传产品图生成店铺首图",
+                image=["data:image/png;base64,iVBORw0KGgo="],
+                size="1024x1024",
+            )
+
+        self.assertEqual(urls, ["data:image/png;base64,abc123"])
+        self.assertEqual(posts[0]["url"], "https://example.com/v1/images/edits")
+        self.assertIsNone(posts[0]["json"])
+        self.assertEqual(posts[0]["data"]["model"], "gpt-image-2")
+        self.assertEqual(posts[0]["data"]["prompt"], "基于上传产品图生成店铺首图")
+        self.assertEqual(posts[0]["data"]["size"], "1024x1024")
+        self.assertEqual(posts[0]["data"]["quality"], "high")
+        self.assertEqual(posts[0]["files"][0][0], "image")
+        self.assertEqual(posts[0]["files"][0][1][1], b"\x89PNG\r\n\x1a\n")
+
+    async def test_vip_reference_inputs_keep_2k_size_and_omit_unsupported_fields(self):
+        settings = ImageGenerationSettings(
+            id="primary",
+            label="gpt image2(1)",
+            api_key="test-key",
+            base_url="https://api.apiyi.com/v1",
+            endpoint_path="/images/generations",
+            model="gpt-image-2-vip",
+            size="2048x2048",
+            n=0,
+            quality="",
+            output_format="png",
+            response_format="url",
+        )
+        posts = []
+
+        class FakeResponse:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"data": [{"url": "https://files.example.com/generated.png"}]}
+
+        class FakeAsyncClient:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                return None
+
+            async def post(self, url, *, headers=None, json=None, files=None, data=None):
+                posts.append({"url": url, "json": json, "files": files, "data": data})
+                return FakeResponse()
+
+        with patch("httpx.AsyncClient", FakeAsyncClient):
+            urls = await call_image_model(
+                settings,
+                "基于上传产品图生成店铺首图",
+                image=["data:image/png;base64,iVBORw0KGgo="],
+            )
+
+        self.assertEqual(urls, ["https://files.example.com/generated.png"])
+        self.assertEqual(posts[0]["url"], "https://api.apiyi.com/v1/images/edits")
+        self.assertEqual(posts[0]["data"]["model"], "gpt-image-2-vip")
+        self.assertEqual(posts[0]["data"]["size"], "2048x2048")
+        self.assertEqual(posts[0]["data"]["response_format"], "url")
+        self.assertNotIn("quality", posts[0]["data"])
+        self.assertNotIn("n", posts[0]["data"])
 
 
 if __name__ == "__main__":

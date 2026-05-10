@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import re
 from typing import Any
 
@@ -19,22 +20,20 @@ def build_image_generation_payload(
     quality: str = "",
     output_format: str = "",
     response_format: str = "",
-    image: list[str] | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "model": model,
         "size": size,
-        "n": n,
         "prompt": prompt,
     }
+    if n > 0:
+        payload["n"] = n
     if quality:
         payload["quality"] = quality
     if output_format:
         payload["output_format"] = output_format
     if response_format:
         payload["response_format"] = response_format
-    if image:
-        payload["image"] = image
     return payload
 
 
@@ -64,7 +63,8 @@ def extract_image_urls_from_response(data: dict[str, Any], *, image_format: str 
         if item.get("url"):
             add_url(item["url"])
         elif item.get("b64_json"):
-            add_url(f"data:image/{image_format};base64,{item['b64_json']}")
+            b64_json = str(item["b64_json"])
+            add_url(b64_json if b64_json.startswith("data:") else f"data:image/{image_format};base64,{b64_json}")
 
     for choice in data.get("choices", []):
         content = choice.get("message", {}).get("content", "")
@@ -101,17 +101,34 @@ async def call_image_model(
             model=settings.model,
             image=image,
         )
-    else:
-        payload = build_image_generation_payload(
-            prompt=prompt,
-            model=settings.model,
-            size=size or settings.size,
-            n=settings.n,
-            quality=settings.quality,
-            output_format=settings.output_format,
-            response_format=settings.response_format,
-            image=image,
-        )
+        async with httpx.AsyncClient(timeout=480) as client:
+            response = await client.post(
+                settings.endpoint_url,
+                headers={
+                    "Accept": "application/json",
+                    "Authorization": f"Bearer {settings.api_key}",
+                    "Content-Type": "application/json",
+                    "User-Agent": MODEL_GATEWAY_USER_AGENT,
+                },
+                json=payload,
+            )
+            response.raise_for_status()
+            data = response.json()
+            return extract_image_urls_from_response(data, image_format=settings.output_format or "png")
+
+    if image:
+        image_files = await _load_reference_image_files(image)
+        return await _post_image_edit_files(settings, prompt, image_files, size=size)
+
+    payload = build_image_generation_payload(
+        prompt=prompt,
+        model=settings.model,
+        size=size or settings.size,
+        n=settings.n,
+        quality=settings.quality,
+        output_format=settings.output_format,
+        response_format=settings.response_format,
+    )
     async with httpx.AsyncClient(timeout=480) as client:
         response = await client.post(
             settings.endpoint_url,
@@ -126,6 +143,71 @@ async def call_image_model(
         response.raise_for_status()
         data = response.json()
         return extract_image_urls_from_response(data, image_format=settings.output_format or "png")
+
+
+def _data_url_to_image_bytes(image_url: str) -> bytes:
+    _, _, payload = image_url.partition(",")
+    return base64.b64decode(payload, validate=False)
+
+
+def _mime_from_image_bytes(image_bytes: bytes) -> str:
+    return f"image/{_detect_image_format(image_bytes)}"
+
+
+async def _load_reference_image_files(image_urls: list[str]) -> list[tuple[str, bytes, str]]:
+    import httpx
+
+    image_files: list[tuple[str, bytes, str]] = []
+    async with httpx.AsyncClient(timeout=120) as client:
+        for index, image_url in enumerate(image_urls, start=1):
+            if image_url.startswith("data:"):
+                image_bytes = _data_url_to_image_bytes(image_url)
+            else:
+                response = await client.get(image_url)
+                response.raise_for_status()
+                image_bytes = response.content
+            mime = _mime_from_image_bytes(image_bytes)
+            extension = mime.split("/", 1)[1]
+            image_files.append((f"reference-{index}.{extension}", image_bytes, mime))
+    return image_files
+
+
+async def _post_image_edit_files(
+    settings: ImageGenerationSettings,
+    prompt: str,
+    image_files: list[tuple[str, bytes, str]],
+    size: str | None = None,
+) -> list[str]:
+    import httpx
+
+    edit_url = settings.base_url.rstrip("/") + "/images/edits"
+    files = [("image", image_file) for image_file in image_files]
+    data: dict[str, str] = {
+        "model": settings.model,
+        "prompt": prompt,
+        "size": size or settings.size,
+    }
+    if settings.quality:
+        data["quality"] = settings.quality
+    if settings.output_format:
+        data["output_format"] = settings.output_format
+    if settings.response_format:
+        data["response_format"] = settings.response_format
+
+    async with httpx.AsyncClient(timeout=480) as client:
+        response = await client.post(
+            edit_url,
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {settings.api_key}",
+                "User-Agent": MODEL_GATEWAY_USER_AGENT,
+            },
+            files=files,
+            data=data,
+        )
+        response.raise_for_status()
+        result = response.json()
+        return extract_image_urls_from_response(result, image_format=settings.output_format or "png")
 
 
 def _detect_image_format(image_bytes: bytes) -> str:
@@ -154,36 +236,7 @@ async def call_image_edit_model(
     if not settings.api_key:
         return []
 
-    import httpx
-
-    edit_url = settings.base_url.rstrip("/") + "/images/edits"
     img_format = _detect_image_format(image_bytes)
     mime = f"image/{img_format}"
 
-    files = {"image": (f"source.{img_format}", image_bytes, mime)}
-    data: dict[str, str] = {
-        "model": settings.model,
-        "prompt": prompt,
-        "size": size or settings.size,
-    }
-    if settings.quality:
-        data["quality"] = settings.quality
-    if settings.output_format:
-        data["output_format"] = settings.output_format
-    if settings.response_format:
-        data["response_format"] = settings.response_format
-
-    async with httpx.AsyncClient(timeout=480) as client:
-        response = await client.post(
-            edit_url,
-            headers={
-                "Accept": "application/json",
-                "Authorization": f"Bearer {settings.api_key}",
-                "User-Agent": MODEL_GATEWAY_USER_AGENT,
-            },
-            files=files,
-            data=data,
-        )
-        response.raise_for_status()
-        result = response.json()
-        return extract_image_urls_from_response(result, image_format=settings.output_format or "png")
+    return await _post_image_edit_files(settings, prompt, [(f"source.{img_format}", image_bytes, mime)], size=size)
