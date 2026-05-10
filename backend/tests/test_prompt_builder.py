@@ -230,25 +230,73 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertNotIn("共享统一的背景色调", prompt)
         self.assertNotIn("- 主色：#8ECFE6", prompt)
 
-    def test_ingredient_prompt_is_store_ready_without_placeholder_copy(self):
+    def test_structured_preset_prompt_injects_element_system_and_module_usage(self):
         build_module_image_prompt = load_prompt_builder()
-        ingredient_module = next(module for module in DEFAULT_MODULES if module["id"] == "ingredient")
+        prompt = build_module_image_prompt(
+            product_info={
+                "product_name": "黑松露紧致面霜",
+                "category": "面霜乳液",
+                "core_selling_points": ["紧致修护"],
+                "functions": ["抗老", "紧致"],
+            },
+            style={
+                "id": "black_gold_luxury",
+                "name": "黑金奢华风",
+                "primary_color": "#C8A24A",
+                "keywords": ["黑金", "高奢", "抗老"],
+                "theme": "黑金高奢护肤视觉",
+                "visual_elements": ["黑色丝绒背景", "鎏金线条", "金箔粒子"],
+                "materials": ["黑色丝绒", "拉丝金属"],
+                "lighting": ["低调暗场光", "金色边缘光"],
+                "module_usage": {"首图": "黑色高级背景 + 金色轮廓光"},
+                "forbidden": ["土豪金大面积铺满", "廉价夜店风"],
+            },
+            module={"id": "main_hero_selling_point", "name": "首图", "description": "产品图 + 一句话核心卖点", "image_group": "main"},
+            module_index=2,
+            total_modules=5,
+        )
+
+        self.assertIn("风格主题：黑金高奢护肤视觉", prompt)
+        self.assertIn("主题元素库：黑色丝绒背景 / 鎏金线条 / 金箔粒子", prompt)
+        self.assertIn("材质系统：黑色丝绒 / 拉丝金属", prompt)
+        self.assertIn("光影系统：低调暗场光 / 金色边缘光", prompt)
+        self.assertIn("当前模块风格用法：黑色高级背景 + 金色轮廓光", prompt)
+        self.assertIn("风格禁止项：土豪金大面积铺满 / 廉价夜店风", prompt)
+        self.assertNotIn("AI 规划视觉方向", prompt)
+
+    def test_ingredient_overview_prompt_summarizes_selected_ingredient_system(self):
+        build_module_image_prompt = load_prompt_builder()
+        ingredient_module = {
+            "id": "ingredient_overview",
+            "name": "成分总览",
+            "description": "成分体系总览",
+            "image_group": "detail",
+        }
 
         prompt = build_module_image_prompt(
             product_info={
                 "product_name": "水润保湿面霜",
                 "category": "面霜",
-                "ingredients": [{"name": "透明质酸钠"}],
+                "ingredients": [
+                    {"name": "透明质酸钠", "benefit": "帮助提升水润肤感"},
+                    {"name": "烟酰胺", "benefit": "帮助提亮肤色观感"},
+                    {"name": "积雪草提取物", "benefit": "帮助舒缓干燥不适"},
+                    {"name": "泛醇", "benefit": "辅助保湿维稳"},
+                ],
             },
             style=STYLE_OPTIONS[0],
             module=ingredient_module,
             module_index=6,
-            total_modules=7,
+            total_modules=10,
         )
 
+        self.assertIn("成分体系总览", prompt)
         self.assertIn("可直接用于店铺上架", prompt)
         self.assertIn("透明质酸钠", prompt)
-        self.assertIn("辅助日常肌肤护理", prompt)
+        self.assertIn("烟酰胺", prompt)
+        self.assertIn("积雪草提取物", prompt)
+        self.assertIn("多重成分复配体系", prompt)
+        self.assertNotIn("泛醇", prompt)
         for forbidden in [
             "待确认",
             "待说明",
@@ -262,6 +310,72 @@ class PromptBuilderTests(unittest.TestCase):
             "占位纹理",
         ]:
             self.assertNotIn(forbidden, prompt)
+
+    def test_single_ingredient_prompt_only_explains_assigned_ingredient(self):
+        build_module_image_prompt = load_prompt_builder()
+        ingredient_module = {
+            "id": "ingredient_2",
+            "name": "成分 2 讲解",
+            "description": "单个核心成分作用讲解",
+            "image_group": "detail",
+        }
+
+        prompt = build_module_image_prompt(
+            product_info={
+                "product_name": "水润保湿面霜",
+                "category": "面霜",
+                "ingredients": [
+                    {"name": "透明质酸钠", "benefit": "帮助提升水润肤感"},
+                    {"name": "烟酰胺", "benefit": "帮助提亮肤色观感"},
+                    {"name": "积雪草提取物", "benefit": "帮助舒缓干燥不适"},
+                    {"name": "泛醇", "benefit": "辅助保湿维稳"},
+                ],
+            },
+            style=STYLE_OPTIONS[0],
+            module=ingredient_module,
+            module_index=8,
+            total_modules=10,
+        )
+
+        self.assertIn("单成分讲解图", prompt)
+        self.assertIn("只讲 1 个核心成分", prompt)
+        self.assertIn("成分序号：2", prompt)
+        self.assertIn("烟酰胺", prompt)
+        self.assertIn("帮助提亮肤色观感", prompt)
+        self.assertNotIn("透明质酸钠", prompt)
+        self.assertNotIn("积雪草提取物", prompt)
+        self.assertNotIn("泛醇", prompt)
+
+    def test_single_ingredient_prompt_replaces_placeholder_benefits_with_safe_visual_effects(self):
+        build_module_image_prompt = load_prompt_builder()
+        prompt = build_module_image_prompt(
+            product_info={
+                "product_name": "水润保湿面霜",
+                "category": "面霜",
+                "ingredients": [
+                    {"name": "透明质酸钠", "benefit": "待确认"},
+                    {"name": "烟酰胺", "benefit": ""},
+                    {"name": "积雪草提取物", "benefit": "帮助舒缓干燥不适"},
+                    {"name": "泛醇", "benefit": "辅助保湿维稳"},
+                ],
+            },
+            style=STYLE_OPTIONS[0],
+            module={
+                "id": "ingredient_1",
+                "name": "成分 1 讲解",
+                "description": "第 1 个核心成分作用讲解",
+                "image_group": "detail",
+            },
+            module_index=7,
+            total_modules=10,
+        )
+
+        self.assertIn("透明质酸钠", prompt)
+        self.assertIn("帮助提升水润肤感", prompt)
+        self.assertIn("建议视觉方向：透明水滴", prompt)
+        self.assertIn("后续单成分讲解图", prompt)
+        self.assertNotIn("待确认", prompt)
+        self.assertNotIn("泛醇", prompt)
 
     def test_target_language_prompt_asks_model_to_render_visible_text_directly(self):
         build_module_image_prompt = load_prompt_builder()
@@ -383,6 +497,198 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("干燥开裂纹理", pain_prompt)
         self.assertIn("暗淡灯光隐喻肤色暗沉", pain_prompt)
         self.assertIn("不要把脸画丑", pain_prompt)
+
+    def test_main_image_prompts_include_click_rate_strategy_from_store_main_doc(self):
+        build_module_image_prompt = load_prompt_builder()
+        product_info = {
+            "product_name": "水润保湿精华",
+            "category": "护肤精华",
+            "core_selling_points": ["干皮急救", "妆前服帖"],
+            "functions": ["补水保湿", "改善干燥"],
+            "ingredients": [{"name": "透明质酸钠", "benefit": "帮助提升水润肤感"}],
+            "effect_claims": [{"claim": "水润感提升", "value": "92%", "source_type": "人体功效测试"}],
+            "usage_method": ["洁面后取适量涂抹"],
+        }
+
+        hero_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[1],
+            module=next(module for module in DEFAULT_MODULES if module["id"] == "main_hero_selling_point"),
+            module_index=2,
+            total_modules=5,
+        )
+        ingredient_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[1],
+            module=next(module for module in DEFAULT_MODULES if module["id"] == "main_ingredient"),
+            module_index=3,
+            total_modules=5,
+        )
+        effect_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[1],
+            module=next(module for module in DEFAULT_MODULES if module["id"] == "main_effect"),
+            module_index=4,
+            total_modules=5,
+        )
+        usage_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[1],
+            module=next(module for module in DEFAULT_MODULES if module["id"] == "main_usage_scene"),
+            module_index=5,
+            total_modules=5,
+        )
+
+        self.assertIn("产品大 + 卖点狠 + 证据短 + 视觉亮 + 信息少", hero_prompt)
+        self.assertIn("在电商货架中抢点击", hero_prompt)
+        self.assertIn("0.3 秒内知道核心卖点", hero_prompt)
+        self.assertIn("产品占画面 45%-55%", hero_prompt)
+        self.assertIn("一个大标题打核心卖点", hero_prompt)
+        self.assertIn("2-4 个小标签", hero_prompt)
+
+        self.assertIn("次图-成分不是详情页成分页", ingredient_prompt)
+        self.assertIn("最多展示 2-3 个核心成分", ingredient_prompt)
+        self.assertIn("每个成分只写一句作用短标签", ingredient_prompt)
+
+        self.assertIn("局部前后对比，面积建议占画面 25%-35%", effect_prompt)
+        self.assertIn("没有真实数据时使用体验型表达", effect_prompt)
+        self.assertIn("只有漂亮脸，没有变化证据", effect_prompt)
+
+        self.assertIn("建立代入感", usage_prompt)
+        self.assertIn("晨间上妆前", usage_prompt)
+        self.assertIn("人物遮挡产品", usage_prompt)
+
+    def test_detail_prompts_include_sales_visual_contradiction_strategy(self):
+        build_module_image_prompt = load_prompt_builder()
+        product_info = {
+            "product_name": "屏障修护精华",
+            "core_selling_points": ["卡粉起皮先稳住屏障"],
+            "functions": ["补水保湿", "屏障护理"],
+            "target_users": ["干燥紧绷人群", "换季脆弱人群"],
+            "ingredients": [
+                {"name": "透明质酸钠", "benefit": "帮助提升水润肤感"},
+                {"name": "神经酰胺", "benefit": "帮助维持屏障舒适"},
+                {"name": "积雪草提取物", "benefit": "帮助舒缓干燥不适"},
+            ],
+        }
+
+        hero_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[2],
+            module=next(module for module in DEFAULT_MODULES if module["id"] == "hero"),
+            module_index=1,
+            total_modules=10,
+        )
+        pain_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[2],
+            module=next(module for module in DEFAULT_MODULES if module["id"] == "pain_scene"),
+            module_index=3,
+            total_modules=10,
+        )
+        competitor_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[2],
+            module=next(module for module in DEFAULT_MODULES if module["id"] == "competitor_comparison"),
+            module_index=5,
+            total_modules=10,
+        )
+        overview_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[2],
+            module=next(module for module in DEFAULT_MODULES if module["id"] == "ingredient_overview"),
+            module_index=6,
+            total_modules=10,
+        )
+        single_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[2],
+            module=next(module for module in DEFAULT_MODULES if module["id"] == "ingredient_2"),
+            module_index=8,
+            total_modules=10,
+        )
+
+        self.assertIn("每张图必须有一个视觉矛盾", hero_prompt)
+        self.assertIn("问题 vs 解决", hero_prompt)
+        self.assertIn("说明型图片", hero_prompt)
+        self.assertIn("销售型图片", hero_prompt)
+        self.assertIn("产品作为主视觉，占画面 35%-50%", hero_prompt)
+
+        self.assertIn("局部放大镜", pain_prompt)
+        self.assertIn("红色警示标签", pain_prompt)
+        self.assertIn("上妆卡粉", pain_prompt)
+        self.assertIn("卡粉起皮", pain_prompt)
+        self.assertIn("干到发紧", pain_prompt)
+
+        self.assertIn("左侧视觉偏灰、暗、干、粗糙", competitor_prompt)
+        self.assertIn("右侧视觉偏亮、润、干净", competitor_prompt)
+        self.assertIn("普通同类产品", competitor_prompt)
+
+        self.assertIn("成分总览只做体系介绍", overview_prompt)
+        self.assertIn("补水 + 修护 + 舒缓", overview_prompt)
+        self.assertIn("成分浮岛", overview_prompt)
+
+        self.assertIn("一张图只出现一个成分", single_prompt)
+        self.assertIn("一个成分只对应一个主要作用", single_prompt)
+        self.assertIn("不出现其他成分名称", single_prompt)
+
+    def test_campaign_prompts_keep_promotion_elements_secondary_and_user_provided(self):
+        build_module_image_prompt = load_prompt_builder()
+        prompt = build_module_image_prompt(
+            product_info={
+                "product_name": "水润保湿精华",
+                "core_selling_points": ["干皮急救"],
+                "functions": ["补水保湿"],
+            },
+            style=STYLE_OPTIONS[1],
+            module=next(module for module in DEFAULT_MODULES if module["id"] == "campaign_hero_selling_point"),
+            module_index=2,
+            total_modules=5,
+            promotion_info="618 限时 8 折，满 199 减 30",
+        )
+
+        self.assertIn("产品仍然是主体，促销元素不能压过产品", prompt)
+        self.assertIn("促销信息必须来自用户填写内容", prompt)
+        self.assertIn("促销标签建议控制在 1-3 个", prompt)
+        self.assertIn("不能编造价格、折扣、日期、赠品或满减门槛", prompt)
+        self.assertIn("618 限时 8 折，满 199 减 30", prompt)
+
+    def test_all_module_prompts_stay_compact_without_losing_strategy_anchors(self):
+        build_module_image_prompt = load_prompt_builder()
+        product_info = {
+            "product_name": "CICA 修护精华",
+            "category": "护肤精华",
+            "spec": "30ml",
+            "core_selling_points": ["舒缓泛红不适", "补水锁水", "强韧肌肤屏障"],
+            "functions": ["舒缓", "补水", "修护屏障"],
+            "ingredients": [
+                {"name": "积雪草", "benefit": "帮助舒缓泛红与脆弱不适"},
+                {"name": "神经酰胺", "benefit": "帮助强韧肌肤屏障"},
+                {"name": "透明质酸", "benefit": "补充水分，帮助锁水维稳"},
+            ],
+            "target_users": ["换季泛红人群", "干燥紧绷人群", "屏障脆弱人群"],
+            "usage_method": ["洁面后使用", "取 2-3 滴于掌心", "均匀涂抹全脸", "轻拍至吸收"],
+            "authority_assets": ["实验室研发", "实验报告", "专研配方理念"],
+            "effect_claims": [{"claim": "肌肤更水润", "value": "92%", "source_type": "ai_generated"}],
+        }
+
+        prompts = [
+            build_module_image_prompt(
+                product_info=product_info,
+                style=STYLE_OPTIONS[2],
+                module=module,
+                module_index=module.get("order", index),
+                total_modules=10 if module.get("image_group") == "detail" else 5,
+                promotion_info="618 限时 8 折，满 199 减 30",
+            )
+            for index, module in enumerate(DEFAULT_MODULES, start=1)
+        ]
+
+        self.assertLessEqual(max(len(prompt) for prompt in prompts), 2500)
+        self.assertLessEqual(sum(len(prompt) for prompt in prompts), 39000)
+        self.assertTrue(any("产品大 + 卖点狠 + 证据短 + 视觉亮 + 信息少" in prompt for prompt in prompts))
+        self.assertTrue(any("每张图必须有一个视觉矛盾" in prompt for prompt in prompts))
+        self.assertTrue(any("一张图只出现一个成分" in prompt for prompt in prompts))
 
 
 if __name__ == "__main__":

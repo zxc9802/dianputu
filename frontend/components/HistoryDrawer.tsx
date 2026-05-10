@@ -194,9 +194,13 @@ export function HistoryDrawer({
 
 function getStyleColor(styleId: string): string {
   const colorMap: Record<string, string> = {
-    green_repair: "#2fa657",
-    blue_hydra: "#3b82f6",
-    gold_antiage: "#d4a253",
+    space_repair: "#4B6CFF",
+    deep_sea_hydration: "#21A7C7",
+    lab_clinical_tech: "#9FD8EA",
+    oriental_herbal: "#6E8F5A",
+    glacier_cooling: "#A8E8F5",
+    floral_fragrance: "#E9A6B8",
+    black_gold_luxury: "#C8A24A",
     ai_custom: "#7c3aed"
   };
   return colorMap[styleId] ?? "#9ca3af";

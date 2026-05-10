@@ -13,7 +13,7 @@ from app.core.config import ImageGenerationSettings
 from app.demo_data import DEFAULT_MODULES, DEFAULT_PRODUCT_INFO, DEMO_IMAGE_URLS, STYLE_OPTIONS
 from app.dependencies.auth import require_app_user
 from app.routers.models import build_public_model_config
-from app.routers.projects import COMPOSE_JOBS, FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR, build_layered_generated_image, compose_long_jpeg, edit_generated_image, generate_detail_images, render_layered_language_version, router as projects_router
+from app.routers.projects import COMPOSE_JOBS, EDIT_JOBS, FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR, build_layered_generated_image, compose_long_jpeg, edit_generated_image, generate_detail_images, render_layered_language_version, router as projects_router
 from app.services.language_renderer import build_text_layers, render_text_layers_to_data_url
 from app.services.app_session import AppSessionUserSnapshot
 
@@ -63,8 +63,22 @@ class ApiContractTests(unittest.TestCase):
 
         self.assertEqual([module["id"] for module in main_modules], ["main_white_bg", "main_hero_selling_point", "main_ingredient", "main_effect", "main_usage_scene"])
         self.assertEqual([module["id"] for module in campaign_modules], ["campaign_white_bg", "campaign_hero_selling_point", "campaign_ingredient", "campaign_effect", "campaign_usage_scene"])
-        self.assertEqual(detail_modules[0]["id"], "hero")
-        self.assertEqual(detail_modules[-1]["id"], "usage")
+        self.assertEqual(
+            [module["id"] for module in detail_modules],
+            [
+                "hero",
+                "authority",
+                "pain_scene",
+                "effect_comparison",
+                "competitor_comparison",
+                "ingredient_overview",
+                "ingredient_1",
+                "ingredient_2",
+                "ingredient_3",
+                "usage",
+            ],
+        )
+        self.assertNotIn("ingredient", [module["id"] for module in detail_modules])
 
     def test_product_info_contains_confirmation_fields(self):
         required = {
@@ -80,9 +94,27 @@ class ApiContractTests(unittest.TestCase):
 
         self.assertTrue(required.issubset(DEFAULT_PRODUCT_INFO.keys()))
 
-    def test_three_style_options_are_available(self):
-        self.assertEqual([style["id"] for style in STYLE_OPTIONS], ["green_repair", "blue_hydration", "gold_antiaging"])
-        self.assertTrue(all(style.get("asset", "").startswith("/assets/") for style in STYLE_OPTIONS))
+    def test_preset_style_options_include_structured_skincare_themes(self):
+        self.assertEqual(
+            [style["id"] for style in STYLE_OPTIONS],
+            [
+                "space_repair",
+                "deep_sea_hydration",
+                "lab_clinical_tech",
+                "oriental_herbal",
+                "glacier_cooling",
+                "floral_fragrance",
+                "black_gold_luxury",
+            ],
+        )
+        self.assertTrue(all(style.get("asset", "").startswith("/assets/style-") for style in STYLE_OPTIONS))
+        self.assertTrue(all(style.get("asset", "").endswith(".png") for style in STYLE_OPTIONS))
+        black_gold = STYLE_OPTIONS[-1]
+        self.assertEqual(black_gold["name"], "黑金奢华风")
+        self.assertIn("黑金高奢护肤视觉", black_gold["theme"])
+        self.assertIn("module_usage", black_gold)
+        self.assertIn("首图", black_gold["module_usage"])
+        self.assertIn("forbidden", black_gold)
 
     def test_demo_image_urls_point_to_frontend_assets(self):
         self.assertEqual(set(DEMO_IMAGE_URLS), {module["id"] for module in DEFAULT_MODULES})
@@ -445,6 +477,26 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["text_layers"])
         self.assertIn("zh-CN", result["language_versions"])
 
+    async def test_single_ingredient_text_layers_use_specific_benefit_not_placeholder(self):
+        layers = build_text_layers(
+            {
+                "product_name": "水润保湿面霜",
+                "category": "面霜",
+                "ingredients": [
+                    {"name": "透明质酸钠", "benefit": "待确认"},
+                    {"name": "烟酰胺", "benefit": ""},
+                    {"name": "积雪草提取物", "benefit": "帮助舒缓干燥不适"},
+                    {"name": "泛醇", "benefit": "辅助保湿维稳"},
+                ],
+            },
+            next(module for module in DEFAULT_MODULES if module["id"] == "ingredient_1"),
+        )
+
+        layer_text = " / ".join(layer["text"] for layer in layers)
+        self.assertIn("透明质酸钠 帮助提升水润肤感", layer_text)
+        self.assertNotIn("待确认", layer_text)
+        self.assertNotIn("泛醇", layer_text)
+
     async def test_render_language_version_translates_then_reuses_base_image(self):
         image = Image.new("RGB", (320, 320), (240, 240, 255))
         buffer = BytesIO()
@@ -666,6 +718,35 @@ class DownloadContractTests(unittest.TestCase):
         self.assertEqual(payload["source"], "fake_gemini")
         self.assertEqual(payload["summary"]["status"], "warn")
         self.assertEqual(payload["issues"][0]["term"], "治愈")
+
+    def test_edit_image_job_endpoint_returns_pollable_result(self):
+        job_result = {
+            "source": "model",
+            "url": "https://example.com/edited.png",
+            "compliance": {"source": "gemini", "summary": {"status": "pass", "block_count": 0, "warn_count": 0, "review_count": 0}, "issues": []},
+        }
+        with patch("app.routers.projects.edit_generated_image", new=AsyncMock(return_value=job_result)):
+            response = self.make_client().post(
+                "/api/projects/edit-image/jobs",
+                json={
+                    "image_url": self.png_data_url(),
+                    "instruction": "把标题放大一点",
+                    "platform_size": "2048x2048",
+                    "image_model_id": "primary",
+                    "platform_id": "tmall",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        job_id = response.json()["job_id"]
+        try:
+            job_response = self.make_client().get(f"/api/projects/edit-image/jobs/{job_id}")
+            self.assertEqual(job_response.status_code, 200)
+            job = job_response.json()
+            self.assertEqual(job["status"], "done")
+            self.assertEqual(job["result"], job_result)
+        finally:
+            EDIT_JOBS.pop(job_id, None)
 
     def test_image_compliance_endpoint_uses_gemini_image_review(self):
         class FakeComplianceProvider:

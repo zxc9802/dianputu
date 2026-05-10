@@ -53,6 +53,10 @@ assertIncludes("lib/api.ts", "timeoutMs: 180000", "material analysis must keep t
 assertIncludes("lib/constants.ts", 'defaults: { size: "2048x2048"', "frontend demo model config must reflect 2K image generation defaults");
 assertIncludes("app/page.tsx", "selectedPlatform.generationSize", "page image generation requests must use the 2K generation size");
 assertIncludes("app/page.tsx", "editGeneratedImage(imageUrl, trimmed, selectedPlatform.generationSize, selectedImageModelId, selectedPlatformId)", "image edits must keep the selected platform 2K generation size, selected image model, and platform id");
+assertIncludes("lib/api.ts", "createEditImageJob", "image edits must create a backend job instead of holding one long request");
+assertIncludes("lib/api.ts", "fetchEditImageJob", "image edits must poll the backend edit job");
+assertIncludes("lib/api.ts", "pollEditImageJob", "image edits must wait for job completion through polling");
+assertIncludes("lib/api.ts", "/api/projects/edit-image/jobs", "frontend image edits must use the backend edit job endpoint");
 assertIncludes("components/ModulesStep.tsx", "选择图片模型", "modules step must expose the image model selector");
 assertIncludes("lib/api.ts", "image_model_id: imageModelId", "frontend generation/edit requests must send the selected image model id");
 assertIncludes("lib/types.ts", 'GenerationMode = "reference_generate" | "fixed_product_composite"', "frontend must model both image generation modes");
@@ -68,6 +72,11 @@ assertNotIncludes("components/ModulesStep.tsx", "固定产品合成（推荐）"
 assertNotIncludes("components/ModulesStep.tsx", "推荐固定产品合成", "fixed product composition help text should not recommend stripping the image into layers by default");
 assertIncludes("app/page.tsx", 'const DEFAULT_GENERATION_MODE: GenerationMode = "reference_generate"', "AI full-image generation should be the default generation mode");
 assertIncludes("lib/api.ts", 'generationMode: GenerationMode = "reference_generate"', "frontend API default should prefer AI full-image generation");
+assertIncludes("lib/constants.ts", 'id: "ingredient_overview"', "detail ingredient section must include a formula overview module");
+assertIncludes("lib/constants.ts", 'id: "ingredient_1"', "detail ingredient section must include the first single-ingredient module");
+assertIncludes("lib/constants.ts", 'id: "ingredient_2"', "detail ingredient section must include the second single-ingredient module");
+assertIncludes("lib/constants.ts", 'id: "ingredient_3"', "detail ingredient section must include the third single-ingredient module");
+assertNotIncludes("lib/constants.ts", 'id: "ingredient", name: "成分页"', "detail ingredient section must no longer be a single crowded page");
 assertNotIncludes("lib/api.ts", 'source: "demo"', "frontend must not convert failed image generation into fixed demo images");
 assertNotIncludes("lib/api.ts", "/assets/generated-cica-asset-sheet.png", "frontend must not mark fixed demo images as generated output");
 assert.ok(!fs.existsSync(path.join(root, "lib/autoGenerate.ts")), "lib/autoGenerate.ts: full auto generation flow should be removed");
@@ -92,6 +101,7 @@ assertNotIncludes("lib/api.ts", "DEFAULT_PRODUCT_INFO", "frontend API must not f
 assertNotIncludes("lib/constants.ts", "DEFAULT_PRODUCT_INFO", "frontend constants must not ship demo product information");
 
 assertIncludes("components/PreviewStep.tsx", "download", "preview step must expose downloadable outputs");
+assertIncludes("components/PreviewStep.tsx", "buildDetailDownloadState", "preview detail downloads must be driven by the shared detail download state");
 assertIncludes("components/PreviewStep.tsx", "groupedItems.detail.map", "preview step must render every generated detail image in the long preview");
 assertNotIncludes("components/PreviewStep.tsx", "generatedImages[0]?.url", "preview step must not use only the first generated image as the full long preview");
 assertIncludes("components/PreviewStep.tsx", "createComposeLongImageJob", "preview step must start backend JPEG composition for the full long image");
@@ -109,6 +119,7 @@ assertIncludes("components/PreviewStep.tsx", "handleDownloadVisibleBatch", "prev
 assertIncludes("components/PreviewStep.tsx", "index < visibleItems.length", "batch download must only download currently generated images in the active directory");
 assertIncludes("components/PreviewStep.tsx", 'activeImageGroup === "detail"', "detail directory must keep compose download separate from main/campaign batch download");
 assertIncludes("components/PreviewStep.tsx", "批量下载", "main and campaign directories must show a batch download action");
+assertIncludes("components/PreviewStep.tsx", "张详情分图", "detail directory must expose a real split-image batch download, not only a manifest");
 assertIncludes("lib/api.ts", "/api/projects/compose-long-image", "frontend API must expose backend long image composition");
 assertIncludes("lib/api.ts", "/api/projects/compose-long-image/prepare", "frontend API must expose backend compose source preparation");
 assertIncludes("app/page.tsx", "PROJECT_STATE_STORAGE_KEY", "page must define a storage key for preserving generated results");
@@ -133,9 +144,12 @@ assertIncludes("lib/historyApi.ts", "saveLocalHistory", "history save must persi
 assertIncludes("lib/historyApi.ts", "fetchLocalHistoryList", "history drawer must still show locally saved records when the backend list is empty");
 assertIncludes("app/page.tsx", "defaultModules", "page must keep the default module config for a full new-project reset");
 assertIncludes("app/page.tsx", "startNewProject", "page must expose a full new-project reset action");
-assertIncludes("app/page.tsx", "setSelectedStyleId(styles[0]?.id ?? \"green_repair\")", "new project reset must restore the default style instead of copying the previous project style");
+assertIncludes("app/page.tsx", "setSelectedStyleId(styles[0]?.id ?? DEFAULT_STYLE_ID)", "new project reset must restore the default style instead of copying the previous project style");
 assertIncludes("app/page.tsx", "setSelectedPlatformId(\"tmall\")", "new project reset must restore the default platform instead of copying the previous project platform");
-assertIncludes("app/page.tsx", "setModules(defaultModules.map((module) => ({ ...module })))", "new project reset must restore default modules instead of copying current module choices");
+assertIncludes("app/page.tsx", "setModules(normalizeDetailIngredientModuleOrder(defaultModules.map((module) => ({ ...module }))))", "new project reset must restore default modules instead of copying current module choices");
+assertIncludes("app/page.tsx", "mergeRestoredModules(normalizedDefaultModules, restored.modules)", "restored projects must normalize old detail ingredient ordering");
+assertIncludes("app/page.tsx", "const hasOrderChange = normalizedModules.some", "open project state must self-correct stale detail ingredient ordering");
+assertIncludes("lib/projectEnhancements.ts", "normalizeDetailIngredientModuleOrder", "module helpers must keep ingredient overview and ingredient explanation pages together");
 assertIncludes("app/page.tsx", "setPromotionInfo(\"\")", "new project reset must clear campaign promotion text");
 assertIncludes("app/page.tsx", "setReturnWorkspaceSnapshot(null)", "new project reset must discard the previous workspace copy context");
 assertNotIncludes("app/page.tsx", "duplicateProjectForNewProduct", "page must not keep copy-project behavior when starting a new project");
@@ -158,6 +172,29 @@ assertNotIncludes("components/StyleStep.tsx", "styleSource === \"reference\"", "
 assertNotIncludes("components/StyleStep.tsx", "onStyleReferenceSelect", "style step should not expose removed reference style handler");
 assertIncludes("lib/api.ts", "planAiCustomStyle", "frontend API must expose Gemini custom style planning");
 assertIncludes("lib/api.ts", "/api/projects/plan-style", "frontend API must call the backend style planning endpoint");
+assertIncludes("lib/constants.ts", 'id: "space_repair"', "frontend preset styles must include space repair as a normal style option");
+assertIncludes("lib/constants.ts", 'id: "black_gold_luxury"', "frontend preset styles must include black gold luxury as a normal style option");
+assertNotIncludes("lib/constants.ts", 'id: "green_repair"', "frontend preset styles must remove the old green repair preset");
+assertNotIncludes("lib/constants.ts", 'id: "blue_hydration"', "frontend preset styles must remove the old blue hydration preset");
+assertNotIncludes("lib/constants.ts", 'id: "gold_antiaging"', "frontend preset styles must remove the old gold antiaging preset");
+assertIncludes("app/page.tsx", 'const DEFAULT_STYLE_ID = "space_repair"', "default style should point to the first remaining preset");
+assertIncludes("components/StyleStep.tsx", "styleThemePreview", "style step must render structured preset cards even without image assets");
+assertNotIncludes("components/StyleStep.tsx", "护肤风格灵感", "structured preset styles must not live inside the AI custom card");
+assertNotIncludes("app/page.tsx", "AI_CUSTOM_STYLE_PRESETS", "page must not pass structured presets into AI custom planning");
+assertNotIncludes("lib/api.ts", "style_preset", "frontend style planning request must not send preset seeds");
+[
+  "style-space-repair.png",
+  "style-deep-sea-hydration.png",
+  "style-lab-clinical-tech.png",
+  "style-oriental-herbal.png",
+  "style-glacier-cooling.png",
+  "style-floral-fragrance.png",
+  "style-black-gold-luxury.png"
+].forEach((asset) => {
+  const assetPath = path.join(root, "public", "assets", asset);
+  assert.ok(fs.existsSync(assetPath), `public/assets/${asset}: structured preset preview image must exist`);
+  assert.equal(fs.readFileSync(assetPath).subarray(0, 8).toString("hex"), "89504e470d0a1a0a", `public/assets/${asset}: preset preview must be a PNG bitmap generated by the image model`);
+});
 assertNotIncludes("lib/api.ts", "category,", "custom style planning must not send a manually selected category");
 assertNotIncludes("app/page.tsx", "planAiCustomStyle(productInfo, selectedCategory", "custom style planning must rely on AI product_info category");
 assertNotIncludes("app/page.tsx", "productInfo.category || selectedCategory", "history records must not fall back to a manually selected category");
@@ -173,6 +210,13 @@ assertIncludes("app/page.tsx", "generateAiCustomStyleSample", "page must generat
 assertIncludes("app/page.tsx", "styleSource === \"ai_custom\" ? customStyle", "generation must send the selected AI custom style brief");
 assertIncludes("components/StyleStep.tsx", "customStyle.asset", "AI custom style card must render the generated GPT image sample when available");
 assertIncludes("components/StyleStep.tsx", "让 AI 规划风格", "AI custom style action must only communicate style planning");
+
+assertIncludes("components/PreviewStep.tsx", "Gemini 图片合规复查", "preview image compliance action must use Gemini recognition wording");
+assertIncludes("app/page.tsx", "正在进行 Gemini 图片合规复查", "page status must communicate Gemini image review");
+assertIncludes("lib/api.ts", "请重试 Gemini 图片合规复查", "frontend fallback must not mention OCR for image review failures");
+assertNotIncludes("components/PreviewStep.tsx", "OCR", "preview image compliance UI must not mention OCR");
+assertNotIncludes("app/page.tsx", "OCR", "page image compliance status must not mention OCR");
+assertNotIncludes("lib/api.ts", "OCR", "frontend image compliance fallback must not mention OCR");
 assertIncludes("components/StyleStep.tsx", "生成样例图", "AI custom style card must expose separate sample generation");
 assertIncludes("components/StyleStep.tsx", "规划统一视觉元素", "AI custom style copy should emphasize style elements instead of one overall color");
 assertIncludes("components/StyleStep.tsx", "每张图可按模块变化颜色", "AI custom style copy should say colors may vary by module");
@@ -218,7 +262,7 @@ assertIncludes("components/ReviewStep.tsx", "合规风险", "review step must sh
 assertIncludes("components/ModulesStep.tsx", "促销合规预检", "modules step must show campaign promotion compliance preflight");
 assertIncludes("components/PreviewStep.tsx", "ComplianceBadge", "preview step must render compliance badges on generated images");
 assertIncludes("components/PreviewStep.tsx", "导出前合规提示", "preview export area must summarize selected image compliance");
-assertIncludes("components/PreviewStep.tsx", "图片合规复查", "preview export area must let users scan final images with Gemini before export");
+assertIncludes("components/PreviewStep.tsx", "Gemini 图片合规复查", "preview export area must let users scan final images with Gemini before export");
 assertIncludes("app/globals.css", "complianceBadge", "global styles must include compliance badge styling");
 assertIncludes("app/globals.css", "complianceIssueList", "global styles must include compliance issue list styling");
 

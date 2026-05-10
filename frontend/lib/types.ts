@@ -8,10 +8,18 @@ export type GenerationMode = "reference_generate" | "fixed_product_composite";
 
 export type StyleOption = {
   id: string;
+  seed_id?: string;
   name: string;
+  theme?: string;
   keywords: string[];
   primary_color: string;
   asset: string;
+  best_for?: string[];
+  visual_elements?: string[];
+  materials?: string[];
+  lighting?: string[];
+  module_usage?: Record<string, string>;
+  forbidden?: string[];
   visual_direction?: string;
   layout_guidance?: string;
   reasoning?: string;

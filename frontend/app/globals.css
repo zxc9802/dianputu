@@ -741,6 +741,21 @@ a {
   background: #f8faf8;
 }
 
+.styleThemePreview {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  color: #24302a;
+  text-align: center;
+  font-weight: 900;
+  line-height: 1.35;
+  box-shadow: inset 0 -34px 68px rgba(255, 255, 255, .36);
+}
+
 .aiCustomStyleCard {
   border-color: rgba(52, 127, 185, 0.28);
 }

@@ -39,6 +39,7 @@ import {
   enableModuleForSingleGeneration,
   formatImageGenerationSummaryStatus,
   getSelectedGeneratedImages,
+  normalizeDetailIngredientModuleOrder,
   replaceUploadedFileDataUrlsWithMaterialUrls,
   resolveHistoryIdAfterSave,
   resolveReusableHistoryId,
@@ -71,7 +72,7 @@ const order: StepId[] = ["upload", "review", "style", "modules", "preview"];
 const PROJECT_STATE_STORAGE_KEY = "detail-image-agent-project-state-v1";
 const PROJECT_STATE_SCHEMA_VERSION = 2;
 const DEFAULT_CATEGORY = "";
-const DEFAULT_STYLE_ID = "green_repair";
+const DEFAULT_STYLE_ID = "space_repair";
 const DEFAULT_PLATFORM_ID: CommercePlatformId = "tmall";
 const DEFAULT_GENERATION_MODE: GenerationMode = "reference_generate";
 const LANGUAGE_LABELS: Record<LanguageCode, string> = {
@@ -173,10 +174,10 @@ function readPersistedProjectState(): PersistedProjectState | null {
 
 function mergeRestoredModules(defaultModules: ModuleConfig[], restoredModules: ModuleConfig[]) {
   const restoredById = new Map(restoredModules.map((module) => [module.id, module]));
-  return defaultModules.map((module) => {
+  return normalizeDetailIngredientModuleOrder(defaultModules.map((module) => {
     const restored = restoredById.get(module.id);
     return restored ? { ...module, enabled: restored.enabled, order: restored.order ?? module.order } : module;
-  });
+  }));
 }
 
 function persistProjectState(state: PersistedProjectState) {
@@ -299,7 +300,8 @@ export default function Home() {
       const restored = readPersistedProjectState();
       setStyles(defaults.styles);
       setModelConfig(models);
-      setDefaultModules(defaults.modules);
+      const normalizedDefaultModules = normalizeDetailIngredientModuleOrder(defaults.modules);
+      setDefaultModules(normalizedDefaultModules);
       if (restored) {
         setProductInfo(restored.productInfo);
         setHasAiProductInfo(restored.hasAiProductInfo);
@@ -313,7 +315,7 @@ export default function Home() {
         setSelectedGenerationMode(normalizeGenerationMode(restored.generationMode, restored.projectStateSchemaVersion));
         setActiveImageGroup(restored.activeImageGroup);
         setPromotionInfo(restored.promotionInfo);
-        setModules(mergeRestoredModules(defaults.modules, restored.modules));
+        setModules(mergeRestoredModules(normalizedDefaultModules, restored.modules));
         if (Object.keys(restored.generatedImageVersions).length) {
           setImageVersionStore({ versions: restored.generatedImageVersions, selectedVersionIds: restored.selectedVersionIds });
         } else if (restored.generatedImages.length) {
@@ -322,7 +324,7 @@ export default function Home() {
         setUserTemplates(restored.userTemplates);
         setStatusText(restored.generatedImages.length || Object.keys(restored.generatedImageVersions).length ? "已恢复生成结果" : restored.statusText);
       } else {
-        setModules(defaults.modules);
+        setModules(normalizedDefaultModules);
       }
       setHasRestoredProjectState(true);
     }
@@ -350,6 +352,15 @@ export default function Home() {
       statusText
     }));
   }, [activeImageGroup, customStyle, hasAiProductInfo, hasRestoredProjectState, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedGenerationMode, selectedImageModelId, selectedPlatformId, selectedStyleId, statusText, styleSource, uploadedFiles, userTemplates]);
+
+  useEffect(() => {
+    if (!modules.length) return;
+    const normalizedModules = normalizeDetailIngredientModuleOrder(modules);
+    const hasOrderChange = normalizedModules.some((module, index) => module.order !== modules[index]?.order);
+    if (hasOrderChange) {
+      setModules(normalizedModules);
+    }
+  }, [modules]);
 
   useEffect(() => {
     if (!hasAiProductInfo || !productInfo) {
@@ -427,7 +438,7 @@ export default function Home() {
     setActiveImageGroup(state.activeImageGroup);
     setPromotionInfo(state.promotionInfo);
     if (state.modules?.length) {
-      setModules((current) => (options?.exactModules ? state.modules : mergeRestoredModules(current, state.modules)));
+      setModules((current) => (options?.exactModules ? normalizeDetailIngredientModuleOrder(state.modules) : mergeRestoredModules(current, state.modules)));
     }
     if (Object.keys(state.generatedImageVersions || {}).length) {
       setImageVersionStore({ versions: state.generatedImageVersions, selectedVersionIds: state.selectedVersionIds || {} });
@@ -493,14 +504,14 @@ export default function Home() {
     setAnalysisSource("");
     setActiveImageGroup("main");
     setPromotionInfo("");
-    setSelectedStyleId(styles[0]?.id ?? "green_repair");
+    setSelectedStyleId(styles[0]?.id ?? DEFAULT_STYLE_ID);
     setCustomStyle(null);
     setStyleSource("preset");
     setSelectedCategory(DEFAULT_CATEGORY);
     setSelectedPlatformId("tmall");
     setSelectedImageModelId(modelConfig.imageGeneration.defaultOptionId || "primary");
     setSelectedGenerationMode(DEFAULT_GENERATION_MODE);
-    setModules(defaultModules.map((module) => ({ ...module })));
+    setModules(normalizeDetailIngredientModuleOrder(defaultModules.map((module) => ({ ...module }))));
     setImageVersionStore(createEmptyImageVersionStore());
     setGenerationProgress(createIdleGenerationProgress());
     setIsAnalyzing(false);
@@ -584,11 +595,11 @@ export default function Home() {
       return;
     }
     setIsCheckingImageCompliance(true);
-    setStatusText("正在进行图片合规复查");
+    setStatusText("正在进行 Gemini 图片合规复查");
     try {
       const report = await checkImageCompliance(imageUrls, selectedPlatformId, productInfo);
       setImageComplianceReport(report);
-      setStatusText(`图片合规复查：${report.summary.status === "pass" ? "通过" : "需查看风险提示"}`);
+      setStatusText(`Gemini 图片合规复查：${report.summary.status === "pass" ? "通过" : "需查看风险提示"}`);
     } finally {
       setIsCheckingImageCompliance(false);
     }

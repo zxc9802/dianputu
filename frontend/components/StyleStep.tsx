@@ -76,7 +76,7 @@ export function StyleStep({
                 </button>
               </>
             ) : null}
-            <button className="primaryButton fullWidth aiPlanButton" type="button" onClick={onPlanAiCustomStyle} disabled={isPlanningCustomStyle}>
+            <button className="primaryButton fullWidth aiPlanButton" type="button" onClick={() => onPlanAiCustomStyle()} disabled={isPlanningCustomStyle}>
               {isPlanningCustomStyle ? "AI 规划中..." : customStyle ? "重新规划风格" : "让 AI 规划风格"}
             </button>
           </article>
@@ -93,7 +93,18 @@ export function StyleStep({
                 {recommended ? <em className="recommendBadge">AI 推荐</em> : null}
                 <h3 style={{ color: style.primary_color }}>{style.name}</h3>
                 <p>{style.keywords.slice(0, 3).join(" / ")}</p>
-                <img src={style.asset} alt={style.name} />
+                {style.asset ? (
+                  <img src={style.asset} alt={style.name} />
+                ) : (
+                  <div
+                    className="styleThemePreview"
+                    style={{
+                      background: `radial-gradient(circle at 24% 22%, ${style.primary_color}66, transparent 34%), linear-gradient(135deg, ${style.primary_color}1f, #ffffff 48%, ${style.primary_color}33)`
+                    }}
+                  >
+                    <span>{style.theme ?? style.name}</span>
+                  </div>
+                )}
                 <div className="keywordRow">
                   {style.keywords.map((keyword) => (
                     <span key={keyword}>{keyword}</span>

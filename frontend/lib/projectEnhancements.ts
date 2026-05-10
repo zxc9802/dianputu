@@ -12,8 +12,10 @@ import type {
 const MAX_IMAGE_VERSIONS = 3;
 const DEFAULT_IMAGE_GENERATION_CONCURRENCY_LIMIT = 2;
 const MAX_IMAGE_GENERATION_CONCURRENCY_LIMIT = 20;
+const DETAIL_INGREDIENT_BLOCK_IDS = ["ingredient_overview", "ingredient_1", "ingredient_2", "ingredient_3"];
 
 type GeneratedImageInput = { module_id: string; url: string; compliance?: ComplianceReport };
+type DetailDownloadItem = { module: ModuleConfig; url: string };
 type LayeredGeneratedImageInput = GeneratedImageInput & {
   base_url?: string;
   text_layers?: GeneratedImageVersion["textLayers"];
@@ -213,13 +215,83 @@ export async function runParallelImageGeneration<TModule extends { id: string }>
   return { completed, total, errorCount, errors };
 }
 
+function moduleGroup(module: ModuleConfig) {
+  return module.image_group ?? "detail";
+}
+
+export function normalizeDetailIngredientModuleOrder(modules: ModuleConfig[]) {
+  const indexed = modules.map((module, index) => ({ module, index }));
+  const detailEntries = indexed
+    .filter((entry) => moduleGroup(entry.module) === "detail")
+    .sort((a, b) => a.module.order - b.module.order || a.index - b.index);
+  const overviewIndex = detailEntries.findIndex((entry) => entry.module.id === "ingredient_overview");
+  if (overviewIndex < 0) return modules;
+
+  const blockEntries = DETAIL_INGREDIENT_BLOCK_IDS
+    .map((moduleId) => detailEntries.find((entry) => entry.module.id === moduleId))
+    .filter((entry): entry is { module: ModuleConfig; index: number } => Boolean(entry));
+  if (blockEntries.length < DETAIL_INGREDIENT_BLOCK_IDS.length) return modules;
+
+  const ingredientBlockIds = new Set(DETAIL_INGREDIENT_BLOCK_IDS);
+  const nonBlockEntries = detailEntries.filter((entry) => !ingredientBlockIds.has(entry.module.id));
+  const insertIndex = detailEntries
+    .slice(0, overviewIndex)
+    .filter((entry) => !ingredientBlockIds.has(entry.module.id)).length;
+  const orderedDetailEntries = [
+    ...nonBlockEntries.slice(0, insertIndex),
+    ...blockEntries,
+    ...nonBlockEntries.slice(insertIndex)
+  ];
+
+  const lastIngredientIndex = orderedDetailEntries.findIndex((entry) => entry.module.id === "ingredient_3");
+  const usageIndex = orderedDetailEntries.findIndex((entry) => entry.module.id === "usage");
+  if (usageIndex >= 0 && usageIndex < lastIngredientIndex) {
+    const [usageEntry] = orderedDetailEntries.splice(usageIndex, 1);
+    const nextLastIngredientIndex = orderedDetailEntries.findIndex((entry) => entry.module.id === "ingredient_3");
+    orderedDetailEntries.splice(nextLastIngredientIndex + 1, 0, usageEntry);
+  }
+
+  const orderById = new Map(
+    orderedDetailEntries.map((entry, index) => [entry.module.id, index + 1])
+  );
+  return modules.map((module) => {
+    const normalizedOrder = orderById.get(module.id);
+    return normalizedOrder && moduleGroup(module) === "detail" ? { ...module, order: normalizedOrder } : module;
+  });
+}
+
+export function buildDetailDownloadState(modules: ModuleConfig[], generatedImages: GeneratedImageInput[]) {
+  const generatedByModule = new Map(
+    generatedImages
+      .filter((image) => Boolean(image.url))
+      .map((image) => [image.module_id, image.url])
+  );
+  const detailModules = normalizeDetailIngredientModuleOrder(modules)
+    .filter((module) => moduleGroup(module) === "detail" && module.enabled)
+    .sort((a, b) => a.order - b.order);
+  const items = detailModules
+    .map((module) => {
+      const url = generatedByModule.get(module.id);
+      return url ? { module, url } : null;
+    })
+    .filter((item): item is DetailDownloadItem => Boolean(item));
+  const missingModules = detailModules.filter((module) => !generatedByModule.get(module.id));
+  const manifest = items.map((item) => ({
+    module_id: item.module.id,
+    module_name: item.module.name,
+    url: item.url
+  }));
+
+  return { modules: detailModules, items, missingModules, manifest };
+}
+
 export function applyTemplateToModules(modules: ModuleConfig[], template: ProjectTemplate) {
   const templateById = new Map(template.modules.map((module) => [module.id, module]));
-  return modules.map((module) => {
+  return normalizeDetailIngredientModuleOrder(modules.map((module) => {
     const templateModule = templateById.get(module.id);
     if (!templateModule) return { ...module, enabled: false };
     return { ...module, enabled: templateModule.enabled, order: templateModule.order };
-  });
+  }));
 }
 
 export function enableModuleForSingleGeneration(modules: ModuleConfig[], moduleId: string) {
@@ -248,6 +320,6 @@ export function createTemplateFromProject(input: {
     styleId: input.styleId,
     platformId: input.platformId,
     source: "user",
-    modules: input.modules.map((module) => ({ id: module.id, enabled: module.enabled, order: module.order }))
+    modules: normalizeDetailIngredientModuleOrder(input.modules).map((module) => ({ id: module.id, enabled: module.enabled, order: module.order }))
   };
 }

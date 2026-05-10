@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Download, FileImage, Monitor, Save, Smartphone } from "lucide-react";
 import { createComposeLongImageJob, downloadComposeLongImageJob, downloadImage, fetchComposeLongImageJob, prepareComposeLongImageSources } from "@/lib/api";
 import { complianceStatusClass, complianceStatusLabel, highestComplianceStatus } from "@/lib/compliance";
+import { buildDetailDownloadState } from "@/lib/projectEnhancements";
 import type { CommercePlatform, ComplianceReport, GeneratedImageVersion, GeneratedImageVersionState, ImageGroup, LanguageCode, ModuleConfig } from "@/lib/types";
 
 type GeneratedImage = { module_id: string; url: string };
@@ -222,33 +223,33 @@ export function PreviewStep({
       return [image.module_id, selectedVersionUrl(selectedVersion, image.url)];
     })
   );
+  const selectedGeneratedImages = Array.from(generatedByModule.entries()).map(([module_id, url]) => ({ module_id, url }));
+  const detailDownloadState = buildDetailDownloadState(modules, selectedGeneratedImages);
   const groupedModules = {
     main: sortedGroupModules(modules, "main"),
     campaign: sortedGroupModules(modules, "campaign"),
-    detail: sortedGroupModules(modules, "detail").filter((module) => module.enabled)
+    detail: detailDownloadState.modules
   };
   const groupedItems = {
     main: buildPreviewItems(groupedModules.main, generatedByModule),
     campaign: buildPreviewItems(groupedModules.campaign, generatedByModule),
-    detail: buildPreviewItems(groupedModules.detail, generatedByModule)
+    detail: detailDownloadState.items
   };
   const visibleModules = groupedModules[activeImageGroup];
   const visibleItems = groupedItems[activeImageGroup];
   const visibleImageUrls = visibleModules.map((module) => generatedByModule.get(module.id)).filter((url): url is string => Boolean(url));
   const activeProgress = generationProgress[activeImageGroup];
-  const detailManifest = groupedItems.detail.map((item) => ({
-    module_id: item.module.id,
-    module_name: item.module.name,
-    url: item.url
-  }));
+  const detailManifest = detailDownloadState.manifest;
+  const missingDetailModules = detailDownloadState.missingModules;
   const manifestHref = `data:application/json;charset=utf-8,${encodeURIComponent(JSON.stringify(detailManifest, null, 2))}`;
   const batchDownloadLabel = activeImageGroup === "campaign" ? "活动主图" : "主图";
 
   async function handleDownloadVisibleBatch() {
-    if (activeImageGroup === "detail" || visibleItems.length === 0) return;
+    if (visibleItems.length === 0) return;
+    const filenamePrefix = activeImageGroup === "detail" ? "detail" : activeImageGroup;
     for (let index = 0; index < visibleItems.length; index++) {
       const item = visibleItems[index];
-      await fetchAndDownload(item.url, `${activeImageGroup}-${String(index + 1).padStart(2, "0")}-${item.module.id}.png`);
+      await fetchAndDownload(item.url, `${filenamePrefix}-${String(index + 1).padStart(2, "0")}-${item.module.id}.png`);
     }
   }
 
@@ -528,18 +529,27 @@ export function PreviewStep({
               type="button"
             >
               <FileImage size={20} />
-              {isCheckingImageCompliance ? "复查中" : "图片合规复查"}
+              {isCheckingImageCompliance ? "Gemini 复查中" : "Gemini 图片合规复查"}
             </button>
             {activeImageGroup === "detail" ? (
               <>
                 <button className="primaryButton" onClick={handleDownloadLongJpg} disabled={groupedItems.detail.length === 0 || isComposing}>
                   <Download size={20} />
-                  {isComposing ? composeStatus || "正在合成 JPG" : groupedItems.detail.length ? `合成并下载 ${groupedItems.detail.length} 张详情图为 JPG 长图` : "暂无详情长图可导出"}
+                  {isComposing
+                    ? composeStatus || "正在合成 JPG"
+                    : groupedItems.detail.length
+                      ? `合成并下载 ${groupedItems.detail.length}/${groupedModules.detail.length} 张详情图为 JPG 长图`
+                      : "暂无详情长图可导出"}
+                </button>
+                <button className="ghostButton" onClick={handleDownloadVisibleBatch} disabled={groupedItems.detail.length === 0} type="button">
+                  <Download size={20} />
+                  批量下载 {groupedItems.detail.length}/{groupedModules.detail.length} 张详情分图
                 </button>
                 <a className="ghostButton" href={manifestHref} download="split-images-manifest.json">
                   <Download size={20} />
                   导出 {groupedItems.detail.length} 张详情分图清单
                 </a>
+                {missingDetailModules.length ? <p className="composeError">尚有 {missingDetailModules.length} 张未生成：{missingDetailModules.map((module) => module.name).join("、")}</p> : null}
                 {composeStatus && !composeError ? <p className="composeStatus">{composeStatus}</p> : null}
                 {composeError ? <p className="composeError">{composeError}</p> : null}
               </>

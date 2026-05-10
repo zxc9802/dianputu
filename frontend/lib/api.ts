@@ -142,6 +142,17 @@ type GenerateImageJobStatus = {
   result?: GenerateImagesResult;
 };
 
+type EditImageResult = { source: string; url?: string; error?: string; compliance?: ComplianceReport };
+type EditImageJobStatus = {
+  status: "pending" | "running" | "done" | "error";
+  stage: string;
+  current: number;
+  total: number;
+  message: string;
+  error?: string;
+  result?: EditImageResult;
+};
+
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -269,7 +280,56 @@ export async function generateAiCustomStyleSample(style: StyleOption, productInf
 
 export async function editGeneratedImage(imageUrl: string, instruction: string, platformSize = "", imageModelId = "", platformId: CommercePlatformId = "tmall") {
   try {
-    return await requestJson<{ source: string; url?: string; error?: string; compliance?: ComplianceReport }>("/api/projects/edit-image", {
+    const { job_id: jobId } = await createEditImageJob(imageUrl, instruction, platformSize, imageModelId, platformId);
+    return await pollEditImageJob(jobId);
+  } catch (error) {
+    rethrowMainAppRedirect(error);
+    return {
+      source: "error",
+      error: error instanceof Error ? error.message : "AI 微调请求失败"
+    };
+  }
+}
+
+export async function createEditImageJob(imageUrl: string, instruction: string, platformSize = "", imageModelId = "", platformId: CommercePlatformId = "tmall") {
+  return requestJson<{ job_id: string }>("/api/projects/edit-image/jobs", {
+    method: "POST",
+    body: JSON.stringify({
+      image_url: imageUrl,
+      instruction,
+      platform_size: platformSize,
+      image_model_id: imageModelId,
+      platform_id: platformId
+    }),
+    timeoutMs: 15000
+  });
+}
+
+export async function fetchEditImageJob(jobId: string) {
+  return requestJson<EditImageJobStatus>(`/api/projects/edit-image/jobs/${jobId}`, { timeoutMs: 15000 });
+}
+
+export async function pollEditImageJob(jobId: string, timeoutMs = 600000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt <= timeoutMs) {
+    const job = await fetchEditImageJob(jobId);
+    if (job.status === "done") {
+      if (!job.result) {
+        throw new Error("图片微调任务完成但没有返回结果");
+      }
+      return job.result;
+    }
+    if (job.status === "error") {
+      throw new Error(job.error || job.message || "图片微调任务失败");
+    }
+    await sleep(1000);
+  }
+  throw new Error("图片微调任务超时，请稍后重试");
+}
+
+export async function editGeneratedImageDirect(imageUrl: string, instruction: string, platformSize = "", imageModelId = "", platformId: CommercePlatformId = "tmall") {
+  try {
+    return await requestJson<EditImageResult>("/api/projects/edit-image", {
       method: "POST",
       body: JSON.stringify({
         image_url: imageUrl,
@@ -342,7 +402,7 @@ export async function checkImageCompliance(imageUrls: string[], platformId: Comm
           category: "image_review",
           term: "图片合规检查失败",
           reason: error instanceof Error ? error.message : "图片合规检查请求失败",
-          suggestion: "请重试图片合规复查，导出前建议人工核对成图内容。"
+          suggestion: "请重试 Gemini 图片合规复查，导出前建议人工核对成图内容。"
         }
       ]
     };

@@ -41,6 +41,8 @@ FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR = "固定产品合成需要先上传产�
 STYLE_SAMPLE_IMAGE_SIZE = "1024x1024"
 GENERATION_JOBS: dict[str, dict[str, Any]] = {}
 GENERATION_JOB_TTL_SECONDS = 3600  # 1 hour
+EDIT_JOBS: dict[str, dict[str, Any]] = {}
+EDIT_JOB_TTL_SECONDS = 3600  # 1 hour
 COMPOSE_JOBS: dict[str, dict[str, Any]] = {}
 COMPOSE_JOB_TTL_SECONDS = 600  # 10 minutes
 WHITE_BACKGROUND_REFERENCE_REQUIRED_ERROR = "白底图需要先上传产品图，系统会直接复用上传图以避免模型重绘导致包装、Logo 或瓶身变形。"
@@ -56,6 +58,18 @@ def _cleanup_expired_generation_jobs() -> None:
     ]
     for job_id in expired:
         GENERATION_JOBS.pop(job_id, None)
+
+
+def _cleanup_expired_edit_jobs() -> None:
+    """Remove edit jobs older than TTL to prevent memory leaks."""
+    now = datetime.now(UTC)
+    expired = [
+        job_id
+        for job_id, job in EDIT_JOBS.items()
+        if (now - datetime.fromisoformat(job.get("created_at", now.isoformat()))).total_seconds() > EDIT_JOB_TTL_SECONDS
+    ]
+    for job_id in expired:
+        EDIT_JOBS.pop(job_id, None)
 
 
 def _cleanup_expired_compose_jobs() -> None:
@@ -201,6 +215,8 @@ def build_material_analysis_messages(materials: list[UploadedMaterial]) -> list[
         "4) 需要谨慎表达或不能直接宣传的内容。"
         "必须只输出 JSON，不要输出解释文字。字段包括：product_name, category, spec, "
         "core_selling_points, functions, ingredients, target_users, usage_method, authority_assets, effect_claims, material_highlights。"
+        "ingredients 必须是按详情页展示优先级排序的数组，每项形如 {\"name\":\"成分名\",\"benefit\":\"一句消费者能理解的温和作用\"}；"
+        "优先选择最值得单独上图讲解的 3 个核心成分，benefit 不能写成药品疗效或治疗承诺。"
         "material_highlights 是 3-6 条面向消费者的资料亮点摘要，每条应短、可信、有转化力，并可直接辅助电商图片文案。"
         "如果图片或资料里无法确定，请基于护肤品详情页常识给出谨慎的 AI 补全，并避免绝对化医疗功效。"
         f"\n上传文件：\n{file_lines}"
@@ -257,6 +273,60 @@ def _string_list(value: Any, fallback: list[str]) -> list[str]:
     return fallback
 
 
+def _string_map(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    normalized: dict[str, str] = {}
+    for key, item in value.items():
+        key_text = str(key).strip()
+        item_text = str(item).strip()
+        if key_text and item_text:
+            normalized[key_text] = item_text
+    return normalized
+
+
+PLACEHOLDER_INGREDIENT_BENEFITS = (
+    "待确认",
+    "待说明",
+    "待补充",
+    "作用待确认",
+    "功效待确认",
+    "效果待确认",
+    "资料待确认",
+    "资料不足",
+    "未提供",
+    "未知",
+    "不详",
+    "n/a",
+)
+
+
+def _is_placeholder_ingredient_benefit(value: str) -> bool:
+    cleaned = value.strip().lower()
+    return not cleaned or any(keyword in cleaned for keyword in PLACEHOLDER_INGREDIENT_BENEFITS)
+
+
+def _ingredient_default_benefit(name: str) -> str:
+    normalized = name.lower()
+    if any(keyword in normalized for keyword in ("透明质酸", "玻尿酸", "hyaluronic")):
+        return "帮助提升水润肤感"
+    if any(keyword in normalized for keyword in ("烟酰胺", "niacinamide")):
+        return "帮助提亮肤色观感"
+    if any(keyword in normalized for keyword in ("积雪草", "cica", "centella")):
+        return "帮助舒缓干燥不适"
+    if any(keyword in normalized for keyword in ("神经酰胺", "ceramide", "泛醇", "panthenol")):
+        return "帮助维持肌肤屏障舒适"
+    if any(keyword in normalized for keyword in ("胶原", "胜肽", "肽", "玻色因", "pro-xylane")):
+        return "帮助支撑紧致弹润肤感"
+    if any(keyword in normalized for keyword in ("甘油", "角鲨烷", "squalane")):
+        return "帮助提升滋润肤感"
+    return "辅助日常肌肤护理"
+
+
+def _safe_ingredient_benefit(name: str, benefit: str) -> str:
+    return _ingredient_default_benefit(name) if _is_placeholder_ingredient_benefit(benefit) else benefit
+
+
 def _ingredients(value: Any) -> list[dict[str, str]]:
     if not isinstance(value, list):
         return []
@@ -264,12 +334,13 @@ def _ingredients(value: Any) -> list[dict[str, str]]:
     for item in value:
         if isinstance(item, dict):
             name = str(item.get("name", "")).strip()
-            benefit = str(item.get("benefit", "")).strip() or "辅助日常肌肤护理"
             if name:
+                benefit = _safe_ingredient_benefit(name, str(item.get("benefit", "")).strip())
                 normalized.append({"name": name, "benefit": benefit})
         elif str(item).strip():
-            normalized.append({"name": str(item).strip(), "benefit": "辅助日常肌肤护理"})
-    return normalized
+            name = str(item).strip()
+            normalized.append({"name": name, "benefit": _ingredient_default_benefit(name)})
+    return normalized[:3]
 
 
 def _effect_claims(value: Any) -> list[dict[str, str]]:
@@ -311,10 +382,18 @@ def normalize_style_plan_from_model(raw: str) -> dict[str, Any]:
     keywords = _string_list(data.get("keywords"), [])
     return {
         "id": "ai_custom",
+        "seed_id": str(data.get("seed_id") or "").strip(),
         "name": str(data.get("name") or "AI 自定义风格").strip() or "AI 自定义风格",
+        "theme": str(data.get("theme") or "").strip(),
         "primary_color": str(data.get("primary_color") or "#1F8C43").strip() or "#1F8C43",
         "keywords": keywords[:6] or ["产品定制", "电商高级", "统一视觉"],
         "asset": "",
+        "best_for": _string_list(data.get("best_for"), [])[:6],
+        "visual_elements": _string_list(data.get("visual_elements"), [])[:12],
+        "materials": _string_list(data.get("materials"), [])[:10],
+        "lighting": _string_list(data.get("lighting"), [])[:10],
+        "module_usage": _string_map(data.get("module_usage")),
+        "forbidden": _string_list(data.get("forbidden"), [])[:10],
         "visual_direction": str(data.get("visual_direction") or "根据产品定位生成统一视觉方向").strip(),
         "layout_guidance": str(data.get("layout_guidance") or "主图突出产品，详情页按模块建立统一版式系统").strip(),
         "reasoning": str(data.get("reasoning") or "基于产品信息、品类和包装色规划").strip(),
@@ -332,22 +411,21 @@ def build_style_planning_messages(
         if str(info.get("category", "")).strip()
         else "请自行识别产品品类，不要套用任何前端默认类目。"
     )
-    prompt = "\n".join(
-        [
+    lines = [
             "你是资深电商美术指导。请基于产品资料和产品图，全权规划一个全新的电商视觉风格。",
-            "不要从现有三套预设风格里选择，也不要只输出绿色修护、蓝色补水、金色抗老这类模板名。",
+            "不要从现有固定预设风格里选择，也不要只输出太空、深海、实验室这类模板名。",
             "不要依赖前置颜色提取；请直接观察产品图，综合质地、品类、价格感和卖点来规划风格元素系统。",
-            "风格元素系统必须重点说明材质、光影、构图、字体层级、图标/装饰元素、摄影或渲染质感，并保证这些元素在整套图片里一致。",
+            "风格元素系统必须重点说明主题元素库、材质、光影、构图、字体层级、图标/装饰元素、摄影或渲染质感，并保证这些元素在整套图片里一致。",
             "每张图可以根据模块内容使用不同颜色；primary_color 只是参考色或局部点缀色，不是整套图片的强制背景色或统一主色。",
             "必须只输出 JSON，不要输出解释文字。",
-            "JSON 字段：name, primary_color, keywords, visual_direction, layout_guidance, reasoning。",
+            "JSON 字段：seed_id, name, theme, primary_color, keywords, best_for, visual_elements, materials, lighting, module_usage, forbidden, visual_direction, layout_guidance, reasoning。",
             "要求：name 是 6-12 个中文字符的风格名；primary_color 是十六进制参考色；keywords 是 3-6 个短词。",
-            "visual_direction 写清楚材质、光影、氛围、摄影或渲染质感；layout_guidance 写清楚主图和详情页如何保持风格元素一致但模块颜色和版式可差异化。",
+            "visual_elements 是可见主题元素数组；materials 是材质数组；lighting 是光影数组；module_usage 是对象，至少包含首图、成分图、效果图、使用场景、活动图如何使用主题元素。",
+            "forbidden 是禁止项数组，明确排除廉价、跑题、遮挡产品或违规表达；visual_direction 写清楚材质、光影、氛围、摄影或渲染质感；layout_guidance 写清楚主图和详情页如何保持风格元素一致但模块颜色和版式可差异化。",
             "避免医疗化、绝对化功效，不编造品牌授权或真实机构背书。",
-            category_line,
-            f"产品信息 JSON：{json.dumps(info, ensure_ascii=False)}",
-        ]
-    )
+    ]
+    lines.extend([category_line, f"产品信息 JSON：{json.dumps(info, ensure_ascii=False)}"])
+    prompt = "\n".join(lines)
     content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
     for material in (product_images or [])[:3]:
         if material.content_type.startswith("image/") and (material.data or material.data_url):
@@ -363,6 +441,10 @@ def _plain_text(value: Any, fallback: str) -> str:
 def build_custom_style_sample_prompt(style: dict[str, Any], product_info: dict[str, Any] | None) -> str:
     info = product_info or {}
     keywords = " / ".join(_string_list(style.get("keywords"), [])) or "高级 / 干净 / 统一"
+    visual_elements = " / ".join(_string_list(style.get("visual_elements"), []))
+    materials = " / ".join(_string_list(style.get("materials"), []))
+    lighting = " / ".join(_string_list(style.get("lighting"), []))
+    forbidden = " / ".join(_string_list(style.get("forbidden"), []))
     return "\n".join(
         [
             "请生成 1 张中文电商护肤视觉风格样例图，用来预览 AI 规划的风格方向。",
@@ -371,10 +453,15 @@ def build_custom_style_sample_prompt(style: dict[str, Any], product_info: dict[s
             f"- 参考产品：{_plain_text(info.get('product_name'), '护肤品')}",
             f"- 品类：{_plain_text(info.get('category'), '护肤品')}",
             f"- 风格名称：{_plain_text(style.get('name'), 'AI 自定义风格')}",
+            *([f"- AI 主题：{_plain_text(style.get('theme'), '')}"] if _plain_text(style.get("theme"), "") else []),
             f"- 参考色：{_plain_text(style.get('primary_color'), '#F4F1EC')}（参考色只作为局部点缀，不要求整张样例统一成这个颜色）",
             f"- 视觉关键词：{keywords}",
+            *([f"- 主题元素库：{visual_elements}"] if visual_elements else []),
+            *([f"- 材质系统：{materials}"] if materials else []),
+            *([f"- 光影系统：{lighting}"] if lighting else []),
             f"- 视觉方向：{_plain_text(style.get('visual_direction'), '高级、干净、统一')}",
             f"- 版式方向：{_plain_text(style.get('layout_guidance'), '主图突出产品，详情页模块化')}",
+            *([f"- 禁止项：{forbidden}"] if forbidden else []),
             "构图要求：16:10 横向风格卡片封面，中央或偏左放通用护肤品占位，背景呈现规划风格的材质与光影，可用多种协调颜色展示风格延展性。",
             "文字要求：最多只放 2-4 个大的中文风格关键词，不能出现乱码、密集小字、水印或平台 UI。",
         ]
@@ -387,7 +474,7 @@ def create_demo_project() -> dict[str, Any]:
         "id": f"project_{uuid4().hex[:8]}",
         "name": "新建商品详情页",
         "product_category": "待 AI 解析",
-        "style_id": "green_repair",
+        "style_id": "space_repair",
         "status": "draft",
         "created_at": now,
         "updated_at": now,
@@ -401,6 +488,8 @@ async def analyze_product_materials(raw_text: str | None = None) -> dict[str, An
             "你是电商护肤详情页产品经理。请从资料中提炼商品信息，"
             "输出 JSON 字段：product_name, category, core_selling_points, functions, "
             "ingredients, target_users, usage_method, authority_assets, effect_claims, material_highlights。"
+            "ingredients 必须按适合详情页展示的优先级排序，每项包含 name 和 benefit；"
+            "benefit 写成一句消费者能理解、可上图但不医疗化的成分作用。"
             "material_highlights 写 3-6 条最能吸引消费者且有资料依据的短亮点。"
             f"\n资料：{raw_text}"
         )
@@ -1112,7 +1201,7 @@ try:
 
     class GenerateRequest(BaseModel):
         module_ids: list[str] = Field(default_factory=lambda: [module["id"] for module in DEFAULT_MODULES])
-        style_id: str = "green_repair"
+        style_id: str = "space_repair"
         product_info: dict[str, Any] | None = None
         reference_images: list[str] = Field(default_factory=list)
         style_reference_images: list[str] = Field(default_factory=list)
@@ -1124,6 +1213,13 @@ try:
         generation_mode: str | None = REFERENCE_GENERATE_MODE
         layered_text: bool = False
         target_language: str | None = None
+
+    class EditImageRequest(BaseModel):
+        image_url: str
+        instruction: str
+        platform_size: str | None = None
+        image_model_id: str | None = None
+        platform_id: str | None = None
 
     def _generation_payload_from_request(request: GenerateRequest) -> dict[str, Any]:
         return {
@@ -1140,6 +1236,15 @@ try:
             "generation_mode": request.generation_mode,
             "layered_text": request.layered_text,
             "target_language": request.target_language,
+        }
+
+    def _edit_payload_from_request(request: EditImageRequest) -> dict[str, Any]:
+        return {
+            "image_url": request.image_url,
+            "instruction": request.instruction,
+            "platform_size": request.platform_size,
+            "image_model_id": request.image_model_id,
+            "platform_id": request.platform_id,
         }
 
     async def run_generation_job(job_id: str, payload: dict[str, Any]) -> None:
@@ -1160,7 +1265,7 @@ try:
             )
             result = await generate_detail_images(
                 module_ids,
-                payload.get("style_id") or "green_repair",
+                payload.get("style_id") or "space_repair",
                 product_info=payload.get("product_info"),
                 reference_images=payload.get("reference_images") or [],
                 style_reference_images=payload.get("style_reference_images") or [],
@@ -1186,6 +1291,40 @@ try:
         except Exception as exc:
             job.update({"status": "error", "stage": "error", "message": str(exc), "error": str(exc)})
 
+    async def run_edit_job(job_id: str, payload: dict[str, Any]) -> None:
+        job = EDIT_JOBS.get(job_id)
+        if not job:
+            return
+        try:
+            job.update(
+                {
+                    "status": "running",
+                    "stage": "editing",
+                    "current": 0,
+                    "total": 1,
+                    "message": "正在微调图片",
+                }
+            )
+            result = await edit_generated_image(
+                payload.get("image_url") or "",
+                payload.get("instruction") or "",
+                platform_size=payload.get("platform_size"),
+                image_model_id=payload.get("image_model_id"),
+                platform_id=payload.get("platform_id"),
+            )
+            job.update(
+                {
+                    "status": "done",
+                    "stage": "done",
+                    "current": 1,
+                    "total": 1,
+                    "message": "图片微调完成",
+                    "result": result,
+                }
+            )
+        except Exception as exc:
+            job.update({"status": "error", "stage": "error", "message": str(exc), "error": str(exc)})
+
     class PlanStyleRequest(BaseModel):
         product_info: dict[str, Any] | None = None
         product_images: list[MaterialPayload] = Field(default_factory=list)
@@ -1193,13 +1332,6 @@ try:
     class PlanStyleSampleRequest(BaseModel):
         style: dict[str, Any]
         product_info: dict[str, Any] | None = None
-
-    class EditImageRequest(BaseModel):
-        image_url: str
-        instruction: str
-        platform_size: str | None = None
-        image_model_id: str | None = None
-        platform_id: str | None = None
 
     class RenderLanguageRequest(BaseModel):
         base_url: str
@@ -1321,6 +1453,29 @@ try:
             image_model_id=request.image_model_id,
             platform_id=request.platform_id,
         )
+
+    @router.post("/edit-image/jobs")
+    async def create_edit_project_image_job(request: EditImageRequest, background_tasks: BackgroundTasks) -> dict[str, str]:
+        _cleanup_expired_edit_jobs()
+        payload = _edit_payload_from_request(request)
+        job_id = f"edit_{uuid4().hex}"
+        EDIT_JOBS[job_id] = {
+            "status": "pending",
+            "stage": "pending",
+            "current": 0,
+            "total": 1,
+            "message": "等待开始微调",
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        background_tasks.add_task(run_edit_job, job_id, payload)
+        return {"job_id": job_id}
+
+    @router.get("/edit-image/jobs/{job_id}")
+    async def get_edit_project_image_job(job_id: str) -> dict[str, Any]:
+        job = EDIT_JOBS.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="edit job not found")
+        return job
 
     @router.post("/render-language")
     async def render_project_language(request: RenderLanguageRequest) -> dict[str, Any]:
