@@ -97,6 +97,7 @@ assertNotIncludes("lib/api.ts", "DEFAULT_PRODUCT_INFO", "frontend API must not f
 assertNotIncludes("lib/constants.ts", "DEFAULT_PRODUCT_INFO", "frontend constants must not ship demo product information");
 
 assertIncludes("components/PreviewStep.tsx", "download", "preview step must expose downloadable outputs");
+assertIncludes("components/PreviewStep.tsx", "buildDetailDownloadState", "preview detail downloads must be driven by the shared detail download state");
 assertIncludes("components/PreviewStep.tsx", "groupedItems.detail.map", "preview step must render every generated detail image in the long preview");
 assertNotIncludes("components/PreviewStep.tsx", "generatedImages[0]?.url", "preview step must not use only the first generated image as the full long preview");
 assertIncludes("components/PreviewStep.tsx", "createComposeLongImageJob", "preview step must start backend JPEG composition for the full long image");
@@ -114,6 +115,7 @@ assertIncludes("components/PreviewStep.tsx", "handleDownloadVisibleBatch", "prev
 assertIncludes("components/PreviewStep.tsx", "index < visibleItems.length", "batch download must only download currently generated images in the active directory");
 assertIncludes("components/PreviewStep.tsx", 'activeImageGroup === "detail"', "detail directory must keep compose download separate from main/campaign batch download");
 assertIncludes("components/PreviewStep.tsx", "批量下载", "main and campaign directories must show a batch download action");
+assertIncludes("components/PreviewStep.tsx", "张详情分图", "detail directory must expose a real split-image batch download, not only a manifest");
 assertIncludes("lib/api.ts", "/api/projects/compose-long-image", "frontend API must expose backend long image composition");
 assertIncludes("lib/api.ts", "/api/projects/compose-long-image/prepare", "frontend API must expose backend compose source preparation");
 assertIncludes("app/page.tsx", "PROJECT_STATE_STORAGE_KEY", "page must define a storage key for preserving generated results");

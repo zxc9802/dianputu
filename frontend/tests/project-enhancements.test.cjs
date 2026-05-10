@@ -56,6 +56,7 @@ const {
   resolveReusableHistoryId,
   resolveHistoryIdAfterSave,
   getSelectedGeneratedImages,
+  buildDetailDownloadState,
   formatImageGenerationSummaryStatus,
   normalizeDetailIngredientModuleOrder,
   resolveImageGenerationConcurrencyLimit,
@@ -65,7 +66,7 @@ const {
   selectLanguageVersion,
   replaceUploadedFileDataUrlsWithMaterialUrls
 } = sandbox.module.exports;
-const { OFFICIAL_PROJECT_TEMPLATES } = constantsSandbox.module.exports;
+const { DEFAULT_MODULES, OFFICIAL_PROJECT_TEMPLATES } = constantsSandbox.module.exports;
 
 const versionState = { versions: {}, selectedVersionIds: {} };
 const first = appendImageVersions(versionState, [{ module_id: "hero", url: "v1.png" }], "model", 1000);
@@ -81,6 +82,25 @@ assert.equal(fourth.selectedVersionIds.hero, fourth.versions.hero[2].id);
 
 const selected = getSelectedGeneratedImages(fourth.versions, { hero: fourth.versions.hero[0].id });
 assert.deepEqual(JSON.parse(JSON.stringify(selected)), [{ module_id: "hero", url: "v2.png" }]);
+
+const generatedDetailImages = DEFAULT_MODULES
+  .filter((module) => module.image_group === "detail")
+  .map((module) => ({ module_id: module.id, url: `https://img.example.com/${module.id}.png` }));
+const detailDownloadState = buildDetailDownloadState(DEFAULT_MODULES, generatedDetailImages);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(detailDownloadState.manifest.map((item) => item.module_id).slice(5, 9))),
+  ["ingredient_overview", "ingredient_1", "ingredient_2", "ingredient_3"]
+);
+assert.deepEqual(
+  JSON.parse(JSON.stringify(detailDownloadState.items.map((item) => item.module.id).slice(5, 9))),
+  ["ingredient_overview", "ingredient_1", "ingredient_2", "ingredient_3"]
+);
+assert.equal(detailDownloadState.missingModules.length, 0);
+const missingIngredientDownloadState = buildDetailDownloadState(
+  DEFAULT_MODULES,
+  generatedDetailImages.filter((image) => image.module_id !== "ingredient_2")
+);
+assert.deepEqual(JSON.parse(JSON.stringify(missingIngredientDownloadState.missingModules.map((module) => module.id))), ["ingredient_2"]);
 
 const layered = appendImageVersions(
   { versions: {}, selectedVersionIds: {} },

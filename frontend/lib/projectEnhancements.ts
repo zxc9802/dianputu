@@ -15,6 +15,7 @@ const MAX_IMAGE_GENERATION_CONCURRENCY_LIMIT = 20;
 const DETAIL_INGREDIENT_BLOCK_IDS = ["ingredient_overview", "ingredient_1", "ingredient_2", "ingredient_3"];
 
 type GeneratedImageInput = { module_id: string; url: string; compliance?: ComplianceReport };
+type DetailDownloadItem = { module: ModuleConfig; url: string };
 type LayeredGeneratedImageInput = GeneratedImageInput & {
   base_url?: string;
   text_layers?: GeneratedImageVersion["textLayers"];
@@ -257,6 +258,31 @@ export function normalizeDetailIngredientModuleOrder(modules: ModuleConfig[]) {
     const normalizedOrder = orderById.get(module.id);
     return normalizedOrder && moduleGroup(module) === "detail" ? { ...module, order: normalizedOrder } : module;
   });
+}
+
+export function buildDetailDownloadState(modules: ModuleConfig[], generatedImages: GeneratedImageInput[]) {
+  const generatedByModule = new Map(
+    generatedImages
+      .filter((image) => Boolean(image.url))
+      .map((image) => [image.module_id, image.url])
+  );
+  const detailModules = normalizeDetailIngredientModuleOrder(modules)
+    .filter((module) => moduleGroup(module) === "detail" && module.enabled)
+    .sort((a, b) => a.order - b.order);
+  const items = detailModules
+    .map((module) => {
+      const url = generatedByModule.get(module.id);
+      return url ? { module, url } : null;
+    })
+    .filter((item): item is DetailDownloadItem => Boolean(item));
+  const missingModules = detailModules.filter((module) => !generatedByModule.get(module.id));
+  const manifest = items.map((item) => ({
+    module_id: item.module.id,
+    module_name: item.module.name,
+    url: item.url
+  }));
+
+  return { modules: detailModules, items, missingModules, manifest };
 }
 
 export function applyTemplateToModules(modules: ModuleConfig[], template: ProjectTemplate) {
