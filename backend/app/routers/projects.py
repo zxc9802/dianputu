@@ -41,6 +41,8 @@ FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR = "固定产品合成需要先上传产�
 STYLE_SAMPLE_IMAGE_SIZE = "1024x1024"
 GENERATION_JOBS: dict[str, dict[str, Any]] = {}
 GENERATION_JOB_TTL_SECONDS = 3600  # 1 hour
+EDIT_JOBS: dict[str, dict[str, Any]] = {}
+EDIT_JOB_TTL_SECONDS = 3600  # 1 hour
 COMPOSE_JOBS: dict[str, dict[str, Any]] = {}
 COMPOSE_JOB_TTL_SECONDS = 600  # 10 minutes
 WHITE_BACKGROUND_REFERENCE_REQUIRED_ERROR = "白底图需要先上传产品图，系统会直接复用上传图以避免模型重绘导致包装、Logo 或瓶身变形。"
@@ -56,6 +58,18 @@ def _cleanup_expired_generation_jobs() -> None:
     ]
     for job_id in expired:
         GENERATION_JOBS.pop(job_id, None)
+
+
+def _cleanup_expired_edit_jobs() -> None:
+    """Remove edit jobs older than TTL to prevent memory leaks."""
+    now = datetime.now(UTC)
+    expired = [
+        job_id
+        for job_id, job in EDIT_JOBS.items()
+        if (now - datetime.fromisoformat(job.get("created_at", now.isoformat()))).total_seconds() > EDIT_JOB_TTL_SECONDS
+    ]
+    for job_id in expired:
+        EDIT_JOBS.pop(job_id, None)
 
 
 def _cleanup_expired_compose_jobs() -> None:
@@ -1192,6 +1206,13 @@ try:
         layered_text: bool = False
         target_language: str | None = None
 
+    class EditImageRequest(BaseModel):
+        image_url: str
+        instruction: str
+        platform_size: str | None = None
+        image_model_id: str | None = None
+        platform_id: str | None = None
+
     def _generation_payload_from_request(request: GenerateRequest) -> dict[str, Any]:
         return {
             "module_ids": list(request.module_ids),
@@ -1207,6 +1228,15 @@ try:
             "generation_mode": request.generation_mode,
             "layered_text": request.layered_text,
             "target_language": request.target_language,
+        }
+
+    def _edit_payload_from_request(request: EditImageRequest) -> dict[str, Any]:
+        return {
+            "image_url": request.image_url,
+            "instruction": request.instruction,
+            "platform_size": request.platform_size,
+            "image_model_id": request.image_model_id,
+            "platform_id": request.platform_id,
         }
 
     async def run_generation_job(job_id: str, payload: dict[str, Any]) -> None:
@@ -1253,6 +1283,40 @@ try:
         except Exception as exc:
             job.update({"status": "error", "stage": "error", "message": str(exc), "error": str(exc)})
 
+    async def run_edit_job(job_id: str, payload: dict[str, Any]) -> None:
+        job = EDIT_JOBS.get(job_id)
+        if not job:
+            return
+        try:
+            job.update(
+                {
+                    "status": "running",
+                    "stage": "editing",
+                    "current": 0,
+                    "total": 1,
+                    "message": "正在微调图片",
+                }
+            )
+            result = await edit_generated_image(
+                payload.get("image_url") or "",
+                payload.get("instruction") or "",
+                platform_size=payload.get("platform_size"),
+                image_model_id=payload.get("image_model_id"),
+                platform_id=payload.get("platform_id"),
+            )
+            job.update(
+                {
+                    "status": "done",
+                    "stage": "done",
+                    "current": 1,
+                    "total": 1,
+                    "message": "图片微调完成",
+                    "result": result,
+                }
+            )
+        except Exception as exc:
+            job.update({"status": "error", "stage": "error", "message": str(exc), "error": str(exc)})
+
     class PlanStyleRequest(BaseModel):
         product_info: dict[str, Any] | None = None
         product_images: list[MaterialPayload] = Field(default_factory=list)
@@ -1260,13 +1324,6 @@ try:
     class PlanStyleSampleRequest(BaseModel):
         style: dict[str, Any]
         product_info: dict[str, Any] | None = None
-
-    class EditImageRequest(BaseModel):
-        image_url: str
-        instruction: str
-        platform_size: str | None = None
-        image_model_id: str | None = None
-        platform_id: str | None = None
 
     class RenderLanguageRequest(BaseModel):
         base_url: str
@@ -1388,6 +1445,29 @@ try:
             image_model_id=request.image_model_id,
             platform_id=request.platform_id,
         )
+
+    @router.post("/edit-image/jobs")
+    async def create_edit_project_image_job(request: EditImageRequest, background_tasks: BackgroundTasks) -> dict[str, str]:
+        _cleanup_expired_edit_jobs()
+        payload = _edit_payload_from_request(request)
+        job_id = f"edit_{uuid4().hex}"
+        EDIT_JOBS[job_id] = {
+            "status": "pending",
+            "stage": "pending",
+            "current": 0,
+            "total": 1,
+            "message": "等待开始微调",
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        background_tasks.add_task(run_edit_job, job_id, payload)
+        return {"job_id": job_id}
+
+    @router.get("/edit-image/jobs/{job_id}")
+    async def get_edit_project_image_job(job_id: str) -> dict[str, Any]:
+        job = EDIT_JOBS.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="edit job not found")
+        return job
 
     @router.post("/render-language")
     async def render_project_language(request: RenderLanguageRequest) -> dict[str, Any]:

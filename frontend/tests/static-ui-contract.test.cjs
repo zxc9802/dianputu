@@ -53,6 +53,10 @@ assertIncludes("lib/api.ts", "timeoutMs: 180000", "material analysis must keep t
 assertIncludes("lib/constants.ts", 'defaults: { size: "2048x2048"', "frontend demo model config must reflect 2K image generation defaults");
 assertIncludes("app/page.tsx", "selectedPlatform.generationSize", "page image generation requests must use the 2K generation size");
 assertIncludes("app/page.tsx", "editGeneratedImage(imageUrl, trimmed, selectedPlatform.generationSize, selectedImageModelId, selectedPlatformId)", "image edits must keep the selected platform 2K generation size, selected image model, and platform id");
+assertIncludes("lib/api.ts", "createEditImageJob", "image edits must create a backend job instead of holding one long request");
+assertIncludes("lib/api.ts", "fetchEditImageJob", "image edits must poll the backend edit job");
+assertIncludes("lib/api.ts", "pollEditImageJob", "image edits must wait for job completion through polling");
+assertIncludes("lib/api.ts", "/api/projects/edit-image/jobs", "frontend image edits must use the backend edit job endpoint");
 assertIncludes("components/ModulesStep.tsx", "选择图片模型", "modules step must expose the image model selector");
 assertIncludes("lib/api.ts", "image_model_id: imageModelId", "frontend generation/edit requests must send the selected image model id");
 assertIncludes("lib/types.ts", 'GenerationMode = "reference_generate" | "fixed_product_composite"', "frontend must model both image generation modes");

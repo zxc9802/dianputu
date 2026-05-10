@@ -13,7 +13,7 @@ from app.core.config import ImageGenerationSettings
 from app.demo_data import DEFAULT_MODULES, DEFAULT_PRODUCT_INFO, DEMO_IMAGE_URLS, STYLE_OPTIONS
 from app.dependencies.auth import require_app_user
 from app.routers.models import build_public_model_config
-from app.routers.projects import COMPOSE_JOBS, FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR, build_layered_generated_image, check_project_text_compliance, compose_long_jpeg, edit_generated_image, generate_detail_images, render_layered_language_version, router as projects_router
+from app.routers.projects import COMPOSE_JOBS, EDIT_JOBS, FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR, build_layered_generated_image, check_project_text_compliance, compose_long_jpeg, edit_generated_image, generate_detail_images, render_layered_language_version, router as projects_router
 from app.services.language_renderer import build_text_layers, render_text_layers_to_data_url
 from app.services.app_session import AppSessionUserSnapshot
 
@@ -643,6 +643,35 @@ class DownloadContractTests(unittest.TestCase):
         self.assertEqual(payload["source"], "rules")
         self.assertEqual(payload["summary"]["status"], "block")
         self.assertEqual(payload["issues"][0]["term"], "治愈")
+
+    def test_edit_image_job_endpoint_returns_pollable_result(self):
+        job_result = {
+            "source": "model",
+            "url": "https://example.com/edited.png",
+            "compliance": {"source": "rules", "summary": {"status": "pass", "block_count": 0, "warn_count": 0, "review_count": 0}, "issues": []},
+        }
+        with patch("app.routers.projects.edit_generated_image", new=AsyncMock(return_value=job_result)):
+            response = self.make_client().post(
+                "/api/projects/edit-image/jobs",
+                json={
+                    "image_url": self.png_data_url(),
+                    "instruction": "把标题放大一点",
+                    "platform_size": "2048x2048",
+                    "image_model_id": "primary",
+                    "platform_id": "tmall",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        job_id = response.json()["job_id"]
+        try:
+            job_response = self.make_client().get(f"/api/projects/edit-image/jobs/{job_id}")
+            self.assertEqual(job_response.status_code, 200)
+            job = job_response.json()
+            self.assertEqual(job["status"], "done")
+            self.assertEqual(job["result"], job_result)
+        finally:
+            EDIT_JOBS.pop(job_id, None)
 
     def test_image_compliance_endpoint_uses_ai_image_report(self):
         class FakeImageComplianceProvider:
