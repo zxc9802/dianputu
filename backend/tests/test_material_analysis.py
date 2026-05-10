@@ -22,6 +22,16 @@ from app.routers.projects import (
 from app.services.prompt_builder import build_module_image_prompt
 
 
+class PassingComplianceProvider:
+    source = "fake_gemini"
+
+    async def review_text(self, items, *, platform_id=None, product_info=None, debug=False):
+        return {"summary": {"status": "pass", "block_count": 0, "warn_count": 0, "review_count": 0}, "issues": []}
+
+    async def review_image(self, image_bytes, *, metadata, platform_id=None, product_info=None, debug=False):
+        return {"summary": {"status": "pass", "block_count": 0, "warn_count": 0, "review_count": 0}, "issues": []}
+
+
 class MaterialAnalysisTests(unittest.TestCase):
     def test_multimodal_message_includes_uploaded_image_data_uri(self):
         messages = build_material_analysis_messages(
@@ -626,10 +636,11 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
         environ["IMAGE_GENERATION_API_KEY"] = "test-key"
         try:
             with (
-                patch("app.routers.projects._read_image_bytes", new=AsyncMock(return_value=b"\x89PNG\r\n")),
-                patch("app.routers.projects.call_image_edit_model", new=AsyncMock(return_value=["data:image/png;base64,aGVsbG8="])),
-                patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(return_value="https://img.example.com/prod/edited/image.png")),
-            ):
+                 patch("app.routers.projects._read_image_bytes", new=AsyncMock(return_value=b"\x89PNG\r\n")),
+                 patch("app.routers.projects.call_image_edit_model", new=AsyncMock(return_value=["data:image/png;base64,aGVsbG8="])),
+                 patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(return_value="https://img.example.com/prod/edited/image.png")),
+                 patch("app.routers.projects.create_default_compliance_provider", return_value=PassingComplianceProvider()),
+             ):
                 from app.routers.projects import edit_generated_image
 
                 result = await edit_generated_image("https://example.com/source.png", "加一点水光")

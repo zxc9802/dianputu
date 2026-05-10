@@ -212,12 +212,13 @@ assertIncludes("components/PreviewStep.tsx", "`生成 ${language.label}`", "prev
 assertIncludes("app/page.tsx", "targetLanguage: language", "page must regenerate a full image when creating a missing language version");
 assertNotIncludes("app/page.tsx", "renderLanguageVersion(version.baseUrl, version.textLayers", "page must not render translated text layers over the old base image");
 assertIncludes("lib/api.ts", "/api/projects/compliance/check-text", "frontend API must expose text compliance checks");
-assertIncludes("lib/api.ts", "/api/projects/compliance/check-images", "frontend API must expose image OCR compliance checks");
+assertIncludes("lib/api.ts", "/api/projects/compliance/check-images", "frontend API must expose image compliance checks");
+assertIncludes("lib/api.ts", "text_compliance_request_failed", "text compliance request failures must require manual review");
 assertIncludes("components/ReviewStep.tsx", "合规风险", "review step must show product-info compliance risks");
 assertIncludes("components/ModulesStep.tsx", "促销合规预检", "modules step must show campaign promotion compliance preflight");
 assertIncludes("components/PreviewStep.tsx", "ComplianceBadge", "preview step must render compliance badges on generated images");
 assertIncludes("components/PreviewStep.tsx", "导出前合规提示", "preview export area must summarize selected image compliance");
-assertIncludes("components/PreviewStep.tsx", "图片 OCR 合规复查", "preview export area must let users scan final images with OCR before export");
+assertIncludes("components/PreviewStep.tsx", "图片合规复查", "preview export area must let users scan final images with Gemini before export");
 assertIncludes("app/globals.css", "complianceBadge", "global styles must include compliance badge styling");
 assertIncludes("app/globals.css", "complianceIssueList", "global styles must include compliance issue list styling");
 

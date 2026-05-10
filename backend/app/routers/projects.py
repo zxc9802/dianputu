@@ -15,7 +15,7 @@ from uuid import uuid4
 
 from app.core.config import get_model_settings
 from app.demo_data import DEFAULT_MODULES, DEMO_IMAGE_URLS, STYLE_OPTIONS
-from app.services.compliance_checker import OcrProvider, VisionModelOcrProvider, check_image_items, check_text_items
+from app.services.compliance_checker import ComplianceProvider, ModelComplianceProvider, check_image_items, check_text_items
 from app.services.image_model import call_image_edit_model, call_image_model
 from app.services.language_renderer import (
     DEFAULT_LANGUAGE,
@@ -540,7 +540,7 @@ async def render_layered_language_version(
     image_bytes = await _read_image_bytes(base_url)
     data_url, warnings = render_text_layers_to_data_url(image_bytes, translated_layers, language=normalized_language)
     uploaded_url = await upload_image_url_if_configured(data_url, f"{folder}/{normalized_language}")
-    compliance = check_project_text_compliance(
+    compliance = await check_project_text_compliance(
         text_layers_to_compliance_items(translated_layers, module_id=module_id, language=normalized_language),
         platform_id=platform_id,
         product_info=product_info,
@@ -580,18 +580,25 @@ def text_layers_to_compliance_items(
     return items
 
 
-def check_project_text_compliance(
+async def check_project_text_compliance(
     items: list[dict[str, Any]],
     *,
     platform_id: str | None = None,
     product_info: dict[str, Any] | None = None,
+    compliance_provider: ComplianceProvider | None = None,
     debug: bool = False,
 ) -> dict[str, Any]:
-    return check_text_items(items, platform_id=platform_id, product_info=product_info, debug=debug)
+    return await check_text_items(
+        items,
+        compliance_provider=compliance_provider or create_default_compliance_provider(),
+        platform_id=platform_id,
+        product_info=product_info,
+        debug=debug,
+    )
 
 
-def create_default_ocr_provider() -> OcrProvider:
-    return VisionModelOcrProvider(get_model_settings().text)
+def create_default_compliance_provider() -> ComplianceProvider:
+    return ModelComplianceProvider(get_model_settings().text)
 
 
 async def check_project_image_compliance(
@@ -599,7 +606,7 @@ async def check_project_image_compliance(
     *,
     platform_id: str | None = None,
     product_info: dict[str, Any] | None = None,
-    ocr_provider: OcrProvider | None = None,
+    compliance_provider: ComplianceProvider | None = None,
     debug: bool = False,
 ) -> dict[str, Any]:
     images: list[dict[str, Any]] = []
@@ -613,7 +620,7 @@ async def check_project_image_compliance(
         images.append(image)
     return await check_image_items(
         images,
-        ocr_provider=ocr_provider or create_default_ocr_provider(),
+        compliance_provider=compliance_provider or create_default_compliance_provider(),
         platform_id=platform_id,
         product_info=product_info,
         debug=debug,
@@ -631,13 +638,14 @@ async def build_layered_generated_image(
     module_id = str(module.get("id"))
     layers = build_text_layers(product_info, module, promotion_info=promotion_info)
     if not layers:
+        compliance = await check_project_text_compliance([], platform_id=platform_id, product_info=product_info)
         return {
             "module_id": module_id,
             "url": base_url,
             "base_url": base_url,
             "text_layers": [],
             "language_versions": {},
-            "compliance": check_project_text_compliance([], platform_id=platform_id, product_info=product_info),
+            "compliance": compliance,
         }
 
     default_version = await render_layered_language_version(
@@ -936,7 +944,7 @@ async def edit_generated_image(
         return {"source": "error", "error": "image_url is required"}
     if not cleaned_instruction:
         return {"source": "error", "error": "instruction is required"}
-    compliance = check_project_text_compliance(
+    compliance = await check_project_text_compliance(
         [
             {
                 "text": cleaned_instruction,
@@ -1335,7 +1343,7 @@ try:
     @router.post("/compliance/check-text")
     async def check_project_text_compliance_endpoint(request: ComplianceCheckTextRequest) -> dict[str, Any]:
         items = [{"text": item.text, "location": item.location.model_dump()} for item in request.items]
-        return check_project_text_compliance(
+        return await check_project_text_compliance(
             items,
             platform_id=request.platform_id,
             product_info=request.product_info,

@@ -293,20 +293,29 @@ export async function checkTextCompliance(items: ComplianceTextItem[], platformI
   try {
     return await requestJson<ComplianceReport>("/api/projects/compliance/check-text", {
       method: "POST",
-      body: JSON.stringify({
-        items,
-        platform_id: platformId,
-        product_info: productInfo
-      }),
-      timeoutMs: 15000
-    });
+        body: JSON.stringify({
+          items,
+          platform_id: platformId,
+          product_info: productInfo
+        }),
+        timeoutMs: 60000
+      });
   } catch (error) {
     rethrowMainAppRedirect(error);
-    return {
-      source: "error",
-      summary: { status: "pass" as const, block_count: 0, warn_count: 0, review_count: 0 },
-      issues: []
-    };
+      return {
+        source: "error",
+        summary: { status: "review" as const, block_count: 0, warn_count: 0, review_count: 1 },
+        issues: [
+          {
+            id: "text_compliance_request_failed",
+            severity: "review" as const,
+            category: "model_review",
+            term: "文字合规检查失败",
+            reason: error instanceof Error ? error.message : "文字合规检查请求失败",
+            suggestion: "请重试文字合规复查，导出前建议人工核对确认信息和图片文案。"
+          }
+        ]
+      };
   }
 }
 
@@ -330,10 +339,10 @@ export async function checkImageCompliance(imageUrls: string[], platformId: Comm
         {
           id: "image_compliance_request_failed",
           severity: "review" as const,
-          category: "image_ocr",
+          category: "image_review",
           term: "图片合规检查失败",
           reason: error instanceof Error ? error.message : "图片合规检查请求失败",
-          suggestion: "请重试图片 OCR 合规复查，导出前建议人工核对成图文字。"
+          suggestion: "请重试图片合规复查，导出前建议人工核对成图内容。"
         }
       ]
     };

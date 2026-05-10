@@ -73,10 +73,10 @@ const layered = appendImageVersions(
           language: "zh-CN",
           language_label: "中文",
           url: "hero-zh.png",
-          compliance: { source: "rules", summary: { status: "block", block_count: 1, warn_count: 0, review_count: 0 }, issues: [{ term: "治愈" }] }
+            compliance: { source: "gemini", summary: { status: "block", block_count: 1, warn_count: 0, review_count: 0 }, issues: [{ term: "治愈" }] }
         }
       },
-      compliance: { source: "rules", summary: { status: "block", block_count: 1, warn_count: 0, review_count: 0 }, issues: [{ term: "治愈" }] }
+        compliance: { source: "gemini", summary: { status: "block", block_count: 1, warn_count: 0, review_count: 0 }, issues: [{ term: "治愈" }] }
     }
   ],
   "model",
@@ -126,7 +126,7 @@ const withEnglish = addLanguageVersion(layered, "hero", layeredVersion.id, {
   language_label: "English",
   url: "hero-en.png",
   layers: [{ id: "title", role: "title", text: "Deep Hydration", x: 0.1, y: 0.1, width: 0.5, height: 0.1, font_size: 0.06 }],
-  compliance: { source: "rules", summary: { status: "warn", block_count: 0, warn_count: 1, review_count: 0 }, issues: [{ term: "100%" }] }
+  compliance: { source: "gemini", summary: { status: "warn", block_count: 0, warn_count: 1, review_count: 0 }, issues: [{ term: "100%" }] }
 }, 6000);
 assert.equal(withEnglish.versions.hero[0].selectedLanguage, "en");
 assert.equal(withEnglish.versions.hero[0].languageVersions.en.url, "hero-en.png");

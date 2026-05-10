@@ -1,103 +1,110 @@
 import unittest
 
-from app.services.compliance_checker import OcrProviderUnavailableError, OcrTextBlock, check_image_items, check_text_items
+from app.services.compliance_checker import ComplianceProviderUnavailableError, check_image_items, check_text_items
 
 
-class ComplianceCheckerTests(unittest.TestCase):
-    def test_flags_medical_claim_as_block(self):
-        report = check_text_items(
+def model_report(status="pass", issues=None):
+    issue_list = issues or []
+    return {
+        "summary": {
+            "status": status,
+            "block_count": sum(1 for issue in issue_list if issue.get("severity") == "block"),
+            "warn_count": sum(1 for issue in issue_list if issue.get("severity") == "warn"),
+            "review_count": sum(1 for issue in issue_list if issue.get("severity") == "review"),
+        },
+        "issues": issue_list,
+    }
+
+
+class TextComplianceCheckerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_text_review_uses_model_provider_instead_of_local_rules(self):
+        class FakeComplianceProvider:
+            source = "fake_gemini"
+
+            async def review_text(self, items, *, platform_id=None, product_info=None, debug=False):
+                self.items = items
+                self.platform_id = platform_id
+                self.product_info = product_info
+                return model_report(
+                    "warn",
+                    [
+                        {
+                            "id": "gemini_sensitive_claim",
+                            "severity": "warn",
+                            "category": "medical_claim",
+                            "term": "治愈",
+                            "matched_text": "7天治愈敏感肌",
+                            "location": items[0]["location"],
+                            "reason": "普通护肤品不应使用治疗或治愈表达。",
+                            "suggestion": "改为舒缓不适肤感。",
+                        }
+                    ],
+                )
+
+        provider = FakeComplianceProvider()
+        report = await check_text_items(
             [
                 {
                     "text": "7天治愈敏感肌",
-                    "location": {"source_type": "text_layer", "module_id": "main_effect", "field": "title"},
+                    "location": {"source_type": "field", "field": "core_selling_points"},
                 }
             ],
+            compliance_provider=provider,
             platform_id="tmall",
+            product_info={"product_name": "修护精华"},
         )
 
-        self.assertEqual(report["source"], "rules")
-        self.assertEqual(report["summary"]["status"], "block")
-        self.assertEqual(report["summary"]["block_count"], 1)
+        self.assertEqual(provider.platform_id, "tmall")
+        self.assertEqual(provider.product_info["product_name"], "修护精华")
+        self.assertEqual(provider.items[0]["text"], "7天治愈敏感肌")
+        self.assertEqual(report["source"], "fake_gemini")
+        self.assertEqual(report["summary"]["status"], "warn")
         self.assertEqual(report["issues"][0]["term"], "治愈")
-        self.assertEqual(report["issues"][0]["category"], "medical_claim")
-        self.assertEqual(report["issues"][0]["location"]["module_id"], "main_effect")
 
-    def test_flags_absolute_and_promotion_claims(self):
-        report = check_text_items(
-            [
-                {"text": "全网最低价 护肤首选", "location": {"source_type": "promotion", "field": "promotion_info"}},
-            ],
-            platform_id="douyin",
-        )
+    async def test_text_review_marks_review_when_model_is_unavailable(self):
+        class UnavailableComplianceProvider:
+            source = "gemini"
 
-        terms = {issue["term"] for issue in report["issues"]}
-        self.assertIn("全网最低", terms)
-        self.assertIn("首选", terms)
-        self.assertEqual(report["summary"]["status"], "block")
+            async def review_text(self, items, *, platform_id=None, product_info=None, debug=False):
+                raise ComplianceProviderUnavailableError("TEXT_ANALYSIS_API_KEY is not configured")
 
-    def test_cosmetic_claim_is_warn_without_support_and_review_with_support(self):
-        unsupported = check_text_items(
-            [{"text": "美白淡斑精华", "location": {"source_type": "field", "field": "core_selling_points"}}],
+        report = await check_text_items(
+            [{"text": "舒缓保湿", "location": {"source_type": "field", "field": "functions"}}],
+            compliance_provider=UnavailableComplianceProvider(),
             platform_id="jd",
         )
-        supported = check_text_items(
-            [{"text": "美白淡斑精华", "location": {"source_type": "field", "field": "core_selling_points"}}],
-            platform_id="jd",
-            product_info={
-                "authority_assets": ["特殊化妆品注册备案资料"],
-                "effect_claims": [{"claim": "美白淡斑", "value": "依据功效评价摘要", "source_type": "report"}],
-            },
-        )
 
-        self.assertEqual(unsupported["summary"]["status"], "warn")
-        self.assertEqual(unsupported["issues"][0]["severity"], "warn")
-        self.assertEqual(supported["summary"]["status"], "review")
-        self.assertEqual(supported["issues"][0]["severity"], "review")
-
-    def test_negative_instruction_is_ignored(self):
-        report = check_text_items(
-            [
-                {"text": "不要写治愈、根治、永久有效", "location": {"source_type": "edit_instruction", "field": "instruction"}},
-            ],
-            platform_id="pdd",
-            debug=True,
-        )
-
-        self.assertEqual(report["summary"]["status"], "pass")
-        self.assertEqual(report["issues"], [])
-        self.assertTrue(report["ignored_matches"])
-
-    def test_platform_filtering_uses_requested_platform_and_global_rules(self):
-        report = check_text_items(
-            [{"text": "平台补贴 官方旗舰", "location": {"source_type": "promotion", "field": "promotion_info"}}],
-            platform_id="xiaohongshu_square",
-        )
-
-        self.assertTrue(all("xiaohongshu_square" in issue["platform_ids"] for issue in report["issues"]))
-        self.assertEqual(report["summary"]["warn_count"], 2)
-
-    def test_pass_summary_for_safe_copy(self):
-        report = check_text_items(
-            [{"text": "舒缓干燥泛红 水润保湿", "location": {"source_type": "text_layer", "field": "subtitle"}}],
-            platform_id="tmall",
-        )
-
-        self.assertEqual(report["summary"], {"status": "pass", "block_count": 0, "warn_count": 0, "review_count": 0})
-        self.assertEqual(report["issues"], [])
+        self.assertEqual(report["source"], "gemini")
+        self.assertEqual(report["summary"], {"status": "review", "block_count": 0, "warn_count": 0, "review_count": 1})
+        self.assertEqual(report["issues"][0]["id"], "model_compliance_unavailable")
+        self.assertIn("TEXT_ANALYSIS_API_KEY", report["issues"][0]["reason"])
 
 
 class ImageComplianceCheckerTests(unittest.IsolatedAsyncioTestCase):
-    async def test_flags_ocr_text_from_images(self):
-        class FakeOcrProvider:
-            source = "fake_ocr"
+    async def test_image_review_sends_image_to_model_provider(self):
+        class FakeComplianceProvider:
+            source = "fake_gemini"
 
-            async def extract_text(self, image_bytes):
+            async def review_image(self, image_bytes, *, metadata, platform_id=None, product_info=None, debug=False):
                 self.image_bytes = image_bytes
-                return [
-                    OcrTextBlock(text="7天治愈敏感肌", confidence=0.96, box=(10, 20, 180, 60)),
-                ]
+                self.metadata = metadata
+                return model_report(
+                    "block",
+                    [
+                        {
+                            "id": "gemini_image_claim",
+                            "severity": "block",
+                            "category": "absolute_claim",
+                            "term": "100%",
+                            "matched_text": "100%有效",
+                            "location": metadata["location"],
+                            "reason": "绝对化数据表达需要删除或提供依据。",
+                            "suggestion": "改为有依据的数据表达。",
+                        }
+                    ],
+                )
 
-        provider = FakeOcrProvider()
+        provider = FakeComplianceProvider()
         report = await check_image_items(
             [
                 {
@@ -106,41 +113,37 @@ class ImageComplianceCheckerTests(unittest.IsolatedAsyncioTestCase):
                     "module_id": "main_effect",
                 }
             ],
-            ocr_provider=provider,
+            compliance_provider=provider,
             platform_id="tmall",
         )
 
         self.assertEqual(provider.image_bytes, b"fake-image")
-        self.assertEqual(report["source"], "image_ocr")
-        self.assertEqual(report["ocr_source"], "fake_ocr")
+        self.assertEqual(provider.metadata["location"]["source_type"], "image_review")
+        self.assertEqual(provider.metadata["location"]["module_id"], "main_effect")
+        self.assertEqual(report["source"], "fake_gemini")
         self.assertEqual(report["image_count"], 1)
         self.assertEqual(report["summary"]["status"], "block")
-        self.assertEqual(report["issues"][0]["term"], "治愈")
-        self.assertEqual(report["issues"][0]["location"]["source_type"], "image_ocr")
-        self.assertEqual(report["issues"][0]["location"]["module_id"], "main_effect")
-        self.assertEqual(report["issues"][0]["location"]["image_index"], 0)
-        self.assertEqual(report["extracted_texts"][0]["text"], "7天治愈敏感肌")
-        self.assertEqual(report["extracted_texts"][0]["confidence"], 0.96)
+        self.assertEqual(report["issues"][0]["term"], "100%")
+        self.assertEqual(set(report), {"source", "summary", "issues", "image_count", "warnings"})
 
-    async def test_marks_review_when_ocr_is_unavailable(self):
-        class UnavailableOcrProvider:
-            source = "vision_model"
+    async def test_image_review_marks_review_when_model_is_unavailable(self):
+        class UnavailableComplianceProvider:
+            source = "gemini"
 
-            async def extract_text(self, image_bytes):
-                raise OcrProviderUnavailableError("TEXT_ANALYSIS_API_KEY is not configured")
+            async def review_image(self, image_bytes, *, metadata, platform_id=None, product_info=None, debug=False):
+                raise ComplianceProviderUnavailableError("TEXT_ANALYSIS_API_KEY is not configured")
 
         report = await check_image_items(
             [{"url": "https://example.com/generated.png", "bytes": b"fake-image"}],
-            ocr_provider=UnavailableOcrProvider(),
+            compliance_provider=UnavailableComplianceProvider(),
             platform_id="jd",
         )
 
-        self.assertEqual(report["source"], "image_ocr")
+        self.assertEqual(report["source"], "gemini")
         self.assertEqual(report["summary"]["status"], "review")
         self.assertEqual(report["summary"]["review_count"], 1)
-        self.assertEqual(report["issues"][0]["id"], "image_ocr_unavailable")
+        self.assertEqual(report["issues"][0]["id"], "model_compliance_unavailable")
         self.assertEqual(report["issues"][0]["severity"], "review")
-        self.assertIn("TEXT_ANALYSIS_API_KEY", report["issues"][0]["reason"])
 
 
 if __name__ == "__main__":

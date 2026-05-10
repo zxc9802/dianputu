@@ -13,10 +13,46 @@ from app.core.config import ImageGenerationSettings
 from app.demo_data import DEFAULT_MODULES, DEFAULT_PRODUCT_INFO, DEMO_IMAGE_URLS, STYLE_OPTIONS
 from app.dependencies.auth import require_app_user
 from app.routers.models import build_public_model_config
-from app.routers.projects import COMPOSE_JOBS, FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR, build_layered_generated_image, check_project_text_compliance, compose_long_jpeg, edit_generated_image, generate_detail_images, render_layered_language_version, router as projects_router
-from app.services.compliance_checker import OcrTextBlock
+from app.routers.projects import COMPOSE_JOBS, FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR, build_layered_generated_image, compose_long_jpeg, edit_generated_image, generate_detail_images, render_layered_language_version, router as projects_router
 from app.services.language_renderer import build_text_layers, render_text_layers_to_data_url
 from app.services.app_session import AppSessionUserSnapshot
+
+
+class StaticComplianceProvider:
+    source = "fake_gemini"
+
+    def __init__(self, status="pass", category="model_review", term=""):
+        self.status = status
+        self.category = category
+        self.term = term
+
+    def report(self, location=None, matched_text=""):
+        if self.status == "pass":
+            return {"summary": {"status": "pass", "block_count": 0, "warn_count": 0, "review_count": 0}, "issues": []}
+        issue = {
+            "severity": self.status,
+            "category": self.category,
+            "term": self.term or matched_text or "合规风险",
+            "matched_text": matched_text,
+            "location": location or {},
+            "reason": "Gemini 判断该内容存在合规风险。",
+            "suggestion": "请调整为真实、克制且有依据的表达。",
+        }
+        return {
+            "summary": {
+                "status": self.status,
+                "block_count": 1 if self.status == "block" else 0,
+                "warn_count": 1 if self.status == "warn" else 0,
+                "review_count": 1 if self.status == "review" else 0,
+            },
+            "issues": [issue],
+        }
+
+    async def review_text(self, items, *, platform_id=None, product_info=None, debug=False):
+        return self.report(location=items[0].get("location"), matched_text=items[0].get("text", ""))
+
+    async def review_image(self, image_bytes, *, metadata, platform_id=None, product_info=None, debug=False):
+        return self.report(location=metadata.get("location"), matched_text=self.term)
 
 
 class ApiContractTests(unittest.TestCase):
@@ -368,7 +404,10 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
             return ["https://example.com/edited.png"]
 
         try:
-            with patch("app.routers.projects.call_image_edit_model", new=fake_call_image_edit_model):
+            with (
+                patch("app.routers.projects.call_image_edit_model", new=fake_call_image_edit_model),
+                patch("app.routers.projects.create_default_compliance_provider", return_value=StaticComplianceProvider("pass")),
+            ):
                 result = await edit_generated_image("data:image/png;base64,YWJj", "背景颜色改成深绿色", platform_size="800x800")
         finally:
             if previous_key is None:
@@ -390,7 +429,10 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
         data_url = "data:image/png;base64," + b64encode(buffer.getvalue()).decode("ascii")
         module = next(module for module in DEFAULT_MODULES if module["id"] == "main_hero_selling_point")
 
-        with patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(side_effect=lambda url, folder: url)):
+        with (
+            patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(side_effect=lambda url, folder: url)),
+            patch("app.routers.projects.create_default_compliance_provider", return_value=StaticComplianceProvider("pass")),
+        ):
             result = await build_layered_generated_image(
                 module=module,
                 product_info={"product_name": "修护精华", "core_selling_points": ["深层补水"], "functions": ["水润透亮"]},
@@ -413,9 +455,12 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
             next(module for module in DEFAULT_MODULES if module["id"] == "main_hero_selling_point"),
         )
 
-        with patch("app.routers.projects.translate_text_layers", new=AsyncMock(return_value=[{**layers[0], "text": "Deep Hydration"}])):
-            with patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(side_effect=lambda url, folder: url)):
-                result = await render_layered_language_version(base_url=data_url, layers=layers[:1], language="en")
+        with (
+            patch("app.routers.projects.translate_text_layers", new=AsyncMock(return_value=[{**layers[0], "text": "Deep Hydration"}])),
+            patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(side_effect=lambda url, folder: url)),
+            patch("app.routers.projects.create_default_compliance_provider", return_value=StaticComplianceProvider("pass")),
+        ):
+            result = await render_layered_language_version(base_url=data_url, layers=layers[:1], language="en")
 
         self.assertEqual(result["language"], "en")
         self.assertEqual(result["language_label"], "English")
@@ -429,7 +474,10 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
         data_url = "data:image/png;base64," + b64encode(buffer.getvalue()).decode("ascii")
         module = next(module for module in DEFAULT_MODULES if module["id"] == "main_hero_selling_point")
 
-        with patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(side_effect=lambda url, folder: url)):
+        with (
+            patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(side_effect=lambda url, folder: url)),
+            patch("app.routers.projects.create_default_compliance_provider", return_value=StaticComplianceProvider("block", "medical_claim", "治愈")),
+        ):
             result = await build_layered_generated_image(
                 module=module,
                 product_info={"product_name": "修护精华", "core_selling_points": ["7天治愈敏感肌"], "functions": ["水润透亮"]},
@@ -459,9 +507,12 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
             }
         ]
 
-        with patch("app.routers.projects.translate_text_layers", new=AsyncMock(return_value=[{**layers[0], "text": "100% effective"}])):
-            with patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(side_effect=lambda url, folder: url)):
-                result = await render_layered_language_version(base_url=data_url, layers=layers, language="en", platform_id="tmall")
+        with (
+            patch("app.routers.projects.translate_text_layers", new=AsyncMock(return_value=[{**layers[0], "text": "100% effective"}])),
+            patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(side_effect=lambda url, folder: url)),
+            patch("app.routers.projects.create_default_compliance_provider", return_value=StaticComplianceProvider("block", "absolute_claim", "100%")),
+        ):
+            result = await render_layered_language_version(base_url=data_url, layers=layers, language="en", platform_id="tmall")
 
         self.assertEqual(result["compliance"]["summary"]["status"], "block")
         self.assertEqual(result["compliance"]["issues"][0]["category"], "absolute_claim")
@@ -470,7 +521,10 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
         previous_key = environ.get("IMAGE_GENERATION_API_KEY")
         environ["IMAGE_GENERATION_API_KEY"] = "test-key"
         try:
-            with patch("app.routers.projects.call_image_edit_model", new=AsyncMock(return_value=["https://example.com/edited.png"])):
+            with (
+                patch("app.routers.projects.call_image_edit_model", new=AsyncMock(return_value=["https://example.com/edited.png"])),
+                patch("app.routers.projects.create_default_compliance_provider", return_value=StaticComplianceProvider("block", "promotion_claim", "全网最低")),
+            ):
                 result = await edit_generated_image(
                     "data:image/png;base64,YWJj",
                     "把标题改成全网最低价",
@@ -573,34 +627,67 @@ class DownloadContractTests(unittest.TestCase):
         self.assertNotEqual(response.headers["content-type"], "application/json")
         self.assertTrue(response.content.startswith(b"\x89PNG\r\n"))
 
-    def test_text_compliance_endpoint_returns_report(self):
-        response = self.make_client().post(
-            "/api/projects/compliance/check-text",
-            json={
-                "platform_id": "tmall",
-                "items": [
-                    {
-                        "text": "7天治愈敏感肌",
-                        "location": {"source_type": "field", "field": "core_selling_points"},
-                    }
-                ],
-            },
-        )
+    def test_text_compliance_endpoint_uses_gemini_review(self):
+        class FakeComplianceProvider:
+            source = "fake_gemini"
+
+            async def review_text(self, items, *, platform_id=None, product_info=None, debug=False):
+                return {
+                    "summary": {"status": "warn", "block_count": 0, "warn_count": 1, "review_count": 0},
+                    "issues": [
+                        {
+                            "severity": "warn",
+                            "category": "medical_claim",
+                            "term": "治愈",
+                            "matched_text": items[0]["text"],
+                            "location": items[0]["location"],
+                            "reason": "Gemini 判断该表达存在功效宣称风险。",
+                            "suggestion": "改为舒缓不适肤感。",
+                        }
+                    ],
+                }
+
+        with patch("app.routers.projects.create_default_compliance_provider", return_value=FakeComplianceProvider()):
+            response = self.make_client().post(
+                "/api/projects/compliance/check-text",
+                json={
+                    "platform_id": "tmall",
+                    "items": [
+                        {
+                            "text": "7天治愈敏感肌",
+                            "location": {"source_type": "field", "field": "core_selling_points"},
+                        }
+                    ],
+                },
+            )
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["source"], "rules")
-        self.assertEqual(payload["summary"]["status"], "block")
+        self.assertEqual(payload["source"], "fake_gemini")
+        self.assertEqual(payload["summary"]["status"], "warn")
         self.assertEqual(payload["issues"][0]["term"], "治愈")
 
-    def test_image_compliance_endpoint_runs_ocr_before_rules(self):
-        class FakeOcrProvider:
-            source = "fake_ocr"
+    def test_image_compliance_endpoint_uses_gemini_image_review(self):
+        class FakeComplianceProvider:
+            source = "fake_gemini"
 
-            async def extract_text(self, image_bytes):
-                return [OcrTextBlock(text="100%有效", confidence=0.91, box=(0, 0, 80, 24))]
+            async def review_image(self, image_bytes, *, metadata, platform_id=None, product_info=None, debug=False):
+                return {
+                    "summary": {"status": "block", "block_count": 1, "warn_count": 0, "review_count": 0},
+                    "issues": [
+                        {
+                            "severity": "block",
+                            "category": "absolute_claim",
+                            "term": "100%",
+                            "matched_text": "100%有效",
+                            "location": metadata["location"],
+                            "reason": "Gemini 判断图片中存在绝对化表达。",
+                            "suggestion": "删除或改为有依据的数据表达。",
+                        }
+                    ],
+                }
 
-        with patch("app.routers.projects.create_default_ocr_provider", return_value=FakeOcrProvider()):
+        with patch("app.routers.projects.create_default_compliance_provider", return_value=FakeComplianceProvider()):
             response = self.make_client().post(
                 "/api/projects/compliance/check-images",
                 json={"platform_id": "tmall", "image_urls": [self.png_data_url()]},
@@ -608,11 +695,11 @@ class DownloadContractTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["source"], "image_ocr")
-        self.assertEqual(payload["ocr_source"], "fake_ocr")
+        self.assertEqual(payload["source"], "fake_gemini")
         self.assertEqual(payload["summary"]["status"], "block")
         self.assertEqual(payload["issues"][0]["term"], "100%")
-        self.assertEqual(payload["extracted_texts"][0]["text"], "100%有效")
+        self.assertEqual(payload["issues"][0]["location"]["source_type"], "image_review")
+        self.assertEqual(set(payload), {"source", "summary", "issues", "image_count", "warnings"})
 
 
 if __name__ == "__main__":

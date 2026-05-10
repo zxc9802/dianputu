@@ -528,7 +528,7 @@ export function PreviewStep({
               type="button"
             >
               <FileImage size={20} />
-              {isCheckingImageCompliance ? "OCR 复查中" : "图片 OCR 合规复查"}
+              {isCheckingImageCompliance ? "复查中" : "图片合规复查"}
             </button>
             {activeImageGroup === "detail" ? (
               <>
