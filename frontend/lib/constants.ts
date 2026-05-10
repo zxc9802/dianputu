@@ -40,8 +40,11 @@ export const DEFAULT_MODULES: ModuleConfig[] = [
   { id: "pain_scene", name: "痛点场景", description: "皮肤问题 + 尝试无效", enabled: true, order: 3, image_group: "detail" },
   { id: "effect_comparison", name: "效果对比", description: "使用前后 + 百分比数据", enabled: true, order: 4, image_group: "detail" },
   { id: "competitor_comparison", name: "竞品对比", description: "质地 / 成分 / 效果 / 负面体验", enabled: true, order: 5, image_group: "detail" },
-  { id: "ingredient", name: "成分页", description: "特殊成分 + 对应解决问题", enabled: true, order: 6, image_group: "detail" },
-  { id: "usage", name: "使用方法", description: "商品怎么用", enabled: true, order: 7, image_group: "detail" }
+  { id: "ingredient_overview", name: "成分总览", description: "整体成分体系 + 配方逻辑", enabled: true, order: 6, image_group: "detail" },
+  { id: "ingredient_1", name: "成分 1 讲解", description: "第 1 个核心成分作用讲解", enabled: true, order: 7, image_group: "detail" },
+  { id: "ingredient_2", name: "成分 2 讲解", description: "第 2 个核心成分作用讲解", enabled: true, order: 8, image_group: "detail" },
+  { id: "ingredient_3", name: "成分 3 讲解", description: "第 3 个核心成分作用讲解", enabled: true, order: 9, image_group: "detail" },
+  { id: "usage", name: "使用方法", description: "商品怎么用", enabled: true, order: 10, image_group: "detail" }
 ];
 
 export const COMMERCE_PLATFORMS: CommercePlatform[] = [
@@ -70,8 +73,11 @@ export const OFFICIAL_PROJECT_TEMPLATES: ProjectTemplate[] = [
       { id: "hero", enabled: true, order: 1 },
       { id: "authority", enabled: true, order: 2 },
       { id: "effect_comparison", enabled: true, order: 3 },
-      { id: "ingredient", enabled: true, order: 4 },
-      { id: "usage", enabled: true, order: 5 }
+      { id: "ingredient_overview", enabled: true, order: 4 },
+      { id: "ingredient_1", enabled: true, order: 5 },
+      { id: "ingredient_2", enabled: true, order: 6 },
+      { id: "ingredient_3", enabled: true, order: 7 },
+      { id: "usage", enabled: true, order: 8 }
     ]
   },
   {
@@ -107,8 +113,11 @@ export const OFFICIAL_PROJECT_TEMPLATES: ProjectTemplate[] = [
       { id: "main_usage_scene", enabled: true, order: 3 },
       { id: "hero", enabled: true, order: 1 },
       { id: "pain_scene", enabled: true, order: 2 },
-      { id: "ingredient", enabled: true, order: 3 },
-      { id: "usage", enabled: true, order: 4 }
+      { id: "ingredient_overview", enabled: true, order: 3 },
+      { id: "ingredient_1", enabled: true, order: 4 },
+      { id: "ingredient_2", enabled: true, order: 5 },
+      { id: "ingredient_3", enabled: true, order: 6 },
+      { id: "usage", enabled: true, order: 7 }
     ]
   }
 ];

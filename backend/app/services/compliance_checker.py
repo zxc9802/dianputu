@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import base64
-from dataclasses import dataclass
+import json
 from io import BytesIO
 from typing import Any, Protocol
 
@@ -13,45 +13,61 @@ NEGATIVE_CUES = ("不要", "不能", "不得", "避免", "禁止", "不写", "�
 SUPPORT_KEYS = ("authority_assets", "effect_claims", "material_highlights")
 
 
-@dataclass(frozen=True)
-class OcrTextBlock:
-    text: str
-    confidence: float = 0.0
-    box: tuple[int, int, int, int] | None = None
-
-
-class OcrProviderUnavailableError(RuntimeError):
+class ImageComplianceProviderUnavailableError(RuntimeError):
     pass
 
 
-class OcrProvider(Protocol):
+class ImageComplianceProvider(Protocol):
     source: str
 
-    async def extract_text(self, image_bytes: bytes) -> list[OcrTextBlock]:
+    async def check_image(
+        self,
+        image_bytes: bytes,
+        *,
+        location: dict[str, Any],
+        platform_id: str | None = None,
+        product_info: dict[str, Any] | None = None,
+        debug: bool = False,
+    ) -> dict[str, Any]:
         raise NotImplementedError
 
 
-class NoopOcrProvider:
+class NoopImageComplianceProvider:
     source = "noop"
 
-    async def extract_text(self, image_bytes: bytes) -> list[OcrTextBlock]:
-        raise OcrProviderUnavailableError("OCR provider is not configured")
+    async def check_image(
+        self,
+        image_bytes: bytes,
+        *,
+        location: dict[str, Any],
+        platform_id: str | None = None,
+        product_info: dict[str, Any] | None = None,
+        debug: bool = False,
+    ) -> dict[str, Any]:
+        raise ImageComplianceProviderUnavailableError("AI image compliance provider is not configured")
 
 
-class VisionModelOcrProvider:
-    source = "vision_model"
-
+class VisionModelImageComplianceProvider:
     def __init__(self, text_settings: Any):
         self.text_settings = text_settings
+        self.source = str(getattr(text_settings, "model", "") or "vision_model")
 
-    async def extract_text(self, image_bytes: bytes) -> list[OcrTextBlock]:
+    async def check_image(
+        self,
+        image_bytes: bytes,
+        *,
+        location: dict[str, Any],
+        platform_id: str | None = None,
+        product_info: dict[str, Any] | None = None,
+        debug: bool = False,
+    ) -> dict[str, Any]:
         if not getattr(self.text_settings, "api_key", ""):
-            raise OcrProviderUnavailableError("TEXT_ANALYSIS_API_KEY is not configured")
+            raise ImageComplianceProviderUnavailableError("TEXT_ANALYSIS_API_KEY is not configured")
 
         from app.services.text_model import call_text_model
 
-        raw = await call_text_model(self.text_settings, _build_vision_ocr_messages(image_bytes))
-        return _parse_vision_ocr_response(raw)
+        raw = await call_text_model(self.text_settings, _build_vision_compliance_messages(image_bytes, platform_id=platform_id, product_info=product_info))
+        return _parse_vision_compliance_response(raw, base_location=location, platform_id=platform_id)
 
 
 def _clean_text(value: Any) -> str:
@@ -162,7 +178,7 @@ def _review_issue(
     }
 
 
-def _image_location(image: dict[str, Any], image_index: int, source_type: str = "image_ocr") -> dict[str, Any]:
+def _image_location(image: dict[str, Any], image_index: int, source_type: str = "image_ai") -> dict[str, Any]:
     location: dict[str, Any] = {
         "source_type": source_type,
         "image_index": image_index,
@@ -197,14 +213,30 @@ def _image_data_url(image_bytes: bytes) -> str:
     return f"data:{_guess_image_mime(image_bytes)};base64,{encoded}"
 
 
-def _build_vision_ocr_messages(image_bytes: bytes) -> list[dict[str, Any]]:
+def _safe_json(value: Any) -> str:
+    try:
+        return json.dumps(value or {}, ensure_ascii=False, sort_keys=True)
+    except TypeError:
+        return "{}"
+
+
+def _build_vision_compliance_messages(
+    image_bytes: bytes,
+    *,
+    platform_id: str | None = None,
+    product_info: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     prompt = "\n".join(
         [
-            "你是电商商品图 OCR 审核助手。请识别图片中所有可读文字。",
-            "只输出 JSON，不要解释。",
-            "JSON 格式：{\"items\":[{\"text\":\"...\",\"confidence\":0.0,\"box\":[x1,y1,x2,y2]}]}。",
-            "如果没有可读文字，输出 {\"items\":[]}。",
-            "box 不确定时可省略或设为 null；confidence 取 0 到 1。",
+            "你是中国电商商品图合规审核助手，请直接查看图片并判断是否存在违规或高风险内容，不要只识别文字。",
+            "审核对象是护肤/化妆品店铺图片。请结合图片中的所有可见文字、产品包装、角标、图标、数据、活动信息和视觉表达判断。",
+            f"目标平台：{platform_id or '未指定'}。",
+            f"商品资料 JSON：{_safe_json(product_info)}。",
+            "重点检查：绝对化/极限词，医疗治疗或治愈暗示，普通化妆品功效宣称是否需要资料依据，权威背书，实验/临床/百分比数据，价格补贴和限时压力，竞品攻击，平台资质/授权表达，敏感违法内容，以及明显乱码、不可读文字、水印或平台 UI。",
+            "严重级别：block=应阻断导出或强提醒；warn=有明显合规风险；review=需要人工确认资料或模型不确定。",
+            "只输出 JSON，不要解释。格式：",
+            "{\"issues\":[{\"id\":\"...\",\"severity\":\"block|warn|review\",\"category\":\"absolute_claim|medical_claim|cosmetic_claim|authority_claim|data_claim|promotion_claim|competitor_claim|platform_claim|sensitive_content|visual_quality|other\",\"platform_ids\":[\"tmall\"],\"term\":\"...\",\"matched_text\":\"...\",\"reason\":\"...\",\"suggestion\":\"...\",\"qualification_hint\":\"...\",\"box\":[x1,y1,x2,y2]}],\"extracted_texts\":[{\"text\":\"...\",\"confidence\":0.0,\"box\":[x1,y1,x2,y2]}],\"warnings\":[]}",
+            "如果没有发现风险，输出 {\"issues\":[],\"extracted_texts\":[],\"warnings\":[]}。box 不确定时省略或设为 null，confidence 取 0 到 1。",
         ]
     )
     return [
@@ -227,33 +259,110 @@ def _coerce_box(value: Any) -> tuple[int, int, int, int] | None:
         return None
 
 
-def _parse_vision_ocr_response(raw: str) -> list[OcrTextBlock]:
-    import json
-
+def _json_object_from_model_text(raw: str) -> dict[str, Any]:
     cleaned = (raw or "").strip()
     if not cleaned:
-        return []
+        return {}
     start = cleaned.find("{")
     end = cleaned.rfind("}")
     if start >= 0 and end > start:
         cleaned = cleaned[start : end + 1]
     data = json.loads(cleaned)
-    items = data.get("items") if isinstance(data, dict) else None
-    if not isinstance(items, list):
-        raise ValueError("OCR response must contain items")
-    blocks: list[OcrTextBlock] = []
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-        text = _clean_text(item.get("text"))
-        if not text:
-            continue
-        try:
-            confidence = float(item.get("confidence", 0.0) or 0.0)
-        except (TypeError, ValueError):
-            confidence = 0.0
-        blocks.append(OcrTextBlock(text=text, confidence=max(0.0, min(confidence, 1.0)), box=_coerce_box(item.get("box"))))
-    return blocks
+    if not isinstance(data, dict):
+        raise ValueError("AI compliance response must be a JSON object")
+    return data
+
+
+def _coerce_confidence(value: Any) -> float:
+    try:
+        confidence = float(value or 0.0)
+    except (TypeError, ValueError):
+        confidence = 0.0
+    return max(0.0, min(confidence, 1.0))
+
+
+def _coerce_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [_clean_text(item) for item in value if _clean_text(item)]
+
+
+def _coerce_list(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _normalize_issue_location(item: dict[str, Any], base_location: dict[str, Any]) -> dict[str, Any]:
+    location = dict(base_location)
+    item_location = item.get("location")
+    if isinstance(item_location, dict):
+        for key in ("image_index", "block_index", "image_url", "module_id", "field", "language"):
+            if item_location.get(key) not in (None, ""):
+                location[key] = item_location[key]
+    box = _coerce_box(item.get("box"))
+    if box is None and isinstance(item_location, dict):
+        box = _coerce_box(item_location.get("box"))
+    if box:
+        location["box"] = _box_to_list(box)
+    location["source_type"] = "image_ai"
+    return location
+
+
+def _normalize_ai_issue(item: Any, *, base_location: dict[str, Any], platform_id: str | None) -> dict[str, Any] | None:
+    if not isinstance(item, dict):
+        return None
+    severity = _clean_text(item.get("severity")).lower()
+    if severity not in {"block", "warn", "review"}:
+        severity = "review"
+    term = _clean_text(item.get("term") or item.get("matched_text") or item.get("text") or "AI 合规风险")
+    matched_text = _clean_text(item.get("matched_text") or item.get("text") or term)
+    platform_ids = _coerce_string_list(item.get("platform_ids")) or ([platform_id] if platform_id else list(ALL_PLATFORM_IDS))
+    return {
+        "id": _clean_text(item.get("id")) or f"ai_{_clean_text(item.get('category')) or 'compliance'}",
+        "severity": severity,
+        "category": _clean_text(item.get("category")) or "other",
+        "platform_ids": platform_ids,
+        "term": term,
+        "matched_text": matched_text,
+        "location": _normalize_issue_location(item, base_location),
+        "reason": _clean_text(item.get("reason")) or "AI 判断该图片内容存在合规风险，需要人工确认。",
+        "suggestion": _clean_text(item.get("suggestion")) or "请删除或改写风险表达，导出前进行人工复核。",
+        "qualification_hint": _clean_text(item.get("qualification_hint")),
+    }
+
+
+def _normalize_extracted_text(item: Any, *, base_location: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(item, dict):
+        return None
+    text = _clean_text(item.get("text"))
+    if not text:
+        return None
+    location = _normalize_issue_location(item, base_location)
+    box = _coerce_box(item.get("box"))
+    return {
+        "text": text,
+        "confidence": _coerce_confidence(item.get("confidence")),
+        "box": _box_to_list(box),
+        "location": location,
+    }
+
+
+def _parse_vision_compliance_response(raw: str, *, base_location: dict[str, Any], platform_id: str | None) -> dict[str, Any]:
+    data = _json_object_from_model_text(raw)
+    issues = [
+        issue
+        for issue in (_normalize_ai_issue(item, base_location=base_location, platform_id=platform_id) for item in _coerce_list(data.get("issues")))
+        if issue is not None
+    ]
+    extracted_texts = [
+        text
+        for text in (_normalize_extracted_text(item, base_location=base_location) for item in _coerce_list(data.get("extracted_texts")))
+        if text is not None
+    ]
+    return {
+        "issues": issues,
+        "extracted_texts": extracted_texts,
+        "warnings": _coerce_string_list(data.get("warnings")),
+    }
 
 
 def check_text_items(
@@ -309,16 +418,15 @@ def check_text_items(
 async def check_image_items(
     images: list[dict[str, Any]],
     *,
-    ocr_provider: OcrProvider | None = None,
+    compliance_provider: ImageComplianceProvider | None = None,
     platform_id: str | None = None,
     product_info: dict[str, Any] | None = None,
     debug: bool = False,
 ) -> dict[str, Any]:
-    provider = ocr_provider or NoopOcrProvider()
-    ocr_source = str(getattr(provider, "source", provider.__class__.__name__))
-    compliance_items: list[dict[str, Any]] = []
+    provider = compliance_provider or NoopImageComplianceProvider()
+    ai_source = str(getattr(provider, "source", provider.__class__.__name__))
+    issues: list[dict[str, Any]] = []
     extracted_texts: list[dict[str, Any]] = []
-    review_issues: list[dict[str, Any]] = []
     warnings: list[str] = []
 
     for image_index, image in enumerate(images):
@@ -327,12 +435,12 @@ async def check_image_items(
         if not isinstance(image_bytes, bytes) or not image_bytes:
             reason = str(image.get("read_error") or "image bytes are empty")
             warnings.append(reason)
-            review_issues.append(
+            issues.append(
                 _review_issue(
                     issue_id="image_read_failed",
-                    category="image_ocr",
+                    category="image_ai_review",
                     term="图片读取失败",
-                    reason=f"图片无法读取，未完成图片文字合规检查：{reason}",
+                    reason=f"图片无法读取，未完成 AI 图片合规复查：{reason}",
                     suggestion="请重新生成或重新上传图片后再复查，导出前建议人工确认。",
                     location=location,
                     platform_id=platform_id,
@@ -341,17 +449,23 @@ async def check_image_items(
             continue
 
         try:
-            blocks = await provider.extract_text(image_bytes)
-        except OcrProviderUnavailableError as exc:
+            image_report = await provider.check_image(
+                image_bytes,
+                location=location,
+                platform_id=platform_id,
+                product_info=product_info,
+                debug=debug,
+            )
+        except ImageComplianceProviderUnavailableError as exc:
             reason = str(exc)
             warnings.append(reason)
-            review_issues.append(
+            issues.append(
                 _review_issue(
-                    issue_id="image_ocr_unavailable",
-                    category="image_ocr",
-                    term="图片 OCR 未完成",
-                    reason=f"图片文字识别未完成：{reason}",
-                    suggestion="请配置可识别图片的文本模型，或在导出前人工核对图片文字。",
+                    issue_id="image_ai_review_unavailable",
+                    category="image_ai_review",
+                    term="AI 图片合规复查未完成",
+                    reason=f"AI 图片合规复查未完成：{reason}",
+                    suggestion="请配置可识别图片的 Gemini 3.1 Pro 文本模型，或在导出前人工核对成图内容。",
                     location=location,
                     platform_id=platform_id,
                 )
@@ -360,47 +474,38 @@ async def check_image_items(
         except Exception as exc:
             reason = str(exc)
             warnings.append(reason)
-            review_issues.append(
+            issues.append(
                 _review_issue(
-                    issue_id="image_ocr_failed",
-                    category="image_ocr",
-                    term="图片 OCR 失败",
-                    reason=f"图片文字识别失败：{reason}",
-                    suggestion="请重试图片合规检查，若仍失败则导出前人工核对图片文字。",
+                    issue_id="image_ai_review_failed",
+                    category="image_ai_review",
+                    term="AI 图片合规复查失败",
+                    reason=f"AI 图片合规复查失败：{reason}",
+                    suggestion="请重试图片合规检查，若仍失败则导出前人工核对成图内容。",
                     location=location,
                     platform_id=platform_id,
                 )
             )
             continue
 
-        for block_index, block in enumerate(blocks):
-            text = _clean_text(block.text)
-            if not text:
-                continue
-            block_location = {**location, "block_index": block_index}
-            if block.box:
-                block_location["box"] = _box_to_list(block.box)
-            compliance_items.append({"text": text, "location": block_location})
-            extracted_texts.append(
-                {
-                    "text": text,
-                    "confidence": block.confidence,
-                    "box": _box_to_list(block.box),
-                    "location": block_location,
-                }
-            )
+        issues.extend(
+            issue
+            for issue in (_normalize_ai_issue(item, base_location=location, platform_id=platform_id) for item in _coerce_list(image_report.get("issues")))
+            if issue is not None
+        )
+        extracted_texts.extend(
+            text
+            for text in (_normalize_extracted_text(item, base_location=location) for item in _coerce_list(image_report.get("extracted_texts")))
+            if text is not None
+        )
+        warnings.extend(_coerce_string_list(image_report.get("warnings")))
 
-    text_report = check_text_items(compliance_items, platform_id=platform_id, product_info=product_info, debug=debug)
-    issues = [*text_report["issues"], *review_issues]
     report = {
-        "source": "image_ocr",
-        "ocr_source": ocr_source,
+        "source": "image_ai",
+        "ai_source": ai_source,
         "summary": _summary(issues),
         "issues": issues,
         "extracted_texts": extracted_texts,
         "image_count": len(images),
         "warnings": warnings,
     }
-    if debug and text_report.get("ignored_matches"):
-        report["ignored_matches"] = text_report["ignored_matches"]
     return report

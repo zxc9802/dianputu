@@ -36,8 +36,11 @@ DEFAULT_MODULES = [
     {"id": "pain_scene", "name": "痛点场景", "description": "皮肤问题 + 尝试无效", "enabled": True, "order": 3, "image_group": "detail"},
     {"id": "effect_comparison", "name": "效果对比", "description": "使用前后 + 百分比数据", "enabled": True, "order": 4, "image_group": "detail"},
     {"id": "competitor_comparison", "name": "竞品对比", "description": "质地 / 成分 / 效果 / 负面体验", "enabled": True, "order": 5, "image_group": "detail"},
-    {"id": "ingredient", "name": "成分页", "description": "特殊成分 + 对应解决问题", "enabled": True, "order": 6, "image_group": "detail"},
-    {"id": "usage", "name": "使用方法", "description": "商品怎么用", "enabled": True, "order": 7, "image_group": "detail"},
+    {"id": "ingredient_overview", "name": "成分总览", "description": "整体成分体系 + 配方逻辑", "enabled": True, "order": 6, "image_group": "detail"},
+    {"id": "ingredient_1", "name": "成分 1 讲解", "description": "第 1 个核心成分作用讲解", "enabled": True, "order": 7, "image_group": "detail"},
+    {"id": "ingredient_2", "name": "成分 2 讲解", "description": "第 2 个核心成分作用讲解", "enabled": True, "order": 8, "image_group": "detail"},
+    {"id": "ingredient_3", "name": "成分 3 讲解", "description": "第 3 个核心成分作用讲解", "enabled": True, "order": 9, "image_group": "detail"},
+    {"id": "usage", "name": "使用方法", "description": "商品怎么用", "enabled": True, "order": 10, "image_group": "detail"},
 ]
 
 
@@ -82,6 +85,9 @@ DEMO_IMAGE_URLS = {
     "pain_scene": "/assets/generated-cica-asset-sheet.png",
     "effect_comparison": "/assets/generated-cica-asset-sheet.png",
     "competitor_comparison": "/assets/generated-cica-asset-sheet.png",
-    "ingredient": "/assets/generated-cica-asset-sheet.png",
+    "ingredient_overview": "/assets/generated-cica-asset-sheet.png",
+    "ingredient_1": "/assets/generated-cica-asset-sheet.png",
+    "ingredient_2": "/assets/generated-cica-asset-sheet.png",
+    "ingredient_3": "/assets/generated-cica-asset-sheet.png",
     "usage": "/assets/generated-cica-asset-sheet.png",
 }

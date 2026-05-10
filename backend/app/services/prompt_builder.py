@@ -50,6 +50,66 @@ def _format_ingredients(value: Any) -> str:
     return "\n".join(lines) if lines else "1. 成分：核心植萃；作用：辅助日常肌肤护理\n2. 成分：保湿复配；作用：提升水润肤感"
 
 
+FALLBACK_INGREDIENTS = [
+    {"name": "核心植萃", "benefit": "辅助日常肌肤护理"},
+    {"name": "保湿复配", "benefit": "提升水润肤感"},
+    {"name": "舒缓因子", "benefit": "帮助维持肌肤舒适状态"},
+]
+
+
+def _ingredient_items(value: Any) -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+    if isinstance(value, list):
+        for item in value:
+            if isinstance(item, dict):
+                name = _text(item.get("name"), "")
+                benefit = _text(item.get("benefit"), "辅助日常肌肤护理")
+                if name:
+                    items.append({"name": name, "benefit": benefit})
+            else:
+                name = str(item).strip()
+                if name:
+                    items.append({"name": name, "benefit": "辅助日常肌肤护理"})
+
+    seen = {item["name"] for item in items}
+    for fallback in FALLBACK_INGREDIENTS:
+        if len(items) >= 3:
+            break
+        if fallback["name"] not in seen:
+            items.append(fallback)
+            seen.add(fallback["name"])
+    return items
+
+
+def _selected_ingredients(value: Any, limit: int = 3) -> list[dict[str, str]]:
+    return _ingredient_items(value)[:limit]
+
+
+def _format_ingredient_items(items: list[dict[str, str]]) -> str:
+    return "\n".join(
+        f"{index}. 成分：{item['name']}；作用：{item['benefit']}"
+        for index, item in enumerate(items, start=1)
+    )
+
+
+def _single_ingredient_index(module_id: str) -> int | None:
+    match = re.fullmatch(r"ingredient_([123])", module_id)
+    return int(match.group(1)) - 1 if match else None
+
+
+def _ingredient_visual_direction(ingredient: dict[str, str]) -> str:
+    combined = f"{ingredient['name']} {ingredient['benefit']}"
+    if any(keyword in combined for keyword in ("透明质酸", "玻尿酸", "水润", "补水", "保湿", "锁水", "甘油")):
+        return "透明水滴、清透精华液、凝露质地和高光液滴微距"
+    if any(keyword in combined for keyword in ("烟酰胺", "提亮", "亮肤", "VC", "维C", "光泽")):
+        return "柔和透亮光感、细腻珍珠白光泽和清爽精华质地"
+    if any(keyword in combined for keyword in ("积雪草", "CICA", "舒缓", "泛红", "干燥不适")):
+        return "绿色植萃叶片、晨露微距和舒缓清透的植物原料质感"
+    if any(keyword in combined for keyword in ("神经酰胺", "屏障", "修护", "强韧", "泛醇")):
+        return "仿生脂质层、柔和保护膜、润泽膏霜切面和细腻包裹感"
+    return "高级原料微距、晶莹液滴、原料切面和干净商业护肤摄影光影"
+
+
 def _authority_asset_label(item: str) -> str:
     label = re.split(r"[：:，,；;\n]", item, maxsplit=1)[0].strip()
     label = re.sub(r"报告编号\s*[:：]?\s*[A-Za-z0-9_-]+", "", label).strip()
@@ -198,6 +258,30 @@ MODULE_VISUAL_RECIPES: dict[str, dict[str, str]] = {
         "product_role": "嵌入场景中清晰可见",
         "forbidden": "数据图表、成分列表、原料卡片、产品居中环绕文字构图、凌乱居家背景、随意自拍感",
     },
+    "ingredient_overview": {
+        "layout": "成分体系总览：顶部短标题，中部用 3 个成分体系节点或原料浮岛建立配方逻辑，下方用一句复配总结收束",
+        "primary_visual": "多重成分复配体系 + 原料微距浮岛 + 精华液流动纹理 + 清透商业摄影光影",
+        "product_role": "产品缩小放角落作为配方来源提示，不作为主视觉中心",
+        "forbidden": "完整成分表、超过 3 个成分卡片、长段说明文字、药品疗效、密集百科式排版、脏乱植物堆叠",
+    },
+    "ingredient_1": {
+        "layout": "单成分讲解图：一个核心成分占主视觉，成分名做大标题，作用只保留一句短标签，画面留出高级负空间",
+        "primary_visual": "单一成分原料微距 + 晶莹液滴 + 精华质地 + 电商成分大片光影",
+        "product_role": "产品只在右下角或画面边缘小比例出现，也可以不出现",
+        "forbidden": "多个成分并列、完整成分表、效果数据百分比、使用步骤、药品疗效、长段说明文字",
+    },
+    "ingredient_2": {
+        "layout": "单成分讲解图：一个核心成分占主视觉，成分名做大标题，作用只保留一句短标签，画面留出高级负空间",
+        "primary_visual": "单一成分原料微距 + 晶莹液滴 + 精华质地 + 电商成分大片光影",
+        "product_role": "产品只在右下角或画面边缘小比例出现，也可以不出现",
+        "forbidden": "多个成分并列、完整成分表、效果数据百分比、使用步骤、药品疗效、长段说明文字",
+    },
+    "ingredient_3": {
+        "layout": "单成分讲解图：一个核心成分占主视觉，成分名做大标题，作用只保留一句短标签，画面留出高级负空间",
+        "primary_visual": "单一成分原料微距 + 晶莹液滴 + 精华质地 + 电商成分大片光影",
+        "product_role": "产品只在右下角或画面边缘小比例出现，也可以不出现",
+        "forbidden": "多个成分并列、完整成分表、效果数据百分比、使用步骤、药品疗效、长段说明文字",
+    },
 }
 
 
@@ -230,6 +314,29 @@ def build_module_specific_brief(product_info: dict[str, Any] | None, module: dic
 
     if module_id in {"main_ingredient", "campaign_ingredient"}:
         return "\n".join([*base_lines, "- 本图只使用核心成分信息：", _format_ingredients(info.get("ingredients"))])
+
+    if module_id == "ingredient_overview":
+        selected = _selected_ingredients(info.get("ingredients"))
+        return "\n".join(
+            [
+                *base_lines,
+                f"- 品类：{_text(info.get('category'), '护肤品')}",
+                "- 本图只做成分体系总览，最多展示以下 3 个核心成分：",
+                _format_ingredient_items(selected),
+                "- 复配总结：多重成分复配体系，先建立配方可信感，不在本图逐个展开长篇解释。",
+            ]
+        )
+
+    single_index = _single_ingredient_index(module_id)
+    if single_index is not None:
+        ingredient = _selected_ingredients(info.get("ingredients"))[single_index]
+        return "\n".join(
+            [
+                *base_lines,
+                "- 本图只解释一个核心成分，不带入其他成分：",
+                f"1. 成分：{ingredient['name']}；作用：{ingredient['benefit']}；视觉方向：{_ingredient_visual_direction(ingredient)}",
+            ]
+        )
 
     if module_id in {"main_effect", "campaign_effect"}:
         return "\n".join(
@@ -381,6 +488,8 @@ def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | 
     authority_report = _format_authority_assets(info.get("authority_assets"))
     effect_report = _format_effect_claims(info.get("effect_claims"))
     ingredients_report = _format_ingredients(info.get("ingredients"))
+    selected_ingredients = _selected_ingredients(info.get("ingredients"))
+    selected_ingredients_report = _format_ingredient_items(selected_ingredients)
 
     requirements = {
         "main_white_bg": [
@@ -523,16 +632,30 @@ def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | 
             "核心功效：" + _numbered_lines(_string_items(info.get("functions")), "补水保湿"),
             "左栏展示「普通同类产品」的常见痛点或不足，右栏展示本产品的差异化优势和卖点。",
         ],
-        "ingredient": [
-            "画面只呈现成分页，必须把核心成分和对应作用讲清楚。",
+        "ingredient_overview": [
+            "画面只呈现成分体系总览，先说明产品用了什么核心配方思路，再引出后续 3 张单成分讲解图。",
             "镜头语言：使用极浅景深超微距摄影，原料边缘清晰、背景柔化，形成昂贵的商业成分大片感。",
             "材质质感：原料与液滴要晶莹剔透，带晨露质感、发光精华液滴和清透高调色彩，避免脏、浑、暗的植物堆叠。",
-            "必须完整带入以下成分信息：",
-            ingredients_report,
-            "文案必须像可直接用于店铺上架的成品成分图，只写成分名、正向作用标签和短标题。",
-            "如果成分资料较少，就减少卡片数量，用原料质感补足画面，不写信息缺失提示。",
-            "不要把成分作用写成药品疗效。",
+            "本图最多展示以下 3 个核心成分，不展示完整成分表，也不要把其他成分挤进画面：",
+            selected_ingredients_report,
+            "可见文案应总结为多重成分复配体系，例如：核心成分协同护理、多重成分复配体系、层层水润舒缓。",
+            "每个成分只做极短标签，不在总览图展开长篇作用解释，具体作用留给后续单成分图。",
+            "成分作用表达要谨慎，不能写成药品疗效或治疗承诺。",
         ],
+        **{
+            f"ingredient_{index}": [
+                "画面只呈现单成分讲解图，只讲 1 个核心成分，不能把其他成分名称、作用或卡片带入画面。",
+                f"成分序号：{index}",
+                f"成分名称：{ingredient['name']}",
+                f"消费者可理解作用：{ingredient['benefit']}",
+                f"建议视觉方向：{_ingredient_visual_direction(ingredient)}",
+                "镜头语言：使用极浅景深超微距摄影，让该成分对应的原料、液滴、精华质地或抽象质感成为唯一主视觉。",
+                "文案必须像可直接用于店铺上架的成品成分图，只写成分名、正向作用短标签和一句短标题。",
+                "图片模型不得自行扩展新的功效，不得编造治疗、修复疾病、医学改善或绝对化承诺。",
+                "如果该成分来自 AI 谨慎补全，仍然只用温和护理表达，不出现 AI 补全、待确认或资料不足提示。",
+            ]
+            for index, ingredient in enumerate(selected_ingredients, start=1)
+        },
         "usage": [
             "画面只呈现使用方法，用清晰步骤展示用量、顺序、手法和使用频率。",
             "环境：使用极简奢华浴室或梳妆台一角，台面干净、材质高级，避免凌乱居家背景。",

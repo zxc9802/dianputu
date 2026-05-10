@@ -230,25 +230,39 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertNotIn("共享统一的背景色调", prompt)
         self.assertNotIn("- 主色：#8ECFE6", prompt)
 
-    def test_ingredient_prompt_is_store_ready_without_placeholder_copy(self):
+    def test_ingredient_overview_prompt_summarizes_selected_ingredient_system(self):
         build_module_image_prompt = load_prompt_builder()
-        ingredient_module = next(module for module in DEFAULT_MODULES if module["id"] == "ingredient")
+        ingredient_module = {
+            "id": "ingredient_overview",
+            "name": "成分总览",
+            "description": "成分体系总览",
+            "image_group": "detail",
+        }
 
         prompt = build_module_image_prompt(
             product_info={
                 "product_name": "水润保湿面霜",
                 "category": "面霜",
-                "ingredients": [{"name": "透明质酸钠"}],
+                "ingredients": [
+                    {"name": "透明质酸钠", "benefit": "帮助提升水润肤感"},
+                    {"name": "烟酰胺", "benefit": "帮助提亮肤色观感"},
+                    {"name": "积雪草提取物", "benefit": "帮助舒缓干燥不适"},
+                    {"name": "泛醇", "benefit": "辅助保湿维稳"},
+                ],
             },
             style=STYLE_OPTIONS[0],
             module=ingredient_module,
             module_index=6,
-            total_modules=7,
+            total_modules=10,
         )
 
+        self.assertIn("成分体系总览", prompt)
         self.assertIn("可直接用于店铺上架", prompt)
         self.assertIn("透明质酸钠", prompt)
-        self.assertIn("辅助日常肌肤护理", prompt)
+        self.assertIn("烟酰胺", prompt)
+        self.assertIn("积雪草提取物", prompt)
+        self.assertIn("多重成分复配体系", prompt)
+        self.assertNotIn("泛醇", prompt)
         for forbidden in [
             "待确认",
             "待说明",
@@ -262,6 +276,41 @@ class PromptBuilderTests(unittest.TestCase):
             "占位纹理",
         ]:
             self.assertNotIn(forbidden, prompt)
+
+    def test_single_ingredient_prompt_only_explains_assigned_ingredient(self):
+        build_module_image_prompt = load_prompt_builder()
+        ingredient_module = {
+            "id": "ingredient_2",
+            "name": "成分 2 讲解",
+            "description": "单个核心成分作用讲解",
+            "image_group": "detail",
+        }
+
+        prompt = build_module_image_prompt(
+            product_info={
+                "product_name": "水润保湿面霜",
+                "category": "面霜",
+                "ingredients": [
+                    {"name": "透明质酸钠", "benefit": "帮助提升水润肤感"},
+                    {"name": "烟酰胺", "benefit": "帮助提亮肤色观感"},
+                    {"name": "积雪草提取物", "benefit": "帮助舒缓干燥不适"},
+                    {"name": "泛醇", "benefit": "辅助保湿维稳"},
+                ],
+            },
+            style=STYLE_OPTIONS[0],
+            module=ingredient_module,
+            module_index=8,
+            total_modules=10,
+        )
+
+        self.assertIn("单成分讲解图", prompt)
+        self.assertIn("只讲 1 个核心成分", prompt)
+        self.assertIn("成分序号：2", prompt)
+        self.assertIn("烟酰胺", prompt)
+        self.assertIn("帮助提亮肤色观感", prompt)
+        self.assertNotIn("透明质酸钠", prompt)
+        self.assertNotIn("积雪草提取物", prompt)
+        self.assertNotIn("泛醇", prompt)
 
     def test_target_language_prompt_asks_model_to_render_visible_text_directly(self):
         build_module_image_prompt = load_prompt_builder()

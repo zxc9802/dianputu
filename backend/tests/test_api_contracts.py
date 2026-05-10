@@ -14,7 +14,6 @@ from app.demo_data import DEFAULT_MODULES, DEFAULT_PRODUCT_INFO, DEMO_IMAGE_URLS
 from app.dependencies.auth import require_app_user
 from app.routers.models import build_public_model_config
 from app.routers.projects import COMPOSE_JOBS, FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR, build_layered_generated_image, check_project_text_compliance, compose_long_jpeg, edit_generated_image, generate_detail_images, render_layered_language_version, router as projects_router
-from app.services.compliance_checker import OcrTextBlock
 from app.services.language_renderer import build_text_layers, render_text_layers_to_data_url
 from app.services.app_session import AppSessionUserSnapshot
 
@@ -27,8 +26,22 @@ class ApiContractTests(unittest.TestCase):
 
         self.assertEqual([module["id"] for module in main_modules], ["main_white_bg", "main_hero_selling_point", "main_ingredient", "main_effect", "main_usage_scene"])
         self.assertEqual([module["id"] for module in campaign_modules], ["campaign_white_bg", "campaign_hero_selling_point", "campaign_ingredient", "campaign_effect", "campaign_usage_scene"])
-        self.assertEqual(detail_modules[0]["id"], "hero")
-        self.assertEqual(detail_modules[-1]["id"], "usage")
+        self.assertEqual(
+            [module["id"] for module in detail_modules],
+            [
+                "hero",
+                "authority",
+                "pain_scene",
+                "effect_comparison",
+                "competitor_comparison",
+                "ingredient_overview",
+                "ingredient_1",
+                "ingredient_2",
+                "ingredient_3",
+                "usage",
+            ],
+        )
+        self.assertNotIn("ingredient", [module["id"] for module in detail_modules])
 
     def test_product_info_contains_confirmation_fields(self):
         required = {
@@ -593,14 +606,31 @@ class DownloadContractTests(unittest.TestCase):
         self.assertEqual(payload["summary"]["status"], "block")
         self.assertEqual(payload["issues"][0]["term"], "治愈")
 
-    def test_image_compliance_endpoint_runs_ocr_before_rules(self):
-        class FakeOcrProvider:
-            source = "fake_ocr"
+    def test_image_compliance_endpoint_uses_ai_image_report(self):
+        class FakeImageComplianceProvider:
+            source = "fake_ai"
 
-            async def extract_text(self, image_bytes):
-                return [OcrTextBlock(text="100%有效", confidence=0.91, box=(0, 0, 80, 24))]
+            async def check_image(self, image_bytes, *, location, platform_id=None, product_info=None, debug=False):
+                return {
+                    "issues": [
+                        {
+                            "id": "ai_absolute_claim",
+                            "severity": "block",
+                            "category": "absolute_claim",
+                            "platform_ids": [platform_id],
+                            "term": "100%",
+                            "matched_text": "100%有效",
+                            "location": location,
+                            "reason": "AI 判断图片文案含绝对化数据承诺。",
+                            "suggestion": "删除绝对化数据，改为有依据的温和表达。",
+                            "qualification_hint": "",
+                        }
+                    ],
+                    "extracted_texts": [{"text": "100%有效", "confidence": 0.91, "box": [0, 0, 80, 24], "location": location}],
+                    "warnings": [],
+                }
 
-        with patch("app.routers.projects.create_default_ocr_provider", return_value=FakeOcrProvider()):
+        with patch("app.routers.projects.create_default_image_compliance_provider", return_value=FakeImageComplianceProvider()):
             response = self.make_client().post(
                 "/api/projects/compliance/check-images",
                 json={"platform_id": "tmall", "image_urls": [self.png_data_url()]},
@@ -608,8 +638,8 @@ class DownloadContractTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(payload["source"], "image_ocr")
-        self.assertEqual(payload["ocr_source"], "fake_ocr")
+        self.assertEqual(payload["source"], "image_ai")
+        self.assertEqual(payload["ai_source"], "fake_ai")
         self.assertEqual(payload["summary"]["status"], "block")
         self.assertEqual(payload["issues"][0]["term"], "100%")
         self.assertEqual(payload["extracted_texts"][0]["text"], "100%有效")

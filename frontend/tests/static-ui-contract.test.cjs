@@ -68,6 +68,11 @@ assertNotIncludes("components/ModulesStep.tsx", "固定产品合成（推荐）"
 assertNotIncludes("components/ModulesStep.tsx", "推荐固定产品合成", "fixed product composition help text should not recommend stripping the image into layers by default");
 assertIncludes("app/page.tsx", 'const DEFAULT_GENERATION_MODE: GenerationMode = "reference_generate"', "AI full-image generation should be the default generation mode");
 assertIncludes("lib/api.ts", 'generationMode: GenerationMode = "reference_generate"', "frontend API default should prefer AI full-image generation");
+assertIncludes("lib/constants.ts", 'id: "ingredient_overview"', "detail ingredient section must include a formula overview module");
+assertIncludes("lib/constants.ts", 'id: "ingredient_1"', "detail ingredient section must include the first single-ingredient module");
+assertIncludes("lib/constants.ts", 'id: "ingredient_2"', "detail ingredient section must include the second single-ingredient module");
+assertIncludes("lib/constants.ts", 'id: "ingredient_3"', "detail ingredient section must include the third single-ingredient module");
+assertNotIncludes("lib/constants.ts", 'id: "ingredient", name: "成分页"', "detail ingredient section must no longer be a single crowded page");
 assertNotIncludes("lib/api.ts", 'source: "demo"', "frontend must not convert failed image generation into fixed demo images");
 assertNotIncludes("lib/api.ts", "/assets/generated-cica-asset-sheet.png", "frontend must not mark fixed demo images as generated output");
 assert.ok(!fs.existsSync(path.join(root, "lib/autoGenerate.ts")), "lib/autoGenerate.ts: full auto generation flow should be removed");
@@ -212,12 +217,12 @@ assertIncludes("components/PreviewStep.tsx", "`生成 ${language.label}`", "prev
 assertIncludes("app/page.tsx", "targetLanguage: language", "page must regenerate a full image when creating a missing language version");
 assertNotIncludes("app/page.tsx", "renderLanguageVersion(version.baseUrl, version.textLayers", "page must not render translated text layers over the old base image");
 assertIncludes("lib/api.ts", "/api/projects/compliance/check-text", "frontend API must expose text compliance checks");
-assertIncludes("lib/api.ts", "/api/projects/compliance/check-images", "frontend API must expose image OCR compliance checks");
+assertIncludes("lib/api.ts", "/api/projects/compliance/check-images", "frontend API must expose AI image compliance checks");
 assertIncludes("components/ReviewStep.tsx", "合规风险", "review step must show product-info compliance risks");
 assertIncludes("components/ModulesStep.tsx", "促销合规预检", "modules step must show campaign promotion compliance preflight");
 assertIncludes("components/PreviewStep.tsx", "ComplianceBadge", "preview step must render compliance badges on generated images");
 assertIncludes("components/PreviewStep.tsx", "导出前合规提示", "preview export area must summarize selected image compliance");
-assertIncludes("components/PreviewStep.tsx", "图片 OCR 合规复查", "preview export area must let users scan final images with OCR before export");
+assertIncludes("components/PreviewStep.tsx", "AI 图片合规复查", "preview export area must let users scan final images with AI before export");
 assertIncludes("app/globals.css", "complianceBadge", "global styles must include compliance badge styling");
 assertIncludes("app/globals.css", "complianceIssueList", "global styles must include compliance issue list styling");
 

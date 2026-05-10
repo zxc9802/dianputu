@@ -584,11 +584,11 @@ export default function Home() {
       return;
     }
     setIsCheckingImageCompliance(true);
-    setStatusText("正在进行图片 OCR 合规复查");
+    setStatusText("正在进行 AI 图片合规复查");
     try {
       const report = await checkImageCompliance(imageUrls, selectedPlatformId, productInfo);
       setImageComplianceReport(report);
-      setStatusText(`图片 OCR 合规复查：${report.summary.status === "pass" ? "通过" : "需查看风险提示"}`);
+      setStatusText(`AI 图片合规复查：${report.summary.status === "pass" ? "通过" : "需查看风险提示"}`);
     } finally {
       setIsCheckingImageCompliance(false);
     }

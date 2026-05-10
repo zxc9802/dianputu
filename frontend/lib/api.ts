@@ -330,10 +330,10 @@ export async function checkImageCompliance(imageUrls: string[], platformId: Comm
         {
           id: "image_compliance_request_failed",
           severity: "review" as const,
-          category: "image_ocr",
+          category: "image_ai_review",
           term: "图片合规检查失败",
           reason: error instanceof Error ? error.message : "图片合规检查请求失败",
-          suggestion: "请重试图片 OCR 合规复查，导出前建议人工核对成图文字。"
+          suggestion: "请重试 AI 图片合规复查，导出前建议人工核对成图内容。"
         }
       ]
     };

@@ -64,7 +64,7 @@ export type ComplianceIssue = {
 
 export type ComplianceReport = {
   source: string;
-  ocr_source?: string;
+  ai_source?: string;
   summary: ComplianceSummary;
   issues: ComplianceIssue[];
   ignored_matches?: Array<{ term: string; text: string; reason: string }>;

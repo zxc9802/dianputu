@@ -163,6 +163,7 @@ def _detail_layers(info: dict[str, Any], module_id: str) -> list[dict[str, Any]]
     ingredients = _ingredient_names(info.get("ingredients"))
     effects = _effect_claims(info.get("effect_claims"))
     usage = _string_items(info.get("usage_method"))
+    single_ingredient_match = re.fullmatch(r"ingredient_([123])", module_id)
 
     recipes: dict[str, tuple[str, str, list[str]]] = {
         "hero": (product_name, selling_points[0] if selling_points else _first(info.get("functions"), "核心护理"), selling_points[1:3] or functions[:2]),
@@ -170,10 +171,15 @@ def _detail_layers(info: dict[str, Any], module_id: str) -> list[dict[str, Any]]
         "pain_scene": ("肌肤困扰", functions[0] if functions else "针对日常护理痛点", _string_items(info.get("target_users"))[:2]),
         "effect_comparison": ("效果看得见", effects[0] if effects else _first(info.get("functions"), "水润改善"), effects[1:3] or functions[:2]),
         "competitor_comparison": ("优势对比", selling_points[0] if selling_points else "本产品优势", ["普通同类", "本产品"]),
-        "ingredient": ("核心成分", ingredients[0] if ingredients else "温和配方", ingredients[1:3]),
+        "ingredient_overview": ("核心成分体系", "多重成分复配", ingredients[:3]),
         "usage": ("使用方法", usage[0] if usage else "洁面后使用", usage[1:3]),
     }
-    title, subtitle, tags = recipes.get(module_id, (_clean_text(info.get("category"), "商品详情"), _first(info.get("functions"), "核心卖点"), selling_points[:2]))
+    if single_ingredient_match:
+        ingredient_index = int(single_ingredient_match.group(1)) - 1
+        ingredient = ingredients[ingredient_index] if ingredient_index < len(ingredients) else ["核心植萃", "保湿复配", "舒缓因子"][ingredient_index]
+        title, subtitle, tags = ("核心成分", ingredient, [_clean_text(info.get("category"), "温和配方")])
+    else:
+        title, subtitle, tags = recipes.get(module_id, (_clean_text(info.get("category"), "商品详情"), _first(info.get("functions"), "核心卖点"), selling_points[:2]))
     layers = [
         _layer("title", "title", title, x=0.08, y=0.07, width=0.84, height=0.11, font_size=0.060, align="center", max_lines=2, weight="bold"),
         _layer("subtitle", "subtitle", subtitle, x=0.12, y=0.20, width=0.76, height=0.10, font_size=0.034, align="center", color="#31594D", max_lines=2),

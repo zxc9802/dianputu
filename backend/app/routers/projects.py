@@ -15,7 +15,7 @@ from uuid import uuid4
 
 from app.core.config import get_model_settings
 from app.demo_data import DEFAULT_MODULES, DEMO_IMAGE_URLS, STYLE_OPTIONS
-from app.services.compliance_checker import OcrProvider, VisionModelOcrProvider, check_image_items, check_text_items
+from app.services.compliance_checker import ImageComplianceProvider, VisionModelImageComplianceProvider, check_image_items, check_text_items
 from app.services.image_model import call_image_edit_model, call_image_model
 from app.services.language_renderer import (
     DEFAULT_LANGUAGE,
@@ -201,6 +201,8 @@ def build_material_analysis_messages(materials: list[UploadedMaterial]) -> list[
         "4) 需要谨慎表达或不能直接宣传的内容。"
         "必须只输出 JSON，不要输出解释文字。字段包括：product_name, category, spec, "
         "core_selling_points, functions, ingredients, target_users, usage_method, authority_assets, effect_claims, material_highlights。"
+        "ingredients 必须是按详情页展示优先级排序的数组，每项形如 {\"name\":\"成分名\",\"benefit\":\"一句消费者能理解的温和作用\"}；"
+        "优先选择最值得单独上图讲解的 3 个核心成分，benefit 不能写成药品疗效或治疗承诺。"
         "material_highlights 是 3-6 条面向消费者的资料亮点摘要，每条应短、可信、有转化力，并可直接辅助电商图片文案。"
         "如果图片或资料里无法确定，请基于护肤品详情页常识给出谨慎的 AI 补全，并避免绝对化医疗功效。"
         f"\n上传文件：\n{file_lines}"
@@ -401,6 +403,8 @@ async def analyze_product_materials(raw_text: str | None = None) -> dict[str, An
             "你是电商护肤详情页产品经理。请从资料中提炼商品信息，"
             "输出 JSON 字段：product_name, category, core_selling_points, functions, "
             "ingredients, target_users, usage_method, authority_assets, effect_claims, material_highlights。"
+            "ingredients 必须按适合详情页展示的优先级排序，每项包含 name 和 benefit；"
+            "benefit 写成一句消费者能理解、可上图但不医疗化的成分作用。"
             "material_highlights 写 3-6 条最能吸引消费者且有资料依据的短亮点。"
             f"\n资料：{raw_text}"
         )
@@ -590,8 +594,8 @@ def check_project_text_compliance(
     return check_text_items(items, platform_id=platform_id, product_info=product_info, debug=debug)
 
 
-def create_default_ocr_provider() -> OcrProvider:
-    return VisionModelOcrProvider(get_model_settings().text)
+def create_default_image_compliance_provider() -> ImageComplianceProvider:
+    return VisionModelImageComplianceProvider(get_model_settings().text)
 
 
 async def check_project_image_compliance(
@@ -599,7 +603,7 @@ async def check_project_image_compliance(
     *,
     platform_id: str | None = None,
     product_info: dict[str, Any] | None = None,
-    ocr_provider: OcrProvider | None = None,
+    compliance_provider: ImageComplianceProvider | None = None,
     debug: bool = False,
 ) -> dict[str, Any]:
     images: list[dict[str, Any]] = []
@@ -613,7 +617,7 @@ async def check_project_image_compliance(
         images.append(image)
     return await check_image_items(
         images,
-        ocr_provider=ocr_provider or create_default_ocr_provider(),
+        compliance_provider=compliance_provider or create_default_image_compliance_provider(),
         platform_id=platform_id,
         product_info=product_info,
         debug=debug,
