@@ -263,6 +263,25 @@ class PromptBuilderTests(unittest.TestCase):
         ]:
             self.assertNotIn(forbidden, prompt)
 
+    def test_target_language_prompt_asks_model_to_render_visible_text_directly(self):
+        build_module_image_prompt = load_prompt_builder()
+        hero_module = next(module for module in DEFAULT_MODULES if module["id"] == "hero")
+
+        prompt = build_module_image_prompt(
+            product_info={"product_name": "水润保湿精华", "core_selling_points": ["深层补水"]},
+            style=STYLE_OPTIONS[1],
+            module=hero_module,
+            module_index=1,
+            total_modules=7,
+            target_language="en",
+        )
+
+        self.assertIn("【图片语言】", prompt)
+        self.assertIn("English", prompt)
+        self.assertIn("所有可见标题、标签、数字说明和角标文字都必须直接生成在图片里", prompt)
+        self.assertIn("不要把中文、英文、泰语或马来语混排", prompt)
+        self.assertNotIn("分层文字模式", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

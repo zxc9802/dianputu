@@ -1,6 +1,9 @@
 import type {
+  ComplianceReport,
   GeneratedImageVersion,
   GeneratedImageVersionState,
+  LanguageCode,
+  LanguageVersion,
   ModuleConfig,
   ProjectTemplate
 } from "@/lib/types";
@@ -9,14 +12,37 @@ const MAX_IMAGE_VERSIONS = 3;
 const DEFAULT_IMAGE_GENERATION_CONCURRENCY_LIMIT = 2;
 const MAX_IMAGE_GENERATION_CONCURRENCY_LIMIT = 20;
 
-type GeneratedImageInput = { module_id: string; url: string };
-type ImageGenerationResult = { source: string; images: GeneratedImageInput[]; errors?: string[] };
-type ParallelGenerationProgress = { completed: number; total: number; errorCount: number };
+type GeneratedImageInput = { module_id: string; url: string; compliance?: ComplianceReport };
+type LayeredGeneratedImageInput = GeneratedImageInput & {
+  base_url?: string;
+  text_layers?: GeneratedImageVersion["textLayers"];
+  language_versions?: GeneratedImageVersion["languageVersions"];
+};
+type ImageGenerationResult = { source: string; images: LayeredGeneratedImageInput[]; errors?: string[] };
+type ParallelGenerationProgress = { completed: number; total: number; errorCount: number; errors: string[] };
 type ImageVersionSelection = Record<string, string>;
+
+function errorWithModuleId(moduleId: string, error: string) {
+  return error.startsWith(`${moduleId}:`) ? error : `${moduleId}: ${error}`;
+}
+
+export function formatImageGenerationSummaryStatus(
+  groupLabel: string,
+  summary: { completed: number; total: number; errorCount: number; errors?: string[] }
+) {
+  const firstError = summary.errors?.[0];
+  if (summary.completed === summary.errorCount) {
+    return firstError ? `${groupLabel}生成失败：${firstError}` : `${groupLabel}生成失败，请查看后端日志`;
+  }
+  if (summary.errorCount) {
+    return firstError ? `${groupLabel}部分生成失败：${summary.errorCount}/${summary.total}，${firstError}` : `${groupLabel}部分生成失败：${summary.errorCount}/${summary.total}`;
+  }
+  return `${groupLabel}已生成`;
+}
 
 export function appendImageVersions(
   current: { versions: GeneratedImageVersionState; selectedVersionIds: ImageVersionSelection },
-  images: GeneratedImageInput[],
+  images: LayeredGeneratedImageInput[],
   source: string,
   now = Date.now(),
   editInstruction = ""
@@ -30,6 +56,10 @@ export function appendImageVersions(
       id: `${image.module_id}-${now}-${existing.length + 1}`,
       module_id: image.module_id,
       url: image.url,
+      ...(image.base_url ? { baseUrl: image.base_url } : {}),
+      ...(image.text_layers?.length ? { textLayers: image.text_layers } : {}),
+      ...(image.language_versions ? { languageVersions: image.language_versions, selectedLanguage: "zh-CN" as LanguageCode } : {}),
+      ...(image.compliance ? { compliance: image.compliance } : {}),
       label: `v${existing.length + 1}`,
       source,
       createdAt: now,
@@ -56,9 +86,57 @@ export function getSelectedGeneratedImages(versions: GeneratedImageVersionState,
     .map((moduleId) => {
       const moduleVersions = versions[moduleId] ?? [];
       const selected = moduleVersions.find((version) => version.id === selectedVersionIds[moduleId]) ?? moduleVersions[moduleVersions.length - 1];
-      return selected ? { module_id: moduleId, url: selected.url } : null;
+      if (!selected) return null;
+      const languageUrl = selected.selectedLanguage ? selected.languageVersions?.[selected.selectedLanguage]?.url : "";
+      return { module_id: moduleId, url: languageUrl || selected.url };
     })
     .filter((image): image is GeneratedImageInput => Boolean(image));
+}
+
+export function selectLanguageVersion(
+  current: { versions: GeneratedImageVersionState; selectedVersionIds: ImageVersionSelection },
+  moduleId: string,
+  versionId: string,
+  language: LanguageCode
+) {
+  return {
+    ...current,
+    versions: {
+      ...current.versions,
+      [moduleId]: (current.versions[moduleId] ?? []).map((version) =>
+        version.id === versionId ? { ...version, selectedLanguage: language } : version
+      )
+    },
+    selectedVersionIds: selectImageVersion(current.selectedVersionIds, moduleId, versionId)
+  };
+}
+
+export function addLanguageVersion(
+  current: { versions: GeneratedImageVersionState; selectedVersionIds: ImageVersionSelection },
+  moduleId: string,
+  versionId: string,
+  languageVersion: LanguageVersion,
+  now = Date.now()
+) {
+  return {
+    ...current,
+    versions: {
+      ...current.versions,
+      [moduleId]: (current.versions[moduleId] ?? []).map((version) =>
+        version.id === versionId
+          ? {
+              ...version,
+              languageVersions: {
+                ...(version.languageVersions ?? {}),
+                [languageVersion.language]: { ...languageVersion, createdAt: languageVersion.createdAt ?? now }
+              },
+              selectedLanguage: languageVersion.language
+            }
+          : version
+      )
+    },
+    selectedVersionIds: selectImageVersion(current.selectedVersionIds, moduleId, versionId)
+  };
 }
 
 export function resolveReusableHistoryId(currentHistoryId: string | null, savedHistoryId: string | null) {
@@ -94,6 +172,7 @@ export async function runParallelImageGeneration<TModule extends { id: string }>
 ) {
   let completed = 0;
   let errorCount = 0;
+  const errors: string[] = [];
   const total = modules.length;
   const limit = Math.max(1, Math.min(concurrencyLimit, total || 1));
   let nextIndex = 0;
@@ -104,14 +183,16 @@ export async function runParallelImageGeneration<TModule extends { id: string }>
       nextIndex += 1;
       const result = await generateOne(module);
       completed += 1;
-      errorCount += result.errors?.length ?? 0;
-      onComplete(module, result, { completed, total, errorCount });
+      const resultErrors = result.errors ?? [];
+      errorCount += resultErrors.length;
+      errors.push(...resultErrors.map((error) => errorWithModuleId(module.id, error)));
+      onComplete(module, result, { completed, total, errorCount, errors: [...errors] });
     }
   }
 
   await Promise.all(Array.from({ length: limit }, () => worker()));
 
-  return { completed, total, errorCount };
+  return { completed, total, errorCount, errors };
 }
 
 export function applyTemplateToModules(modules: ModuleConfig[], template: ProjectTemplate) {

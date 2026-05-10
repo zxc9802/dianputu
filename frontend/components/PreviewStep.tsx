@@ -3,14 +3,22 @@
 import { useState } from "react";
 import { Download, FileImage, Monitor, Save, Smartphone } from "lucide-react";
 import { createComposeLongImageJob, downloadComposeLongImageJob, downloadImage, fetchComposeLongImageJob, prepareComposeLongImageSources } from "@/lib/api";
-import type { CommercePlatform, GeneratedImageVersionState, ImageGroup, ModuleConfig } from "@/lib/types";
+import { complianceStatusClass, complianceStatusLabel, highestComplianceStatus } from "@/lib/compliance";
+import type { CommercePlatform, ComplianceReport, GeneratedImageVersion, GeneratedImageVersionState, ImageGroup, LanguageCode, ModuleConfig } from "@/lib/types";
 
 type GeneratedImage = { module_id: string; url: string };
 type PreviewItem = { module: ModuleConfig; url: string };
 type GenerationProgress = { isGenerating: boolean; completed: number; total: number; runningModuleIds: string[]; errorCount: number };
 type GenerationProgressMap = Record<ImageGroup, GenerationProgress>;
+type LanguageGenerationState = { moduleId: string; versionId: string; language: LanguageCode } | null;
 
 const imageGroups: ImageGroup[] = ["main", "campaign", "detail"];
+const languageOptions: Array<{ code: LanguageCode; label: string }> = [
+  { code: "zh-CN", label: "中文" },
+  { code: "en", label: "English" },
+  { code: "th", label: "ไทย" },
+  { code: "ms", label: "Malay" }
+];
 
 const groupCopy: Record<ImageGroup, { title: string; empty: string; directory: string }> = {
   main: { title: "主图预览", empty: "主图生成后会在这里按 5 张独立卡片展示。", directory: "主图目录" },
@@ -78,6 +86,87 @@ function buildPreviewItems(modules: ModuleConfig[], generatedByModule: Map<strin
     .filter((item): item is PreviewItem => Boolean(item));
 }
 
+function selectedVersionForModule(imageVersions: GeneratedImageVersionState, selectedVersionIds: Record<string, string>, moduleId: string) {
+  const versions = imageVersions[moduleId] ?? [];
+  return versions.find((version) => version.id === selectedVersionIds[moduleId]) ?? versions[versions.length - 1] ?? null;
+}
+
+function selectedVersionUrl(version: GeneratedImageVersion | null, fallback = "") {
+  if (!version) return fallback;
+  const languageUrl = version.selectedLanguage ? version.languageVersions?.[version.selectedLanguage]?.url : "";
+  return languageUrl || version.url || fallback;
+}
+
+function selectedVersionCompliance(version: GeneratedImageVersion | null) {
+  if (!version) return null;
+  return (version.selectedLanguage ? version.languageVersions?.[version.selectedLanguage]?.compliance : null) ?? version.compliance ?? null;
+}
+
+function ComplianceBadge({ report }: { report?: ComplianceReport | null }) {
+  const status = report?.summary.status ?? "pass";
+  return <span className={`complianceBadge ${complianceStatusClass(status)}`}>{complianceStatusLabel(status)}</span>;
+}
+
+function ComplianceIssueList({ report }: { report?: ComplianceReport | null }) {
+  if (!report?.issues.length) return null;
+  return (
+    <ul className="complianceIssueList compact">
+      {report.issues.slice(0, 3).map((issue, index) => (
+        <li key={`${issue.term}-${index}`}>
+          <strong>{issue.term}</strong>
+          <span>{issue.reason}</span>
+          <em>{issue.suggestion}</em>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function LanguageVersionControls({
+  moduleId,
+  version,
+  languageGeneration,
+  onSelectLanguage,
+  onGenerateLanguage
+}: {
+  moduleId: string;
+  version: GeneratedImageVersion | null;
+  languageGeneration: LanguageGenerationState;
+  onSelectLanguage: (moduleId: string, versionId: string, language: LanguageCode) => void;
+  onGenerateLanguage: (moduleId: string, versionId: string, language: LanguageCode) => void;
+}) {
+  if (!version) return null;
+  return (
+    <div className="languageVersionRow">
+      {languageOptions.map((language) => {
+        const existing = language.code === "zh-CN" ? { url: version.url } : version.languageVersions?.[language.code];
+        const isActive = version.selectedLanguage === language.code || (!version.selectedLanguage && language.code === "zh-CN");
+        const isGenerating =
+          languageGeneration?.moduleId === moduleId &&
+          languageGeneration.versionId === version.id &&
+          languageGeneration.language === language.code;
+        return (
+          <button
+            className={isActive ? "languagePill active" : "languagePill"}
+            disabled={Boolean(languageGeneration)}
+            key={language.code}
+            onClick={() => {
+              if (existing) {
+                onSelectLanguage(moduleId, version.id, language.code);
+              } else {
+                onGenerateLanguage(moduleId, version.id, language.code);
+              }
+            }}
+            type="button"
+          >
+            {isGenerating ? "生成中" : existing ? language.label : `生成 ${language.label}`}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function PreviewStep({
   modules,
   activeImageGroup,
@@ -88,9 +177,15 @@ export function PreviewStep({
   selectedPlatform,
   isSavingHistory,
   canSaveHistory,
+  languageGeneration,
+  imageComplianceReport,
+  isCheckingImageCompliance,
   onImageGroupChange,
   onGenerateModule,
   onSelectVersion,
+  onSelectLanguage,
+  onGenerateLanguage,
+  onCheckImagesCompliance,
   onEditImage,
   onSaveToHistory,
   onBack
@@ -104,9 +199,15 @@ export function PreviewStep({
   selectedPlatform: CommercePlatform;
   isSavingHistory: boolean;
   canSaveHistory: boolean;
+  languageGeneration: LanguageGenerationState;
+  imageComplianceReport?: ComplianceReport | null;
+  isCheckingImageCompliance: boolean;
   onImageGroupChange: (group: ImageGroup) => void;
   onGenerateModule: (group: ImageGroup, moduleId: string) => void;
   onSelectVersion: (moduleId: string, versionId: string) => void;
+  onSelectLanguage: (moduleId: string, versionId: string, language: LanguageCode) => void;
+  onGenerateLanguage: (moduleId: string, versionId: string, language: LanguageCode) => void;
+  onCheckImagesCompliance: (imageUrls: string[]) => void;
   onEditImage: (moduleId: string, imageUrl: string, instruction: string) => void;
   onSaveToHistory: () => void;
   onBack: () => void;
@@ -115,7 +216,12 @@ export function PreviewStep({
   const [composeStatus, setComposeStatus] = useState("");
   const [composeError, setComposeError] = useState("");
   const [editDrafts, setEditDrafts] = useState<Record<string, string>>({});
-  const generatedByModule = new Map(generatedImages.map((image) => [image.module_id, image.url]));
+  const generatedByModule = new Map(
+    generatedImages.map((image) => {
+      const selectedVersion = selectedVersionForModule(imageVersions, selectedVersionIds, image.module_id);
+      return [image.module_id, selectedVersionUrl(selectedVersion, image.url)];
+    })
+  );
   const groupedModules = {
     main: sortedGroupModules(modules, "main"),
     campaign: sortedGroupModules(modules, "campaign"),
@@ -128,6 +234,7 @@ export function PreviewStep({
   };
   const visibleModules = groupedModules[activeImageGroup];
   const visibleItems = groupedItems[activeImageGroup];
+  const visibleImageUrls = visibleModules.map((module) => generatedByModule.get(module.id)).filter((url): url is string => Boolean(url));
   const activeProgress = generationProgress[activeImageGroup];
   const detailManifest = groupedItems.detail.map((item) => ({
     module_id: item.module.id,
@@ -228,6 +335,7 @@ export function PreviewStep({
                   {visibleModules.map((module, index) => {
                     const url = generatedByModule.get(module.id);
                     const versions = imageVersions[module.id] ?? [];
+                    const selectedVersion = selectedVersionForModule(imageVersions, selectedVersionIds, module.id);
                     const isCurrent = (activeProgress.runningModuleIds ?? []).includes(module.id);
                     return (
                       <article className="mainImageCard" key={module.id}>
@@ -243,6 +351,7 @@ export function PreviewStep({
                         </div>
                         <footer>
                           <b>{module.name}</b>
+                          <ComplianceBadge report={selectedVersionCompliance(selectedVersion)} />
                           <span className="previewCardActions">
                             <button
                               className="inlineActionButton"
@@ -269,6 +378,14 @@ export function PreviewStep({
                             ))}
                           </div>
                         ) : null}
+                        <LanguageVersionControls
+                          moduleId={module.id}
+                          version={selectedVersion}
+                          languageGeneration={languageGeneration}
+                          onSelectLanguage={onSelectLanguage}
+                          onGenerateLanguage={onGenerateLanguage}
+                        />
+                        <ComplianceIssueList report={selectedVersionCompliance(selectedVersion)} />
                         {url ? (
                           <div className="editPromptRow">
                             <input
@@ -301,43 +418,56 @@ export function PreviewStep({
             <div className="longPreview">
               {groupedItems.detail.length > 0 ? (
                 <div className="longImage">
-                  {groupedItems.detail.map((item, index) => (
-                    <section className="longImageSection" key={item.module.id} aria-label={`${item.module.name}生成图`}>
-                      <img src={item.url} alt={`${item.module.name}生成图`} loading={index > 1 ? "lazy" : "eager"} />
-                      <div className="longImageControls">
-                        <b>{item.module.name}</b>
-                        <span className="previewCardActions">
-                          {(imageVersions[item.module.id] ?? []).map((version) => (
+                  {groupedItems.detail.map((item, index) => {
+                    const selectedVersion = selectedVersionForModule(imageVersions, selectedVersionIds, item.module.id);
+                    const itemUrl = selectedVersionUrl(selectedVersion, item.url);
+                    return (
+                      <section className="longImageSection" key={item.module.id} aria-label={`${item.module.name}生成图`}>
+                        <img src={itemUrl} alt={`${item.module.name}生成图`} loading={index > 1 ? "lazy" : "eager"} />
+                        <div className="longImageControls">
+                          <b>{item.module.name}</b>
+                          <ComplianceBadge report={selectedVersionCompliance(selectedVersion)} />
+                          <span className="previewCardActions">
+                            {(imageVersions[item.module.id] ?? []).map((version) => (
+                              <button
+                                className={selectedVersionIds[item.module.id] === version.id ? "versionPill active" : "versionPill"}
+                                key={version.id}
+                                onClick={() => onSelectVersion(item.module.id, version.id)}
+                                type="button"
+                              >
+                                {version.label}
+                              </button>
+                            ))}
+                            <button className="inlineActionButton" onClick={() => onGenerateModule(activeImageGroup, item.module.id)} type="button">
+                              再生成一版
+                            </button>
+                          </span>
+                          <LanguageVersionControls
+                            moduleId={item.module.id}
+                            version={selectedVersion}
+                            languageGeneration={languageGeneration}
+                            onSelectLanguage={onSelectLanguage}
+                            onGenerateLanguage={onGenerateLanguage}
+                          />
+                          <ComplianceIssueList report={selectedVersionCompliance(selectedVersion)} />
+                          <div className="editPromptRow">
+                            <input
+                              value={editDrafts[item.module.id] ?? ""}
+                              placeholder="输入微调指令"
+                              onChange={(event) => setEditDrafts((current) => ({ ...current, [item.module.id]: event.target.value }))}
+                            />
                             <button
-                              className={selectedVersionIds[item.module.id] === version.id ? "versionPill active" : "versionPill"}
-                              key={version.id}
-                              onClick={() => onSelectVersion(item.module.id, version.id)}
+                              className="inlineActionButton strong"
+                              onClick={() => onEditImage(item.module.id, itemUrl, editDrafts[item.module.id] ?? "")}
                               type="button"
                             >
-                              {version.label}
+                              微调
                             </button>
-                          ))}
-                          <button className="inlineActionButton" onClick={() => onGenerateModule(activeImageGroup, item.module.id)} type="button">
-                            再生成一版
-                          </button>
-                        </span>
-                        <div className="editPromptRow">
-                          <input
-                            value={editDrafts[item.module.id] ?? ""}
-                            placeholder="输入微调指令"
-                            onChange={(event) => setEditDrafts((current) => ({ ...current, [item.module.id]: event.target.value }))}
-                          />
-                          <button
-                            className="inlineActionButton strong"
-                            onClick={() => onEditImage(item.module.id, item.url, editDrafts[item.module.id] ?? "")}
-                            type="button"
-                          >
-                            微调
-                          </button>
+                          </div>
                         </div>
-                      </div>
-                    </section>
-                  ))}
+                      </section>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="emptyState previewEmpty">
@@ -377,7 +507,29 @@ export function PreviewStep({
               );
             })}
           </div>
+          {(() => {
+            const reports = visibleModules.map((module) =>
+              selectedVersionCompliance(selectedVersionForModule(imageVersions, selectedVersionIds, module.id))
+            );
+            const status = highestComplianceStatus([...reports, imageComplianceReport]);
+            return (
+              <div className={`exportComplianceSummary ${complianceStatusClass(status)}`}>
+                <b>导出前合规提示</b>
+                <span>{complianceStatusLabel(status)}</span>
+              </div>
+            );
+          })()}
+          {imageComplianceReport ? <ComplianceIssueList report={imageComplianceReport} /> : null}
           <div className="exportActions">
+            <button
+              className="ghostButton"
+              disabled={visibleImageUrls.length === 0 || isCheckingImageCompliance}
+              onClick={() => onCheckImagesCompliance(visibleImageUrls)}
+              type="button"
+            >
+              <FileImage size={20} />
+              {isCheckingImageCompliance ? "OCR 复查中" : "图片 OCR 合规复查"}
+            </button>
             {activeImageGroup === "detail" ? (
               <>
                 <button className="primaryButton" onClick={handleDownloadLongJpg} disabled={groupedItems.detail.length === 0 || isComposing}>

@@ -2,16 +2,20 @@ import unittest
 from base64 import b64encode
 from io import BytesIO
 from os import environ
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from app.core.config import ImageGenerationSettings
 from app.demo_data import DEFAULT_MODULES, DEFAULT_PRODUCT_INFO, DEMO_IMAGE_URLS, STYLE_OPTIONS
 from app.dependencies.auth import require_app_user
 from app.routers.models import build_public_model_config
-from app.routers.projects import COMPOSE_JOBS, compose_long_jpeg, edit_generated_image, generate_detail_images, router as projects_router
+from app.routers.projects import COMPOSE_JOBS, FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR, build_layered_generated_image, check_project_text_compliance, compose_long_jpeg, edit_generated_image, generate_detail_images, render_layered_language_version, router as projects_router
+from app.services.compliance_checker import OcrTextBlock
+from app.services.language_renderer import build_text_layers, render_text_layers_to_data_url
 from app.services.app_session import AppSessionUserSnapshot
 
 
@@ -134,18 +138,76 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["images"], [])
         self.assertEqual(len(result["errors"]), 2)
 
-    async def test_fixed_product_composite_uses_product_reference_as_edit_source(self):
+    async def test_generation_uses_fallback_when_primary_returns_empty_content(self):
+        calls = []
+
+        async def fake_call_image_model(settings, prompt, image=None, size=None):
+            calls.append(settings.model)
+            if settings.model == "gpt-image-2":
+                return []
+            return ["https://example.com/fallback.png"]
+
+        previous_primary_key = environ.get("IMAGE_GENERATION_API_KEY")
+        previous_fallback_key = environ.get("FALLBACK_IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        environ["FALLBACK_IMAGE_GENERATION_API_KEY"] = "fallback-key"
+        try:
+            with patch("app.routers.projects.call_image_model", new=fake_call_image_model):
+                result = await generate_detail_images(["hero"], "green_repair")
+        finally:
+            if previous_primary_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_primary_key
+            if previous_fallback_key is None:
+                environ.pop("FALLBACK_IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["FALLBACK_IMAGE_GENERATION_API_KEY"] = previous_fallback_key
+
+        self.assertEqual(result["source"], "model")
+        self.assertEqual(result["images"], [{"module_id": "hero", "url": "https://example.com/fallback.png"}])
+        self.assertEqual(calls, ["gpt-image-2", "gpt-image-2-all"])
+
+    async def test_fixed_product_composite_uses_local_product_compositor(self):
         previous_key = environ.get("IMAGE_GENERATION_API_KEY")
         environ["IMAGE_GENERATION_API_KEY"] = "test-key"
         try:
             with patch("app.routers.projects.call_image_model", new=AsyncMock(return_value=["https://example.com/background.png"])) as generate_mock:
-                with patch("app.routers.projects._read_image_bytes", new=AsyncMock(return_value=b"product-bytes")):
-                    with patch("app.routers.projects.call_image_edit_model", new=AsyncMock(return_value=["https://example.com/composited.png"])) as edit_mock:
+                with patch("app.routers.projects._read_image_bytes", new=AsyncMock(side_effect=[b"background-bytes", b"product-bytes"])):
+                    with patch("app.routers.projects.compose_fixed_product_image", return_value=b"composited-bytes") as compose_mock:
+                        with patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(side_effect=lambda url, folder: url)) as upload_mock:
+                            with patch("app.routers.projects.call_image_edit_model", new=AsyncMock(return_value=["https://example.com/model-edit.png"])) as edit_mock:
+                                result = await generate_detail_images(
+                                    ["hero"],
+                                    "green_repair",
+                                    product_info={"product_name": "积雪草修护精华"},
+                                    reference_images=["data:image/png;base64,original"],
+                                    generation_mode="fixed_product_composite",
+                                )
+        finally:
+            if previous_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_key
+
+        self.assertEqual(result["source"], "model")
+        self.assertTrue(result["images"][0]["url"].startswith("data:image/png;base64,"))
+        generate_mock.assert_called_once()
+        self.assertIn("背景层", generate_mock.call_args.args[1])
+        self.assertNotIn("data:image/png;base64,original", generate_mock.call_args.kwargs.get("image") or [])
+        compose_mock.assert_called_once_with(b"background-bytes", b"product-bytes", module_id="hero")
+        upload_mock.assert_called_once()
+        edit_mock.assert_not_called()
+
+    async def test_fixed_product_composite_requires_product_reference(self):
+        previous_key = environ.get("IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        try:
+            with patch("app.routers.projects.call_image_model", new=AsyncMock(return_value=["https://example.com/background.png"])):
                         result = await generate_detail_images(
                             ["hero"],
                             "green_repair",
                             product_info={"product_name": "积雪草修护精华"},
-                            reference_images=["data:image/png;base64,original"],
                             generation_mode="fixed_product_composite",
                         )
         finally:
@@ -154,12 +216,42 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
             else:
                 environ["IMAGE_GENERATION_API_KEY"] = previous_key
 
-        self.assertEqual(result["source"], "model")
-        self.assertEqual(result["images"], [{"module_id": "hero", "url": "https://example.com/composited.png"}])
-        generate_mock.assert_called_once()
-        edit_mock.assert_called_once()
-        self.assertIn("固定产品主体", edit_mock.call_args.args[1])
-        self.assertEqual(edit_mock.call_args.kwargs["image_bytes"], b"product-bytes")
+        self.assertEqual(result["source"], "error")
+        self.assertEqual(result["images"], [])
+        self.assertIn(FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR, result["errors"][0])
+
+    async def test_generation_reports_unconfigured_image_model(self):
+        image = ImageGenerationSettings(
+            id="primary",
+            label="GPT Image 2",
+            api_key="",
+            base_url="https://example.com/v1",
+            endpoint_path="/images/generations",
+            model="gpt-image-2",
+            size="2048x2048",
+            n=1,
+        )
+        fallback = ImageGenerationSettings(
+            id="fallback",
+            label="GPT Image 2 All",
+            api_key="",
+            base_url="https://fallback.example.com/v1",
+            endpoint_path="/images/generations",
+            model="gpt-image-2-all",
+            size="2048x2048",
+            n=1,
+        )
+        settings = SimpleNamespace(image=image, fallback_image=fallback, image_options={"primary": image})
+
+        with patch("app.routers.projects.get_model_settings", return_value=settings):
+            result = await generate_detail_images(["hero"], "green_repair")
+
+        self.assertEqual(result["source"], "error")
+        self.assertEqual(result["images"], [])
+        self.assertEqual(len(result["errors"]), 1)
+        self.assertIn("hero", result["errors"][0])
+        self.assertIn("GPT Image 2", result["errors"][0])
+        self.assertIn("not configured", result["errors"][0])
 
     async def test_generation_accepts_single_module_for_regeneration(self):
         previous_key = environ.get("IMAGE_GENERATION_API_KEY")
@@ -228,6 +320,34 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    async def test_generation_prompt_can_target_english_full_image_text(self):
+        previous_key = environ.get("IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        prompts = []
+
+        async def fake_call_image_model(settings, prompt, image=None, size=None):
+            prompts.append(prompt)
+            return ["https://example.com/english.png"]
+
+        try:
+            with patch("app.routers.projects.call_image_model", new=fake_call_image_model):
+                result = await generate_detail_images(
+                    ["hero"],
+                    "blue_hydration",
+                    product_info={"product_name": "水润保湿精华", "core_selling_points": ["深层补水"]},
+                    target_language="en",
+                )
+        finally:
+            if previous_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_key
+
+        self.assertEqual(result["source"], "model")
+        self.assertIn("English", prompts[0])
+        self.assertIn("直接生成在图片里", prompts[0])
+        self.assertNotIn("分层文字模式", prompts[0])
+
     async def test_edit_generated_image_uses_instruction_and_original_image(self):
         previous_key = environ.get("IMAGE_GENERATION_API_KEY")
         environ["IMAGE_GENERATION_API_KEY"] = "test-key"
@@ -246,10 +366,140 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
             else:
                 environ["IMAGE_GENERATION_API_KEY"] = previous_key
 
-        self.assertEqual(result, {"source": "model", "url": "https://example.com/edited.png"})
+        self.assertEqual(result["source"], "model")
+        self.assertEqual(result["url"], "https://example.com/edited.png")
+        self.assertEqual(result["compliance"]["summary"]["status"], "pass")
         self.assertIn("背景颜色改成深绿色", calls[0]["prompt"])
         self.assertEqual(calls[0]["image_bytes"], b"abc")
         self.assertEqual(calls[0]["size"], "800x800")
+
+    async def test_layered_generation_builds_base_and_default_language_version(self):
+        image = Image.new("RGB", (320, 320), (230, 244, 235))
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        data_url = "data:image/png;base64," + b64encode(buffer.getvalue()).decode("ascii")
+        module = next(module for module in DEFAULT_MODULES if module["id"] == "main_hero_selling_point")
+
+        with patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(side_effect=lambda url, folder: url)):
+            result = await build_layered_generated_image(
+                module=module,
+                product_info={"product_name": "修护精华", "core_selling_points": ["深层补水"], "functions": ["水润透亮"]},
+                base_url=data_url,
+            )
+
+        self.assertEqual(result["module_id"], "main_hero_selling_point")
+        self.assertEqual(result["base_url"], data_url)
+        self.assertTrue(result["url"].startswith("data:image/png;base64,"))
+        self.assertTrue(result["text_layers"])
+        self.assertIn("zh-CN", result["language_versions"])
+
+    async def test_render_language_version_translates_then_reuses_base_image(self):
+        image = Image.new("RGB", (320, 320), (240, 240, 255))
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        data_url = "data:image/png;base64," + b64encode(buffer.getvalue()).decode("ascii")
+        layers = build_text_layers(
+            {"product_name": "修护精华", "core_selling_points": ["深层补水"], "functions": ["水润透亮"]},
+            next(module for module in DEFAULT_MODULES if module["id"] == "main_hero_selling_point"),
+        )
+
+        with patch("app.routers.projects.translate_text_layers", new=AsyncMock(return_value=[{**layers[0], "text": "Deep Hydration"}])):
+            with patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(side_effect=lambda url, folder: url)):
+                result = await render_layered_language_version(base_url=data_url, layers=layers[:1], language="en")
+
+        self.assertEqual(result["language"], "en")
+        self.assertEqual(result["language_label"], "English")
+        self.assertTrue(result["url"].startswith("data:image/png;base64,"))
+        self.assertEqual(result["layers"][0]["text"], "Deep Hydration")
+
+    async def test_layered_generation_includes_compliance_report(self):
+        image = Image.new("RGB", (320, 320), (230, 244, 235))
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        data_url = "data:image/png;base64," + b64encode(buffer.getvalue()).decode("ascii")
+        module = next(module for module in DEFAULT_MODULES if module["id"] == "main_hero_selling_point")
+
+        with patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(side_effect=lambda url, folder: url)):
+            result = await build_layered_generated_image(
+                module=module,
+                product_info={"product_name": "修护精华", "core_selling_points": ["7天治愈敏感肌"], "functions": ["水润透亮"]},
+                base_url=data_url,
+                platform_id="tmall",
+            )
+
+        self.assertEqual(result["compliance"]["summary"]["status"], "block")
+        self.assertEqual(result["language_versions"]["zh-CN"]["compliance"]["summary"]["status"], "block")
+
+    async def test_render_language_version_includes_compliance_report(self):
+        image = Image.new("RGB", (320, 320), (240, 240, 255))
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        data_url = "data:image/png;base64," + b64encode(buffer.getvalue()).decode("ascii")
+        layers = [
+            {
+                "id": "title",
+                "role": "title",
+                "source_text": "深层补水",
+                "text": "深层补水",
+                "x": 0.1,
+                "y": 0.1,
+                "width": 0.5,
+                "height": 0.1,
+                "font_size": 0.06,
+            }
+        ]
+
+        with patch("app.routers.projects.translate_text_layers", new=AsyncMock(return_value=[{**layers[0], "text": "100% effective"}])):
+            with patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(side_effect=lambda url, folder: url)):
+                result = await render_layered_language_version(base_url=data_url, layers=layers, language="en", platform_id="tmall")
+
+        self.assertEqual(result["compliance"]["summary"]["status"], "block")
+        self.assertEqual(result["compliance"]["issues"][0]["category"], "absolute_claim")
+
+    async def test_edit_generated_image_returns_instruction_compliance(self):
+        previous_key = environ.get("IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        try:
+            with patch("app.routers.projects.call_image_edit_model", new=AsyncMock(return_value=["https://example.com/edited.png"])):
+                result = await edit_generated_image(
+                    "data:image/png;base64,YWJj",
+                    "把标题改成全网最低价",
+                    platform_size="800x800",
+                    platform_id="tmall",
+                )
+        finally:
+            if previous_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_key
+
+        self.assertEqual(result["source"], "model")
+        self.assertEqual(result["compliance"]["summary"]["status"], "block")
+
+    def test_text_layer_renderer_returns_png_data_url(self):
+        image = Image.new("RGB", (240, 240), (255, 255, 255))
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        data_url, warnings = render_text_layers_to_data_url(
+            buffer.getvalue(),
+            [
+                {
+                    "id": "title",
+                    "text": "Deep Hydration",
+                    "x": 0.08,
+                    "y": 0.08,
+                    "width": 0.70,
+                    "height": 0.20,
+                    "font_size": 0.08,
+                    "max_lines": 2,
+                    "weight": "bold",
+                }
+            ],
+            language="en",
+        )
+
+        self.assertTrue(data_url.startswith("data:image/png;base64,"))
+        self.assertIsInstance(warnings, list)
 
     async def test_compose_long_jpeg_stacks_images_vertically(self):
         def data_url(color: tuple[int, int, int]) -> str:
@@ -312,6 +562,47 @@ class DownloadContractTests(unittest.TestCase):
         self.assertIn("attachment", response.headers["content-disposition"])
         self.assertNotEqual(response.headers["content-type"], "application/json")
         self.assertTrue(response.content.startswith(b"\x89PNG\r\n"))
+
+    def test_text_compliance_endpoint_returns_report(self):
+        response = self.make_client().post(
+            "/api/projects/compliance/check-text",
+            json={
+                "platform_id": "tmall",
+                "items": [
+                    {
+                        "text": "7天治愈敏感肌",
+                        "location": {"source_type": "field", "field": "core_selling_points"},
+                    }
+                ],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["source"], "rules")
+        self.assertEqual(payload["summary"]["status"], "block")
+        self.assertEqual(payload["issues"][0]["term"], "治愈")
+
+    def test_image_compliance_endpoint_runs_ocr_before_rules(self):
+        class FakeOcrProvider:
+            source = "fake_ocr"
+
+            async def extract_text(self, image_bytes):
+                return [OcrTextBlock(text="100%有效", confidence=0.91, box=(0, 0, 80, 24))]
+
+        with patch("app.routers.projects.create_default_ocr_provider", return_value=FakeOcrProvider()):
+            response = self.make_client().post(
+                "/api/projects/compliance/check-images",
+                json={"platform_id": "tmall", "image_urls": [self.png_data_url()]},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["source"], "image_ocr")
+        self.assertEqual(payload["ocr_source"], "fake_ocr")
+        self.assertEqual(payload["summary"]["status"], "block")
+        self.assertEqual(payload["issues"][0]["term"], "100%")
+        self.assertEqual(payload["extracted_texts"][0]["text"], "100%有效")
 
 
 if __name__ == "__main__":

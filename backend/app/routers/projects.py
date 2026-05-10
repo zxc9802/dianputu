@@ -15,7 +15,7 @@ from uuid import uuid4
 
 from app.core.config import get_model_settings
 from app.demo_data import DEFAULT_MODULES, DEMO_IMAGE_URLS, STYLE_OPTIONS
-from app.services.compliance_checker import check_text_items
+from app.services.compliance_checker import OcrProvider, VisionModelOcrProvider, check_image_items, check_text_items
 from app.services.image_model import call_image_edit_model, call_image_model
 from app.services.language_renderer import (
     DEFAULT_LANGUAGE,
@@ -28,6 +28,7 @@ from app.services.language_renderer import (
 )
 from app.services.object_storage import upload_bytes_to_object_storage, upload_data_url_to_object_storage
 from app.services.prompt_builder import build_module_image_prompt
+from app.services.product_compositor import compose_fixed_product_image
 from app.services.text_model import call_text_model
 
 
@@ -36,6 +37,7 @@ MODEL_GATEWAY_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKi
 WHITE_BACKGROUND_MODULE_IDS = {"main_white_bg", "campaign_white_bg"}
 REFERENCE_GENERATE_MODE = "reference_generate"
 FIXED_PRODUCT_COMPOSITE_MODE = "fixed_product_composite"
+FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR = "固定产品合成需要先上传产品图，系统会把上传图作为产品母版复用，避免模型反复重绘导致包装、Logo 或瓶身变形。"
 STYLE_SAMPLE_IMAGE_SIZE = "1024x1024"
 GENERATION_JOBS: dict[str, dict[str, Any]] = {}
 GENERATION_JOB_TTL_SECONDS = 3600  # 1 hour
@@ -560,6 +562,36 @@ def check_project_text_compliance(
     return check_text_items(items, platform_id=platform_id, product_info=product_info, debug=debug)
 
 
+def create_default_ocr_provider() -> OcrProvider:
+    return VisionModelOcrProvider(get_model_settings().text)
+
+
+async def check_project_image_compliance(
+    image_urls: list[str],
+    *,
+    platform_id: str | None = None,
+    product_info: dict[str, Any] | None = None,
+    ocr_provider: OcrProvider | None = None,
+    debug: bool = False,
+) -> dict[str, Any]:
+    images: list[dict[str, Any]] = []
+    for image_index, image_url in enumerate(image_urls[:20]):
+        image: dict[str, Any] = {"url": image_url, "field": "image", "image_index": image_index}
+        try:
+            image["bytes"] = await _read_image_bytes(image_url)
+        except Exception as exc:
+            image["bytes"] = b""
+            image["read_error"] = str(exc)
+        images.append(image)
+    return await check_image_items(
+        images,
+        ocr_provider=ocr_provider or create_default_ocr_provider(),
+        platform_id=platform_id,
+        product_info=product_info,
+        debug=debug,
+    )
+
+
 async def build_layered_generated_image(
     *,
     module: dict[str, Any],
@@ -613,6 +645,34 @@ def build_fixed_product_composite_prompt(module: dict[str, Any], background_url:
     )
 
 
+def build_fixed_product_background_prompt(module_prompt: str, module: dict[str, Any]) -> str:
+    return "\n".join(
+        [
+            "【固定产品合成：背景层生成】",
+            "本次只生成背景层、场景层、氛围层、道具层和非产品信息图形。",
+            "不要生成任何产品瓶身、包装盒、商品实物、Logo、标签文字、品牌字样或相似 SKU。",
+            "为后续程序贴入同一个上传产品母版预留自然落位，并准备柔和接触阴影、反光和环境光区域。",
+            "画面可以包含电商文案留白、抽象图表、原料、人物、实验室或使用场景，但产品本体必须完全留给程序后期合成。",
+            f"当前模块：{module.get('name') or module.get('id')}",
+            "",
+            module_prompt,
+        ]
+    )
+
+
+def _png_data_url(image_bytes: bytes) -> str:
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
+
+
+async def _compose_fixed_product_image_url(*, module_id: str, background_url: str, product_url: str) -> str:
+    background_bytes = await _read_image_bytes(background_url)
+    product_bytes = await _read_image_bytes(product_url)
+    composed_bytes = compose_fixed_product_image(background_bytes, product_bytes, module_id=module_id)
+    data_url = _png_data_url(composed_bytes)
+    return await upload_image_url_if_configured(data_url, f"generated/{module_id}")
+
+
 async def _generate_module_image(
     *,
     settings: Any,
@@ -630,15 +690,13 @@ async def _generate_module_image(
     image_model_id: str | None = None,
     generation_mode: str = REFERENCE_GENERATE_MODE,
     layered_text: bool = False,
+    target_language: str | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
     logger.info("detail image generation start %s/%s module=%s", module_index, total_modules, module["id"])
     module_id = str(module["id"])
     if module_id in WHITE_BACKGROUND_MODULE_IDS and reference_images:
         return {"module_id": module_id, "url": reference_images[0]}, None
-    model_reference_images = [
-        *(reference_images or []),
-        *(style_reference_images or []),
-    ]
+    fixed_product_mode = generation_mode == FIXED_PRODUCT_COMPOSITE_MODE and bool(reference_images)
 
     prompt = build_module_image_prompt(
         product_info=product_info,
@@ -649,14 +707,20 @@ async def _generate_module_image(
         promotion_info=promotion_info,
         has_style_reference=bool(style_reference_images),
         text_layer_mode=layered_text,
+        target_language=target_language,
     )
+    generation_prompt = build_fixed_product_background_prompt(prompt, module) if fixed_product_mode else prompt
+    model_reference_images = [*(style_reference_images or [])] if fixed_product_mode else [
+        *(reference_images or []),
+        *(style_reference_images or []),
+    ]
     image_settings = settings.image_options.get(image_model_id or settings.image.id, settings.image)
     image_label = f"{image_settings.label} ({image_settings.model})"
     primary_error = ""
     urls: list[str] = []
     if image_settings.api_key:
         try:
-            urls = await call_image_model(image_settings, prompt, image=model_reference_images or None, size=platform_size)
+            urls = await call_image_model(image_settings, generation_prompt, image=model_reference_images or None, size=platform_size)
         except Exception as primary_exc:
             primary_error = f"{image_label} failed: {primary_exc}"
             logger.warning("primary image generation failed %s/%s module=%s error=%s", module_index, total_modules, module["id"], primary_exc)
@@ -664,32 +728,27 @@ async def _generate_module_image(
         primary_error = f"{image_label} is not configured"
 
     if urls:
-        if generation_mode == FIXED_PRODUCT_COMPOSITE_MODE and reference_images:
+        if fixed_product_mode:
             try:
-                product_bytes = await _read_image_bytes(reference_images[0])
-                composite_urls = await call_image_edit_model(
-                    image_settings,
-                    build_fixed_product_composite_prompt(module, urls[0]),
-                    image_bytes=product_bytes,
-                    size=platform_size,
+                image_url = await _compose_fixed_product_image_url(
+                    module_id=module_id,
+                    background_url=urls[0],
+                    product_url=reference_images[0],
                 )
             except Exception as composite_exc:
                 logger.warning("fixed product composite failed %s/%s module=%s error=%s", module_index, total_modules, module["id"], composite_exc)
                 return None, f"{module['id']}: fixed product composite failed: {composite_exc}"
-            if composite_urls:
-                image_url = await upload_image_url_if_configured(composite_urls[0], f"generated/{module_id}")
-                logger.info("detail image generation done %s/%s module=%s mode=fixed_product_composite", module_index, total_modules, module["id"])
-                if layered_text:
-                    layered_image = await build_layered_generated_image(
-                        module=module,
-                        product_info=product_info,
-                        base_url=image_url,
-                        promotion_info=promotion_info,
-                        platform_id=platform_id,
-                    )
-                    return layered_image, None
-                return {"module_id": module["id"], "url": image_url}, None
-            return None, f"{module['id']}: fixed product composite returned empty content"
+            logger.info("detail image generation done %s/%s module=%s mode=fixed_product_composite", module_index, total_modules, module["id"])
+            if layered_text:
+                layered_image = await build_layered_generated_image(
+                    module=module,
+                    product_info=product_info,
+                    base_url=image_url,
+                    promotion_info=promotion_info,
+                    platform_id=platform_id,
+                )
+                return layered_image, None
+            return {"module_id": module["id"], "url": image_url}, None
         image_url = await upload_image_url_if_configured(urls[0], f"generated/{module_id}")
         logger.info("detail image generation done %s/%s module=%s", module_index, total_modules, module["id"])
         if layered_text:
@@ -707,12 +766,22 @@ async def _generate_module_image(
     if image_settings.id == settings.image.id and settings.fallback_image.api_key:
         fallback_label = f"{settings.fallback_image.label} ({settings.fallback_image.model})"
         try:
-            fallback_urls = await call_image_model(settings.fallback_image, prompt, image=model_reference_images or None, size=platform_size)
+            fallback_urls = await call_image_model(settings.fallback_image, generation_prompt, image=model_reference_images or None, size=platform_size)
         except Exception as fallback_exc:
             logger.warning("fallback image generation failed %s/%s module=%s error=%s", module_index, total_modules, module["id"], fallback_exc)
             return None, f"{module['id']}: primary {primary_error}; fallback {fallback_label} failed: {fallback_exc}"
         if fallback_urls:
-            image_url = await upload_image_url_if_configured(fallback_urls[0], f"generated/{module_id}")
+            if fixed_product_mode:
+                try:
+                    image_url = await _compose_fixed_product_image_url(
+                        module_id=module_id,
+                        background_url=fallback_urls[0],
+                        product_url=reference_images[0],
+                    )
+                except Exception as composite_exc:
+                    return None, f"{module['id']}: primary {primary_error}; fallback fixed product composite failed: {composite_exc}"
+            else:
+                image_url = await upload_image_url_if_configured(fallback_urls[0], f"generated/{module_id}")
             logger.info("detail image generation done %s/%s module=%s source=fallback", module_index, total_modules, module["id"])
             if layered_text:
                 layered_image = await build_layered_generated_image(
@@ -742,11 +811,13 @@ async def generate_detail_images(
     image_model_id: str | None = None,
     generation_mode: str | None = REFERENCE_GENERATE_MODE,
     layered_text: bool = False,
+    target_language: str | None = None,
 ) -> dict[str, Any]:
     settings = get_model_settings()
     image_settings = settings.image_options.get(image_model_id or settings.image.id, settings.image)
     enabled_modules = [module for module in DEFAULT_MODULES if module["id"] in module_ids]
     style = next((item for item in STYLE_OPTIONS if item["id"] == style_id), STYLE_OPTIONS[0])
+    normalized_generation_mode = generation_mode or REFERENCE_GENERATE_MODE
     missing_white_background_reference = [
         module for module in enabled_modules if str(module["id"]) in WHITE_BACKGROUND_MODULE_IDS and not reference_images
     ]
@@ -755,6 +826,12 @@ async def generate_detail_images(
             "source": "error",
             "images": [],
             "errors": [f"{module['id']}: {WHITE_BACKGROUND_REFERENCE_REQUIRED_ERROR}" for module in missing_white_background_reference],
+        }
+    if normalized_generation_mode == FIXED_PRODUCT_COMPOSITE_MODE and enabled_modules and not reference_images:
+        return {
+            "source": "error",
+            "images": [],
+            "errors": [f"{module['id']}: {FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR}" for module in enabled_modules],
         }
 
     generated_images: list[dict[str, Any]] = []
@@ -783,8 +860,9 @@ async def generate_detail_images(
                     platform_size=platform_size,
                     platform_id=platform_id,
                     image_model_id=image_model_id,
-                    generation_mode=generation_mode or REFERENCE_GENERATE_MODE,
+                    generation_mode=normalized_generation_mode,
                     layered_text=layered_text,
+                    target_language=target_language,
                 )
                 for index, module in enumerate(enabled_modules, start=1)
             )
@@ -1008,6 +1086,7 @@ try:
         image_model_id: str | None = None
         generation_mode: str | None = REFERENCE_GENERATE_MODE
         layered_text: bool = False
+        target_language: str | None = None
 
     def _generation_payload_from_request(request: GenerateRequest) -> dict[str, Any]:
         return {
@@ -1023,6 +1102,7 @@ try:
             "image_model_id": request.image_model_id,
             "generation_mode": request.generation_mode,
             "layered_text": request.layered_text,
+            "target_language": request.target_language,
         }
 
     async def run_generation_job(job_id: str, payload: dict[str, Any]) -> None:
@@ -1054,6 +1134,7 @@ try:
                 image_model_id=payload.get("image_model_id"),
                 generation_mode=payload.get("generation_mode") or REFERENCE_GENERATE_MODE,
                 layered_text=bool(payload.get("layered_text")),
+                target_language=payload.get("target_language"),
             )
             job.update(
                 {
@@ -1113,6 +1194,8 @@ try:
     class ComplianceCheckImagesRequest(BaseModel):
         image_urls: list[str] = Field(default_factory=list)
         platform_id: str | None = None
+        product_info: dict[str, Any] | None = None
+        debug: bool = False
 
     class ComposeImageItem(BaseModel):
         module_id: str
@@ -1166,6 +1249,7 @@ try:
             image_model_id=request.image_model_id,
             generation_mode=request.generation_mode,
             layered_text=request.layered_text,
+            target_language=request.target_language,
         )
 
     @router.post("/generate/jobs")
@@ -1231,13 +1315,12 @@ try:
 
     @router.post("/compliance/check-images")
     async def check_project_image_compliance_endpoint(request: ComplianceCheckImagesRequest) -> dict[str, Any]:
-        return {
-            "source": "ocr_noop",
-            "summary": {"status": "pass", "block_count": 0, "warn_count": 0, "review_count": 0},
-            "issues": [],
-            "image_count": len(request.image_urls),
-            "platform_id": request.platform_id,
-        }
+        return await check_project_image_compliance(
+            request.image_urls,
+            platform_id=request.platform_id,
+            product_info=request.product_info,
+            debug=request.debug,
+        )
 
     @router.post("/download-image")
     async def download_project_image(request: DownloadImageRequest) -> Response:

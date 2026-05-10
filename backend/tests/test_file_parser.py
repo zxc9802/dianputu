@@ -56,17 +56,48 @@ def _make_xlsx_bytes(sheets: dict[str, list[list[str | int | None]]]) -> bytes:
 # ---------------------------------------------------------------------------
 
 def _make_pdf_bytes(pages: list[str]) -> bytes:
-    """Create a minimal PDF file in memory with text pages."""
-    import fitz  # PyMuPDF
-
-    doc = fitz.open()
+    """Create a minimal PDF file in memory with text pages (no external deps)."""
+    # Build a minimal valid PDF with raw syntax.
+    objects: list[bytes] = []
+    # Object 1: Catalog
+    objects.append(b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n")
+    # Object 2: Pages (placeholder, will be replaced)
+    page_obj_ids: list[int] = []
+    next_id = 3
+    # Reserve id 2 for Pages object; build page objects first.
+    page_objects: list[bytes] = []
     for page_text in pages:
-        page = doc.new_page()
-        page.insert_text((72, 72), page_text, fontsize=12)
-    buf = io.BytesIO()
-    doc.save(buf)
-    doc.close()
-    return buf.getvalue()
+        page_id = next_id
+        content_id = next_id + 1
+        font_id = next_id + 2
+        next_id += 3
+        page_obj_ids.append(page_id)
+        # Font object
+        font_obj = f"{font_id} 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n".encode()
+        # Content stream
+        escaped = page_text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        stream = f"BT /F1 12 Tf 72 720 Td ({escaped}) Tj ET".encode()
+        content_obj = f"{content_id} 0 obj\n<< /Length {len(stream)} >>\nstream\n".encode() + stream + b"\nendstream\nendobj\n"
+        # Page object
+        page_obj = f"{page_id} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents {content_id} 0 R /Resources << /Font << /F1 {font_id} 0 R >> >> >>\nendobj\n".encode()
+        page_objects.extend([page_obj, content_obj, font_obj])
+    # Build Pages object
+    kids = " ".join(f"{pid} 0 R" for pid in page_obj_ids)
+    pages_obj = f"2 0 obj\n<< /Type /Pages /Kids [{kids}] /Count {len(page_obj_ids)} >>\nendobj\n".encode()
+    objects.append(pages_obj)
+    objects.extend(page_objects)
+    # Assemble PDF
+    body = b"%PDF-1.4\n"
+    offsets: list[int] = []
+    for obj in objects:
+        offsets.append(len(body))
+        body += obj
+    xref_offset = len(body)
+    xref = f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    for off in offsets:
+        xref += f"{off:010d} 00000 n \n".encode()
+    xref += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n".encode()
+    return body + xref
 
 
 # ===========================================================================

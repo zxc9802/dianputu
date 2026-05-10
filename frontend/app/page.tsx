@@ -12,6 +12,8 @@ import { UploadStep } from "@/components/UploadStep";
 import { COMMERCE_PLATFORMS, DEMO_MODEL_CONFIG, OFFICIAL_PROJECT_TEMPLATES } from "@/lib/constants";
 import {
   analyzeUploadedMaterials,
+  checkImageCompliance,
+  checkTextCompliance,
   editGeneratedImage,
   fetchModelConfig,
   fetchProjectDefaults,
@@ -19,6 +21,7 @@ import {
   generateImages,
   planAiCustomStyle
 } from "@/lib/api";
+import { buildProductInfoComplianceItems } from "@/lib/compliance";
 import { useAppViewer } from "@/lib/client/app-session";
 import { saveHistory } from "@/lib/historyApi";
 import {
@@ -30,21 +33,26 @@ import {
 } from "@/lib/productInfo";
 import {
   appendImageVersions,
+  addLanguageVersion,
   applyTemplateToModules,
   createTemplateFromProject,
   enableModuleForSingleGeneration,
+  formatImageGenerationSummaryStatus,
   getSelectedGeneratedImages,
   resolveHistoryIdAfterSave,
   resolveReusableHistoryId,
   runParallelImageGeneration,
+  selectLanguageVersion,
   selectImageVersion
 } from "@/lib/projectEnhancements";
 import type {
   CommercePlatformId,
+  ComplianceReport,
   GenerationMode,
   GeneratedImage,
   GeneratedImageVersionState,
   ImageGroup,
+  LanguageCode,
   MaterialPayload,
   ModuleConfig,
   PersistedProjectState,
@@ -60,10 +68,17 @@ import type {
 
 const order: StepId[] = ["upload", "review", "style", "modules", "preview"];
 const PROJECT_STATE_STORAGE_KEY = "detail-image-agent-project-state-v1";
+const PROJECT_STATE_SCHEMA_VERSION = 2;
 const DEFAULT_CATEGORY = "";
 const DEFAULT_STYLE_ID = "green_repair";
 const DEFAULT_PLATFORM_ID: CommercePlatformId = "tmall";
 const DEFAULT_GENERATION_MODE: GenerationMode = "reference_generate";
+const LANGUAGE_LABELS: Record<LanguageCode, string> = {
+  "zh-CN": "中文",
+  en: "English",
+  th: "ไทย",
+  ms: "Malay"
+};
 
 const groupLabel: Record<ImageGroup, string> = {
   main: "主图",
@@ -74,6 +89,7 @@ const groupLabel: Record<ImageGroup, string> = {
 type GenerationProgress = { isGenerating: boolean; completed: number; total: number; runningModuleIds: string[]; errorCount: number };
 type GenerationProgressMap = Record<ImageGroup, GenerationProgress>;
 type ImageVersionStore = { versions: GeneratedImageVersionState; selectedVersionIds: Record<string, string> };
+type LanguageGenerationState = { moduleId: string; versionId: string; language: LanguageCode } | null;
 type WorkspaceSnapshot = {
   state: PersistedProjectState;
   historyId: string | null;
@@ -108,15 +124,28 @@ function previousStep(current: StepId) {
   return order[Math.max(order.indexOf(current) - 1, 0)];
 }
 
+function normalizeGenerationMode(rawMode: unknown, schemaVersion?: number): GenerationMode {
+  const mode =
+    rawMode === "reference_generate" || rawMode === "fixed_product_composite"
+      ? rawMode
+      : DEFAULT_GENERATION_MODE;
+  if (schemaVersion !== PROJECT_STATE_SCHEMA_VERSION && mode === "fixed_product_composite") {
+    return DEFAULT_GENERATION_MODE;
+  }
+  return mode;
+}
+
 function readPersistedProjectState(): PersistedProjectState | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(PROJECT_STATE_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<PersistedProjectState>;
+    const schemaVersion = typeof parsed.projectStateSchemaVersion === "number" ? parsed.projectStateSchemaVersion : undefined;
     const activeImageGroup = ["main", "campaign", "detail"].includes(parsed.activeImageGroup ?? "") ? (parsed.activeImageGroup as ImageGroup) : "main";
     const styleSource: StyleSource = parsed.styleSource === "ai_custom" ? parsed.styleSource : "preset";
     return {
+      projectStateSchemaVersion: PROJECT_STATE_SCHEMA_VERSION,
       productInfo: parsed.productInfo ?? null,
       hasAiProductInfo: Boolean(parsed.hasAiProductInfo && parsed.productInfo),
       uploadedFiles: Array.isArray(parsed.uploadedFiles) ? parsed.uploadedFiles : [],
@@ -127,7 +156,7 @@ function readPersistedProjectState(): PersistedProjectState | null {
       activeImageGroup,
       selectedPlatformId: COMMERCE_PLATFORMS.some((platform) => platform.id === parsed.selectedPlatformId) ? (parsed.selectedPlatformId as CommercePlatformId) : DEFAULT_PLATFORM_ID,
       selectedImageModelId: parsed.selectedImageModelId || "primary",
-      generationMode: parsed.generationMode === "fixed_product_composite" ? parsed.generationMode : DEFAULT_GENERATION_MODE,
+      generationMode: normalizeGenerationMode(parsed.generationMode, schemaVersion),
       promotionInfo: parsed.promotionInfo || "",
       modules: Array.isArray(parsed.modules) ? parsed.modules : [],
       generatedImages: Array.isArray(parsed.generatedImages) ? parsed.generatedImages : [],
@@ -177,6 +206,7 @@ function createProjectStateSnapshot(input: {
   statusText: string;
 }): PersistedProjectState {
   return {
+    projectStateSchemaVersion: PROJECT_STATE_SCHEMA_VERSION,
     productInfo: input.productInfo,
     hasAiProductInfo: input.hasAiProductInfo,
     uploadedFiles: input.uploadedFiles,
@@ -244,11 +274,16 @@ export default function Home() {
   const [imageVersionStore, setImageVersionStore] = useState<ImageVersionStore>(() => createEmptyImageVersionStore());
   const [userTemplates, setUserTemplates] = useState<ProjectTemplate[]>([]);
   const [generationProgress, setGenerationProgress] = useState<GenerationProgressMap>(() => createIdleGenerationProgress());
+  const [languageGeneration, setLanguageGeneration] = useState<LanguageGenerationState>(null);
   const [statusText, setStatusText] = useState("原型预览");
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFileInfo[]>([]);
   const [manualFieldKeys, setManualFieldKeys] = useState<ProductInfoFieldKey[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisSource, setAnalysisSource] = useState("");
+  const [reviewCompliance, setReviewCompliance] = useState<ComplianceReport | null>(null);
+  const [promotionCompliance, setPromotionCompliance] = useState<ComplianceReport | null>(null);
+  const [imageComplianceReport, setImageComplianceReport] = useState<ComplianceReport | null>(null);
+  const [isCheckingImageCompliance, setIsCheckingImageCompliance] = useState(false);
   const [hasRestoredProjectState, setHasRestoredProjectState] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
@@ -274,7 +309,7 @@ export default function Home() {
         setSelectedCategory(restored.selectedCategory);
         setSelectedPlatformId(restored.selectedPlatformId);
         setSelectedImageModelId(restored.selectedImageModelId || models.imageGeneration.defaultOptionId || "primary");
-        setSelectedGenerationMode(restored.generationMode ?? DEFAULT_GENERATION_MODE);
+        setSelectedGenerationMode(normalizeGenerationMode(restored.generationMode, restored.projectStateSchemaVersion));
         setActiveImageGroup(restored.activeImageGroup);
         setPromotionInfo(restored.promotionInfo);
         setModules(mergeRestoredModules(defaults.modules, restored.modules));
@@ -314,6 +349,21 @@ export default function Home() {
       statusText
     }));
   }, [activeImageGroup, customStyle, hasAiProductInfo, hasRestoredProjectState, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedGenerationMode, selectedImageModelId, selectedPlatformId, selectedStyleId, statusText, styleSource, uploadedFiles, userTemplates]);
+
+  useEffect(() => {
+    if (!hasAiProductInfo || !productInfo) {
+      setReviewCompliance(null);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void checkTextCompliance(buildProductInfoComplianceItems(productInfo), selectedPlatformId, productInfo).then(setReviewCompliance);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [hasAiProductInfo, productInfo, selectedPlatformId]);
+
+  useEffect(() => {
+    setImageComplianceReport(null);
+  }, [activeImageGroup, imageVersionStore, selectedPlatformId]);
 
   useEffect(() => {
     function syncStepFromHash() {
@@ -372,7 +422,7 @@ export default function Home() {
     setSelectedCategory(state.selectedCategory);
     setSelectedPlatformId(state.selectedPlatformId);
     setSelectedImageModelId(state.selectedImageModelId || modelConfig.imageGeneration.defaultOptionId || "primary");
-    setSelectedGenerationMode(state.generationMode ?? DEFAULT_GENERATION_MODE);
+    setSelectedGenerationMode(normalizeGenerationMode(state.generationMode, state.projectStateSchemaVersion));
     setActiveImageGroup(state.activeImageGroup);
     setPromotionInfo(state.promotionInfo);
     if (state.modules?.length) {
@@ -467,6 +517,82 @@ export default function Home() {
     }));
   }
 
+  function selectImageLanguage(moduleId: string, versionId: string, language: LanguageCode) {
+    setImageVersionStore((current) => selectLanguageVersion(current, moduleId, versionId, language));
+  }
+
+  async function handleGenerateLanguage(moduleId: string, versionId: string, language: LanguageCode) {
+    if (languageGeneration) return;
+    const module = modules.find((item) => item.id === moduleId);
+    if (!module) {
+      setStatusText("未找到要生成语言版本的模块");
+      return;
+    }
+    const referenceImages = uploadedFiles
+      .filter((file) => file.slot === "product_image" && file.type.startsWith("image/") && file.dataUrl)
+      .map((file) => file.dataUrl as string)
+      .slice(0, 4);
+    if (referenceImages.length === 0) {
+      setStatusText("请先上传产品图，避免生成结果与原产品不一致");
+      return;
+    }
+    const activeCustomStyle = styleSource === "ai_custom" && customStyle ? customStyle : undefined;
+    const group = moduleGroup(module);
+    const languageRequest = { targetLanguage: language };
+    setLanguageGeneration({ moduleId, versionId, language });
+    setStatusText(`正在重新生成 ${LANGUAGE_LABELS[language]} 整图版本`);
+    try {
+      const result = await generateImages(
+        [moduleId],
+        selectedStyleId,
+        productInfo ?? undefined,
+        referenceImages,
+        group === "campaign" ? promotionInfo : "",
+        selectedPlatform.generationSize,
+        [],
+        activeCustomStyle,
+        selectedImageModelId,
+        selectedGenerationMode,
+        selectedPlatformId,
+        false,
+        languageRequest.targetLanguage
+      );
+      const generated = result.images[0];
+      if (result.source !== "error" && generated?.url) {
+        setImageVersionStore((current) =>
+          addLanguageVersion(current, moduleId, versionId, {
+            language,
+            language_label: LANGUAGE_LABELS[language],
+            url: generated.url,
+            compliance: generated.compliance,
+            createdAt: Date.now()
+          })
+        );
+        setStatusText(`已重新生成 ${LANGUAGE_LABELS[language]} 整图版本`);
+      } else {
+        setStatusText(`多语言整图生成失败：${result.errors?.[0] ?? "模型未返回图片"}`);
+      }
+    } finally {
+      setLanguageGeneration(null);
+    }
+  }
+
+  async function handleCheckImageCompliance(imageUrls: string[]) {
+    if (!imageUrls.length) {
+      setStatusText("当前预览区暂无可检查图片");
+      return;
+    }
+    setIsCheckingImageCompliance(true);
+    setStatusText("正在进行图片 OCR 合规复查");
+    try {
+      const report = await checkImageCompliance(imageUrls, selectedPlatformId, productInfo);
+      setImageComplianceReport(report);
+      setStatusText(`图片 OCR 合规复查：${report.summary.status === "pass" ? "通过" : "需查看风险提示"}`);
+    } finally {
+      setIsCheckingImageCompliance(false);
+    }
+  }
+
   async function handleEditImage(moduleId: string, imageUrl: string, instruction: string) {
     const trimmed = instruction.trim();
     if (!trimmed) {
@@ -474,10 +600,10 @@ export default function Home() {
       return;
     }
     setStatusText("AI 微调中");
-    const result = await editGeneratedImage(imageUrl, trimmed, selectedPlatform.generationSize, selectedImageModelId);
+    const result = await editGeneratedImage(imageUrl, trimmed, selectedPlatform.generationSize, selectedImageModelId, selectedPlatformId);
     if (result.source === "model" && result.url) {
       setImageVersionStore((current) =>
-        appendImageVersions(current, [{ module_id: moduleId, url: result.url as string }], "edit", Date.now(), trimmed)
+        appendImageVersions(current, [{ module_id: moduleId, url: result.url as string, compliance: result.compliance }], "edit", Date.now(), trimmed)
       );
       setStatusText("微调完成，已加入新版本");
     } else {
@@ -635,6 +761,14 @@ export default function Home() {
     if (targetModule) {
       setModules((current) => enableModuleForSingleGeneration(current, targetModule.id));
     }
+    if (group === "campaign") {
+      const report = await checkTextCompliance(
+        [{ text: promotionInfo, location: { source_type: "promotion", field: "promotion_info" } }],
+        selectedPlatformId,
+        productInfo
+      );
+      setPromotionCompliance(report);
+    }
 
     setGenerationProgress((current) => ({
       ...current,
@@ -662,7 +796,9 @@ export default function Home() {
             [],
             activeCustomStyle,
             selectedImageModelId,
-            selectedGenerationMode
+            selectedGenerationMode,
+            selectedPlatformId,
+            false
           ),
         (module, result, progress) => {
           if (result.images.length) {
@@ -680,13 +816,7 @@ export default function Home() {
           setStatusText(`${groupLabel[group]}并行生成中 ${progress.completed}/${progress.total}`);
         }
       );
-      if (summary.completed === summary.errorCount) {
-        setStatusText(`${groupLabel[group]}生成失败，请查看 Zeabur 后端日志`);
-      } else if (summary.errorCount) {
-        setStatusText(`${groupLabel[group]}部分生成失败：${summary.errorCount}/${summary.total}`);
-      } else {
-        setStatusText(`${groupLabel[group]}已生成`);
-      }
+      setStatusText(formatImageGenerationSummaryStatus(groupLabel[group], summary));
     } finally {
       setGenerationProgress((current) => ({
         ...current,
@@ -888,6 +1018,7 @@ export default function Home() {
         {activeStep === "review" ? (
           <ReviewStep
             productInfo={hasAiProductInfo ? productInfo : null}
+            complianceReport={reviewCompliance}
             onUpdateProductInfo={setProductInfo}
             onBack={() => go(previousStep(activeStep))}
             onNext={() => go(nextStep(activeStep))}
@@ -909,6 +1040,7 @@ export default function Home() {
             templates={allTemplates}
             selectedImageModelId={selectedImageModelId}
             generationMode={selectedGenerationMode}
+            promotionCompliance={promotionCompliance}
             onPromotionInfoChange={setPromotionInfo}
             onPlatformChange={setSelectedPlatformId}
             onImageModelChange={setSelectedImageModelId}
@@ -933,8 +1065,14 @@ export default function Home() {
             selectedPlatform={selectedPlatform}
             isSavingHistory={isSavingHistory}
             canSaveHistory={Boolean(productInfo && hasAiProductInfo && generatedImages.length)}
+            languageGeneration={languageGeneration}
+            imageComplianceReport={imageComplianceReport}
+            isCheckingImageCompliance={isCheckingImageCompliance}
             onGenerateModule={(group, moduleId) => handleGenerate(group, moduleId)}
             onSelectVersion={selectVersion}
+            onSelectLanguage={selectImageLanguage}
+            onGenerateLanguage={(moduleId, versionId, language) => void handleGenerateLanguage(moduleId, versionId, language)}
+            onCheckImagesCompliance={(imageUrls) => void handleCheckImageCompliance(imageUrls)}
             onEditImage={handleEditImage}
             onImageGroupChange={setActiveImageGroup}
             onSaveToHistory={() => void saveToHistory()}

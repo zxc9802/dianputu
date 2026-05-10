@@ -37,6 +37,9 @@ class MaterialAnalysisTests(unittest.TestCase):
         content = messages[0]["content"]
         self.assertEqual(content[0]["type"], "text")
         self.assertIn("main-product.png", content[0]["text"])
+        self.assertIn("material_highlights", content[0]["text"])
+        self.assertIn("最适合打动消费者", content[0]["text"])
+        self.assertIn("资料亮点摘要", content[0]["text"])
         self.assertEqual(content[1]["type"], "image_url")
         self.assertTrue(content[1]["image_url"]["url"].startswith("data:image/png;base64,"))
 
@@ -52,7 +55,8 @@ class MaterialAnalysisTests(unittest.TestCase):
               "ingredients": [{"name": "玻色因", "benefit": "支撑肌肤弹性"}],
               "usage_method": ["早晚使用"],
               "authority_assets": ["实验室测试"],
-              "effect_claims": [{"claim": "细纹改善", "value": "87%", "source_type": "ai_generated"}]
+              "effect_claims": [{"claim": "细纹改善", "value": "87%", "source_type": "ai_generated"}],
+              "material_highlights": ["14 天测试显示细纹观感改善", "实验室测试支撑温和护理卖点"]
             }
             ```
             """
@@ -60,6 +64,7 @@ class MaterialAnalysisTests(unittest.TestCase):
 
         self.assertEqual(product_info["product_name"], "玻色因紧致精华")
         self.assertEqual(product_info["ingredients"][0]["name"], "玻色因")
+        self.assertEqual(product_info["material_highlights"][0], "14 天测试显示细纹观感改善")
         self.assertEqual(product_info["confirmation_status"], "pending")
 
     def test_missing_model_fields_do_not_use_demo_product_copy(self):
@@ -69,6 +74,7 @@ class MaterialAnalysisTests(unittest.TestCase):
         self.assertEqual(product_info["core_selling_points"], [])
         self.assertEqual(product_info["ingredients"], [])
         self.assertEqual(product_info["effect_claims"], [])
+        self.assertEqual(product_info["material_highlights"], [])
 
     def test_model_json_is_normalized_to_custom_style_plan(self):
         style = normalize_style_plan_from_model(
@@ -592,7 +598,9 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
             else:
                 environ["IMAGE_GENERATION_API_KEY"] = previous_key
 
-        self.assertEqual(result, {"source": "model", "url": "https://img.example.com/prod/edited/image.png"})
+        self.assertEqual(result["source"], "model")
+        self.assertEqual(result["url"], "https://img.example.com/prod/edited/image.png")
+        self.assertEqual(result["compliance"]["summary"]["status"], "pass")
 
     async def test_compose_job_uploads_finished_jpeg_to_object_storage(self):
         from app.routers import projects
@@ -677,8 +685,11 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
                 custom_style=None,
                 promotion_info="",
                 platform_size="2048x2048",
+                platform_id=None,
                 image_model_id=None,
                 generation_mode="reference_generate",
+                layered_text=False,
+                target_language=None,
             )
         finally:
             projects.GENERATION_JOBS.pop("generate_test", None)

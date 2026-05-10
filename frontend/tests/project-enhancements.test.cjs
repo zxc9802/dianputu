@@ -36,8 +36,12 @@ const {
   resolveReusableHistoryId,
   resolveHistoryIdAfterSave,
   getSelectedGeneratedImages,
+  formatImageGenerationSummaryStatus,
   resolveImageGenerationConcurrencyLimit,
   runParallelImageGeneration
+  ,
+  addLanguageVersion,
+  selectLanguageVersion
 } = sandbox.module.exports;
 
 const versionState = { versions: {}, selectedVersionIds: {} };
@@ -55,6 +59,68 @@ assert.equal(fourth.selectedVersionIds.hero, fourth.versions.hero[2].id);
 const selected = getSelectedGeneratedImages(fourth.versions, { hero: fourth.versions.hero[0].id });
 assert.deepEqual(JSON.parse(JSON.stringify(selected)), [{ module_id: "hero", url: "v2.png" }]);
 
+const layered = appendImageVersions(
+  { versions: {}, selectedVersionIds: {} },
+  [
+    {
+      module_id: "hero",
+      url: "hero-zh.png",
+      base_url: "hero-base.png",
+      text_layers: [{ id: "title", role: "title", text: "深层补水", x: 0.1, y: 0.1, width: 0.5, height: 0.1, font_size: 0.06 }],
+      language_versions: {
+        "zh-CN": {
+          language: "zh-CN",
+          language_label: "中文",
+          url: "hero-zh.png",
+          compliance: { source: "rules", summary: { status: "block", block_count: 1, warn_count: 0, review_count: 0 }, issues: [{ term: "治愈" }] }
+        }
+      },
+      compliance: { source: "rules", summary: { status: "block", block_count: 1, warn_count: 0, review_count: 0 }, issues: [{ term: "治愈" }] }
+    }
+  ],
+  "model",
+  5000
+);
+const layeredVersion = layered.versions.hero[0];
+assert.equal(layeredVersion.baseUrl, "hero-base.png");
+assert.equal(layeredVersion.selectedLanguage, "zh-CN");
+assert.equal(layeredVersion.languageVersions["zh-CN"].url, "hero-zh.png");
+assert.equal(layeredVersion.compliance.summary.status, "block");
+assert.equal(layeredVersion.languageVersions["zh-CN"].compliance.summary.status, "block");
+
+const withEnglish = addLanguageVersion(layered, "hero", layeredVersion.id, {
+  language: "en",
+  language_label: "English",
+  url: "hero-en.png",
+  layers: [{ id: "title", role: "title", text: "Deep Hydration", x: 0.1, y: 0.1, width: 0.5, height: 0.1, font_size: 0.06 }],
+  compliance: { source: "rules", summary: { status: "warn", block_count: 0, warn_count: 1, review_count: 0 }, issues: [{ term: "100%" }] }
+}, 6000);
+assert.equal(withEnglish.versions.hero[0].selectedLanguage, "en");
+assert.equal(withEnglish.versions.hero[0].languageVersions.en.url, "hero-en.png");
+assert.equal(withEnglish.versions.hero[0].languageVersions.en.compliance.summary.status, "warn");
+assert.deepEqual(JSON.parse(JSON.stringify(getSelectedGeneratedImages(withEnglish.versions, withEnglish.selectedVersionIds))), [{ module_id: "hero", url: "hero-en.png" }]);
+
+const backToChinese = selectLanguageVersion(withEnglish, "hero", layeredVersion.id, "zh-CN");
+assert.equal(backToChinese.versions.hero[0].selectedLanguage, "zh-CN");
+assert.deepEqual(JSON.parse(JSON.stringify(getSelectedGeneratedImages(backToChinese.versions, backToChinese.selectedVersionIds))), [{ module_id: "hero", url: "hero-zh.png" }]);
+
+const nonLayeredBase = appendImageVersions(
+  { versions: {}, selectedVersionIds: {} },
+  [{ module_id: "main_hero_selling_point", url: "main-zh.png" }],
+  "model",
+  7000
+);
+const nonLayeredVersion = nonLayeredBase.versions.main_hero_selling_point[0];
+const nonLayeredEnglish = addLanguageVersion(nonLayeredBase, "main_hero_selling_point", nonLayeredVersion.id, {
+  language: "en",
+  language_label: "English",
+  url: "main-en.png"
+}, 8000);
+assert.equal(nonLayeredEnglish.versions.main_hero_selling_point[0].url, "main-zh.png");
+assert.deepEqual(JSON.parse(JSON.stringify(getSelectedGeneratedImages(nonLayeredEnglish.versions, nonLayeredEnglish.selectedVersionIds))), [{ module_id: "main_hero_selling_point", url: "main-en.png" }]);
+const nonLayeredBackToChinese = selectLanguageVersion(nonLayeredEnglish, "main_hero_selling_point", nonLayeredVersion.id, "zh-CN");
+assert.deepEqual(JSON.parse(JSON.stringify(getSelectedGeneratedImages(nonLayeredBackToChinese.versions, nonLayeredBackToChinese.selectedVersionIds))), [{ module_id: "main_hero_selling_point", url: "main-zh.png" }]);
+
 assert.equal(resolveReusableHistoryId(null, null), undefined);
 assert.equal(resolveReusableHistoryId(null, "history-1"), "history-1");
 assert.equal(resolveReusableHistoryId("history-1", "history-2"), "history-1");
@@ -62,6 +128,14 @@ assert.equal(resolveHistoryIdAfterSave(null, "history-1"), "history-1");
 assert.equal(resolveHistoryIdAfterSave("history-1", "history-2"), "history-1");
 assert.equal(resolveHistoryIdAfterSave(null, "history-1", { trackSavedHistoryId: false }), null);
 assert.equal(resolveHistoryIdAfterSave("copy-history", "original-history", { trackSavedHistoryId: false }), "copy-history");
+assert.equal(
+  formatImageGenerationSummaryStatus("主图", { completed: 1, total: 1, errorCount: 1, errors: ["hero: image model returned empty content"] }),
+  "主图生成失败：hero: image model returned empty content"
+);
+assert.equal(
+  formatImageGenerationSummaryStatus("详情图", { completed: 2, total: 3, errorCount: 1, errors: ["usage: timeout"] }),
+  "详情图部分生成失败：1/3，usage: timeout"
+);
 assert.equal(resolveImageGenerationConcurrencyLimit(), 2);
 sandbox.process.env.NEXT_PUBLIC_IMAGE_GENERATION_CONCURRENCY = "7";
 assert.equal(resolveImageGenerationConcurrencyLimit(), 7);
@@ -162,6 +236,7 @@ async function runAsyncChecks() {
   const summary = await generationPromise;
   assert.equal(summary.completed, 4);
   assert.equal(summary.errorCount, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(summary.errors)), ["usage: minor fallback"]);
   assert.equal(completed.length, 4);
 }
 

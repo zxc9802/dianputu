@@ -30,6 +30,64 @@ export type CommercePlatform = {
   note: string;
 };
 
+export type ComplianceStatus = "pass" | "review" | "warn" | "block";
+export type ComplianceSeverity = "review" | "warn" | "block";
+
+export type ComplianceSummary = {
+  status: ComplianceStatus;
+  block_count: number;
+  warn_count: number;
+  review_count: number;
+};
+
+export type ComplianceIssue = {
+  id?: string;
+  severity?: ComplianceSeverity;
+  category?: string;
+  platform_ids?: CommercePlatformId[];
+  term: string;
+  matched_text?: string;
+  location?: {
+    source_type?: string;
+    module_id?: string;
+    field?: string;
+    language?: string;
+    image_index?: number;
+    block_index?: number;
+    image_url?: string;
+    box?: number[];
+  };
+  reason?: string;
+  suggestion?: string;
+  qualification_hint?: string;
+};
+
+export type ComplianceReport = {
+  source: string;
+  ocr_source?: string;
+  summary: ComplianceSummary;
+  issues: ComplianceIssue[];
+  ignored_matches?: Array<{ term: string; text: string; reason: string }>;
+  extracted_texts?: Array<{
+    text: string;
+    confidence?: number;
+    box?: number[] | null;
+    location?: ComplianceIssue["location"];
+  }>;
+  image_count?: number;
+  warnings?: string[];
+};
+
+export type ComplianceTextItem = {
+  text: string;
+  location: {
+    source_type: string;
+    module_id?: string;
+    field?: string;
+    language?: string;
+  };
+};
+
 export type ModuleConfig = {
   id: string;
   name: string;
@@ -50,6 +108,7 @@ export type ProductInfo = {
   usage_method: string[];
   authority_assets: string[];
   effect_claims: Array<{ claim: string; value: string; source_type: string }>;
+  material_highlights?: string[];
   confirmation_status: "pending" | "confirmed";
 };
 
@@ -68,6 +127,11 @@ export type GeneratedImageVersion = {
   id: string;
   module_id: string;
   url: string;
+  baseUrl?: string;
+  textLayers?: TextLayer[];
+  languageVersions?: LanguageVersionState;
+  selectedLanguage?: LanguageCode;
+  compliance?: ComplianceReport;
   label: string;
   source: string;
   createdAt: number;
@@ -138,9 +202,40 @@ export type PublicModelConfig = {
   };
 };
 
-export type GeneratedImage = { module_id: string; url: string };
+export type GeneratedImage = { module_id: string; url: string; compliance?: ComplianceReport };
+
+export type LanguageCode = "zh-CN" | "en" | "th" | "ms";
+
+export type TextLayer = {
+  id: string;
+  role: string;
+  source_text?: string;
+  text: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  font_size: number;
+  color?: string;
+  align?: "left" | "center" | "right";
+  max_lines?: number;
+  weight?: "regular" | "bold";
+};
+
+export type LanguageVersion = {
+  language: LanguageCode;
+  language_label: string;
+  url: string;
+  layers?: TextLayer[];
+  warnings?: string[];
+  compliance?: ComplianceReport;
+  createdAt?: number;
+};
+
+export type LanguageVersionState = Partial<Record<LanguageCode, LanguageVersion>>;
 
 export type PersistedProjectState = {
+  projectStateSchemaVersion?: number;
   productInfo: ProductInfo | null;
   hasAiProductInfo: boolean;
   uploadedFiles: UploadedFileInfo[];

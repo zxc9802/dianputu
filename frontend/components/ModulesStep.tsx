@@ -1,5 +1,6 @@
 import { Check, ImageIcon, Lock, WandSparkles } from "lucide-react";
-import type { CommercePlatform, CommercePlatformId, GenerationMode, ImageGroup, ModuleConfig, ProjectTemplate, PublicModelConfig, StyleOption, StyleSource } from "@/lib/types";
+import { complianceStatusClass, complianceStatusLabel } from "@/lib/compliance";
+import type { CommercePlatform, CommercePlatformId, ComplianceReport, GenerationMode, ImageGroup, ModuleConfig, ProjectTemplate, PublicModelConfig, StyleOption, StyleSource } from "@/lib/types";
 
 const imageGroups: ImageGroup[] = ["main", "campaign", "detail"];
 
@@ -53,6 +54,7 @@ export function ModulesStep({
   templates,
   selectedImageModelId,
   generationMode,
+  promotionCompliance,
   onPromotionInfoChange,
   onPlatformChange,
   onImageModelChange,
@@ -77,6 +79,7 @@ export function ModulesStep({
   templates: ProjectTemplate[];
   selectedImageModelId: string;
   generationMode: GenerationMode;
+  promotionCompliance?: ComplianceReport | null;
   onPromotionInfoChange: (value: string) => void;
   onPlatformChange: (id: CommercePlatformId) => void;
   onImageModelChange: (id: string) => void;
@@ -179,16 +182,39 @@ export function ModulesStep({
           </div>
 
           {activeImageGroup === "campaign" ? (
-            <label className="promotionField">
-              <span>促销方式（生图时会参考）</span>
-              <textarea
-                value={promotionInfo}
-                placeholder="例如：618 限时 8 折 / 买一送一 / 满 199 减 30 / 第二件半价"
-                rows={3}
-                onChange={(event) => onPromotionInfoChange(event.target.value)}
-              />
-              <em>不填写也可以生成，但模型只能使用泛化活动氛围，不会编造具体折扣或价格。</em>
-            </label>
+            <>
+              <label className="promotionField">
+                <span>促销方式（生图时会参考）</span>
+                <textarea
+                  value={promotionInfo}
+                  placeholder="例如：618 限时 8 折 / 买一送一 / 满 199 减 30 / 第二件半价"
+                  rows={3}
+                  onChange={(event) => onPromotionInfoChange(event.target.value)}
+                />
+                <em>不填写也可以生成，但模型只能使用泛化活动氛围，不会编造具体折扣或价格。</em>
+              </label>
+              {promotionCompliance ? (
+                <div className={`compliancePanel compact ${complianceStatusClass(promotionCompliance.summary.status)}`}>
+                  <header>
+                    <b>促销合规预检</b>
+                    <span>{complianceStatusLabel(promotionCompliance.summary.status)}</span>
+                  </header>
+                  {promotionCompliance.issues.length ? (
+                    <ul className="complianceIssueList">
+                      {promotionCompliance.issues.slice(0, 3).map((issue, index) => (
+                        <li key={`${issue.term}-${index}`}>
+                          <strong>{issue.term}</strong>
+                          <span>{issue.reason}</span>
+                          <em>{issue.suggestion}</em>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p>当前促销文案未发现明显违规词。</p>
+                  )}
+                </div>
+              ) : null}
+            </>
           ) : null}
 
           <div className="moduleSectionHeader">
@@ -323,11 +349,11 @@ export function ModulesStep({
                 onChange={(event) => onGenerationModeChange(event.target.value as GenerationMode)}
                 disabled={activeProgress.isGenerating}
               >
-                <option value="reference_generate">AI 参考生成</option>
+                <option value="reference_generate">AI 参考生成（整图）</option>
                 <option value="fixed_product_composite">固定产品合成</option>
               </select>
               <p>
-                AI 参考生成更自然；固定产品合成优先保持包装、瓶型和 Logo 一致，适合做对比。
+                默认使用 AI 参考生成：模型根据提示词和产品图一次性生成整张图。需要严格复用原产品母版时，再切换固定产品合成。
               </p>
             </article>
           </div>

@@ -121,6 +121,8 @@ def build_product_generation_brief(product_info: dict[str, Any] | None) -> str:
             _numbered_lines(_string_items(info.get("core_selling_points")), "温和护理"),
             "- 核心功效：",
             _numbered_lines(_string_items(info.get("functions")), "补水保湿"),
+            "- 资料亮点摘要：",
+            _numbered_lines(_string_items(info.get("material_highlights")), "资料显示产品具备可信的日常护理卖点"),
             "- 核心成分小报告：",
             _format_ingredients(info.get("ingredients")),
             "- 目标人群：",
@@ -270,6 +272,8 @@ def build_module_specific_brief(product_info: dict[str, Any] | None, module: dic
             _limited_numbered_lines(info.get("core_selling_points"), "温和护理", 3),
             "- 核心功效：",
             _limited_numbered_lines(info.get("functions"), "补水保湿", 3),
+            "- 资料亮点摘要：",
+            _limited_numbered_lines(info.get("material_highlights"), "可信护理卖点", 3),
         ]
     )
 
@@ -345,6 +349,29 @@ def _effect_comparison_layout_guardrails(module: dict[str, Any], product_info: d
             ]
         )
     return "\n".join(lines)
+
+
+LANGUAGE_LABELS = {
+    "zh-CN": "中文",
+    "en": "English",
+    "th": "Thai",
+    "ms": "Malay",
+}
+
+
+def _language_rules(target_language: str | None) -> str:
+    if not target_language:
+        return ""
+    language = LANGUAGE_LABELS.get(str(target_language), str(target_language))
+    return "\n".join(
+        [
+            "【图片语言】",
+            f"- 本张图的目标语言是 {language}。",
+            f"- 所有可见标题、标签、数字说明和角标文字都必须直接生成在图片里，并且必须使用 {language}。",
+            "- 不要把中文、英文、泰语或马来语混排；除产品包装本身已有文字外，营销文案只使用目标语言。",
+            "- 文字需要像真实电商设计一样融入画面：有清晰层级、合理留白、自然光影或底纹承托，不要像后期贴上去的字幕。",
+        ]
+    )
 
 
 def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | None) -> str:
@@ -495,6 +522,8 @@ def build_module_image_prompt(
     total_modules: int,
     promotion_info: str | None = None,
     has_style_reference: bool = False,
+    text_layer_mode: bool = False,
+    target_language: str | None = None,
 ) -> str:
     style_keywords = " / ".join(_string_items(style.get("keywords"))) or "高级 / 干净 / 统一"
     group = module.get("image_group")
@@ -505,6 +534,20 @@ def build_module_image_prompt(
         "- 字体层级清楚，标题短促有力，说明文字清晰可读，不出现乱码、水印、品牌侵权标识。"
         if is_main_image
         else "- 仅短标题、极短标签、必要数值或步骤编号需要清晰可读；不要生成说明文字、段落脚注、资料建议或风险提示类文案，不出现乱码、水印、品牌侵权标识。"
+    )
+    rendered_text_rule = "- 分层文字模式下不要生成可读文字，最终文案会由程序后期叠加。" if text_layer_mode else readable_text_rule
+    text_layer_rules = (
+        "\n".join(
+            [
+                "【分层文字模式】",
+                "- 这张图将由程序后期叠加中文、英文、泰语和马来语文字图层；图片模型只负责生成无文字底图。",
+                "- 画面中不要出现任何可读文字、标题、标签、数字文案、乱码、水印、UI 字幕或装饰性字母。",
+                "- 保留适合后期叠字的干净留白或低纹理区域，但这些区域不能像空白模板，要自然融入电商视觉。",
+                "- 产品、背景、道具、人物、图表形状和氛围可以正常生成；只有文字内容必须留给后期程序绘制。",
+            ]
+        )
+        if text_layer_mode
+        else ""
     )
     structure_lines = [
         f"- 当前模块：{_text(module.get('name'))}",
@@ -549,7 +592,7 @@ def build_module_image_prompt(
                 "- 上传的风格参考图优先：只参考排版、色调、光影和氛围，不改变产品外观、包装和品牌信息。",
                 "- 不要混入预设风格名称、主色或关键词；风格只以已上传的风格参考图为准。",
                 "- 中文电商视觉，高级、干净、统一；产品外观如有产品参考图必须保持一致。",
-                readable_text_rule,
+                rendered_text_rule,
                 "- 所有可见文字必须像可直接用于店铺上架的成品图文案，不写信息缺失、核验提醒、补全提醒或半成品提示。",
                 "- 所有效果、权威、成分表达必须谨慎，不使用医疗化、绝对化承诺。",
             ]
@@ -569,7 +612,7 @@ def build_module_image_prompt(
                 ),
                 "- 每张图可以根据模块内容使用不同主色、背景色或辅助色，但材质、光影、版式、字体层级、装饰元素和图标语言必须一致。",
                 "- 中文电商视觉，高级、干净、统一；产品外观如有参考图必须保持一致。",
-                readable_text_rule,
+                rendered_text_rule,
                 "- 所有可见文字必须像可直接用于店铺上架的成品图文案，不写信息缺失、核验提醒、补全提醒或半成品提示。",
                 "- 所有效果、权威、成分表达必须谨慎，不使用医疗化、绝对化承诺。",
             ]
@@ -578,6 +621,7 @@ def build_module_image_prompt(
     effect_layout_guardrails = _effect_comparison_layout_guardrails(module, product_info)
     people_realism_guardrails = _people_realism_guardrails(module)
     detail_text_guardrails = _detail_text_guardrails() if not is_main_image else ""
+    language_rules = _language_rules(target_language)
 
     return "\n".join(
         [
@@ -603,6 +647,8 @@ def build_module_image_prompt(
             *(["", effect_layout_guardrails] if effect_layout_guardrails else []),
             *(["", people_realism_guardrails] if people_realism_guardrails else []),
             *(["", detail_text_guardrails] if detail_text_guardrails else []),
+            *(["", language_rules] if language_rules else []),
+            *(["", text_layer_rules] if text_layer_rules else []),
             "",
             *style_section,
         ]

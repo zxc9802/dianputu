@@ -6,7 +6,7 @@ so the content can be sent to the LLM for structured product information extract
 Supported formats:
 - .docx  (python-docx)
 - .xlsx  (openpyxl)
-- .pdf   (PyMuPDF / fitz)
+- .pdf   (pdfplumber)
 - .txt / .csv  (direct UTF-8 decode)
 - .doc / .xls  (unsupported, returns warning)
 """
@@ -217,21 +217,20 @@ def _parse_xlsx(data: bytes, filename: str) -> ParseResult:
 # ---------------------------------------------------------------------------
 
 def _parse_pdf(data: bytes, filename: str) -> ParseResult:
-    """Extract text from a PDF file using PyMuPDF (fitz)."""
-    import fitz  # PyMuPDF
+    """Extract text from a PDF file using pdfplumber."""
+    import pdfplumber
 
-    doc = fitz.open(stream=data, filetype="pdf")
+    pdf = pdfplumber.open(BytesIO(data))
     parts: list[str] = []
     warnings: list[str] = []
-    page_count = doc.page_count
+    page_count = len(pdf.pages)
 
-    for page_index in range(page_count):
-        page = doc.load_page(page_index)
-        page_text = page.get_text("text").strip()
+    for page in pdf.pages:
+        page_text = (page.extract_text() or "").strip()
         if page_text:
             parts.append(page_text)
 
-    doc.close()
+    pdf.close()
 
     if not parts and page_count > 0:
         warnings.append(

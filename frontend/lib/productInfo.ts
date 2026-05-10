@@ -5,6 +5,7 @@ export const PRODUCT_INFO_FIELD_KEYS = [
   "core_selling_points",
   "ingredients",
   "functions",
+  "material_highlights",
   "usage_method",
   "effect_claims",
   "authority_assets"
@@ -24,6 +25,7 @@ export function createEmptyProductInfo(category = ""): ProductInfo {
     usage_method: [],
     authority_assets: [],
     effect_claims: [],
+    material_highlights: [],
     confirmation_status: "pending"
   };
 }
@@ -40,6 +42,7 @@ export function productInfoValueFor(productInfo: ProductInfo, key: ProductInfoFi
   if (typeof value === "string") return value;
   if (key === "ingredients") return productInfo.ingredients.map((item) => item.name).join(" / ");
   if (key === "effect_claims") return productInfo.effect_claims.map((item) => `${item.claim} ${item.value}`.trim()).join(" / ");
+  if (key === "material_highlights") return (productInfo.material_highlights ?? []).join(" / ");
   return Array.isArray(value) ? value.join(" / ") : "";
 }
 
@@ -47,6 +50,7 @@ export function productInfoHasValue(productInfo: ProductInfo, key: ProductInfoFi
   if (key === "product_name") return productInfo.product_name.trim().length > 0;
   if (key === "ingredients") return productInfo.ingredients.some((item) => item.name.trim().length > 0);
   if (key === "effect_claims") return productInfo.effect_claims.some((item) => item.claim.trim().length > 0);
+  if (key === "material_highlights") return (productInfo.material_highlights ?? []).length > 0;
   return productInfo[key].length > 0;
 }
 

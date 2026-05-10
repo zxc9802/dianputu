@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { extractApiErrorMessage, readJsonSafely, redirectToMainAppIfNeeded } from "@/lib/client/api-response";
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+
 export type AppViewer = {
   id: string;
   account?: string;
@@ -61,7 +63,7 @@ export function useAppViewer() {
 
     async function loadSession() {
       try {
-        const response = await fetch("/api/session", {
+        const response = await fetch(`${API_BASE_URL}/api/session`, {
           method: "GET",
           cache: "no-store",
           credentials: "include",

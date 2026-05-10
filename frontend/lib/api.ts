@@ -1,6 +1,6 @@
 import { DEFAULT_MODULES, DEMO_MODEL_CONFIG, STYLE_OPTIONS } from "./constants";
 import { MainAppRedirectError, extractApiErrorMessage, readJsonSafely, redirectToMainAppIfNeeded } from "./client/api-response";
-import type { GenerationMode, MaterialPayload, ModuleConfig, ProductInfo, PublicModelConfig, StyleOption } from "./types";
+import type { CommercePlatformId, ComplianceReport, ComplianceTextItem, GenerationMode, LanguageCode, LanguageVersion, MaterialPayload, ModuleConfig, ProductInfo, PublicModelConfig, StyleOption, TextLayer } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -87,7 +87,10 @@ export async function generateImages(
   styleReferenceImages: string[] = [],
   customStyle?: StyleOption,
   imageModelId = "",
-  generationMode: GenerationMode = "reference_generate"
+  generationMode: GenerationMode = "reference_generate",
+  platformId: CommercePlatformId = "tmall",
+  layeredText = false,
+  targetLanguage = ""
 ) {
   try {
     const { job_id: jobId } = await createGenerateImageJob(
@@ -100,7 +103,10 @@ export async function generateImages(
       styleReferenceImages,
       customStyle,
       imageModelId,
-      generationMode
+      generationMode,
+      platformId,
+      layeredText,
+      targetLanguage
     );
     return await pollGenerateImageJob(jobId);
   } catch (error) {
@@ -115,7 +121,14 @@ export async function generateImages(
 
 type GenerateImagesResult = {
   source: string;
-  images: Array<{ module_id: string; url: string }>;
+  images: Array<{
+    module_id: string;
+    url: string;
+    base_url?: string;
+    text_layers?: TextLayer[];
+    language_versions?: Record<string, LanguageVersion>;
+    compliance?: ComplianceReport;
+  }>;
   errors?: string[];
 };
 
@@ -143,7 +156,10 @@ export async function createGenerateImageJob(
   styleReferenceImages: string[] = [],
   customStyle?: StyleOption,
   imageModelId = "",
-  generationMode: GenerationMode = "reference_generate"
+  generationMode: GenerationMode = "reference_generate",
+  platformId: CommercePlatformId = "tmall",
+  layeredText = false,
+  targetLanguage = ""
 ) {
   return requestJson<{ job_id: string }>("/api/projects/generate/jobs", {
     method: "POST",
@@ -156,11 +172,39 @@ export async function createGenerateImageJob(
       custom_style: customStyle,
       promotion_info: promotionInfo,
       platform_size: platformSize,
+      platform_id: platformId,
       image_model_id: imageModelId,
-      generation_mode: generationMode
+      generation_mode: generationMode,
+      layered_text: layeredText,
+      target_language: targetLanguage
     }),
     timeoutMs: 15000
   });
+}
+
+export async function renderLanguageVersion(baseUrl: string, textLayers: TextLayer[], language: LanguageCode, platformId: CommercePlatformId, productInfo?: ProductInfo | null) {
+  try {
+    return await requestJson<
+      { source: "model" } & LanguageVersion
+      | { source: "error"; error?: string }
+    >("/api/projects/render-language", {
+      method: "POST",
+      body: JSON.stringify({
+        base_url: baseUrl,
+        text_layers: textLayers,
+        language,
+        platform_id: platformId,
+        product_info: productInfo
+      }),
+      timeoutMs: 180000
+    });
+  } catch (error) {
+    rethrowMainAppRedirect(error);
+    return {
+      source: "error" as const,
+      error: error instanceof Error ? error.message : "多语言版本生成失败"
+    };
+  }
 }
 
 export async function fetchGenerateImageJob(jobId: string) {
@@ -223,15 +267,16 @@ export async function generateAiCustomStyleSample(style: StyleOption, productInf
   }
 }
 
-export async function editGeneratedImage(imageUrl: string, instruction: string, platformSize = "", imageModelId = "") {
+export async function editGeneratedImage(imageUrl: string, instruction: string, platformSize = "", imageModelId = "", platformId: CommercePlatformId = "tmall") {
   try {
-    return await requestJson<{ source: string; url?: string; error?: string }>("/api/projects/edit-image", {
+    return await requestJson<{ source: string; url?: string; error?: string; compliance?: ComplianceReport }>("/api/projects/edit-image", {
       method: "POST",
       body: JSON.stringify({
         image_url: imageUrl,
         instruction,
         platform_size: platformSize,
-        image_model_id: imageModelId
+        image_model_id: imageModelId,
+        platform_id: platformId
       }),
       timeoutMs: 600000
     });
@@ -240,6 +285,57 @@ export async function editGeneratedImage(imageUrl: string, instruction: string, 
     return {
       source: "error",
       error: error instanceof Error ? error.message : "AI 微调请求失败"
+    };
+  }
+}
+
+export async function checkTextCompliance(items: ComplianceTextItem[], platformId: CommercePlatformId, productInfo?: ProductInfo | null) {
+  try {
+    return await requestJson<ComplianceReport>("/api/projects/compliance/check-text", {
+      method: "POST",
+      body: JSON.stringify({
+        items,
+        platform_id: platformId,
+        product_info: productInfo
+      }),
+      timeoutMs: 15000
+    });
+  } catch (error) {
+    rethrowMainAppRedirect(error);
+    return {
+      source: "error",
+      summary: { status: "pass" as const, block_count: 0, warn_count: 0, review_count: 0 },
+      issues: []
+    };
+  }
+}
+
+export async function checkImageCompliance(imageUrls: string[], platformId: CommercePlatformId, productInfo?: ProductInfo | null) {
+  try {
+    return await requestJson<ComplianceReport>("/api/projects/compliance/check-images", {
+      method: "POST",
+      body: JSON.stringify({
+        image_urls: imageUrls,
+        platform_id: platformId,
+        product_info: productInfo
+      }),
+      timeoutMs: 180000
+    });
+  } catch (error) {
+    rethrowMainAppRedirect(error);
+    return {
+      source: "error",
+      summary: { status: "review" as const, block_count: 0, warn_count: 0, review_count: 1 },
+      issues: [
+        {
+          id: "image_compliance_request_failed",
+          severity: "review" as const,
+          category: "image_ocr",
+          term: "图片合规检查失败",
+          reason: error instanceof Error ? error.message : "图片合规检查请求失败",
+          suggestion: "请重试图片 OCR 合规复查，导出前建议人工核对成图文字。"
+        }
+      ]
     };
   }
 }
