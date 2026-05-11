@@ -135,6 +135,10 @@ function saveLocalHistory(userId: string, record: {
   return historyMeta(saved);
 }
 
+function removeLocalHistory(userId: string, id: string) {
+  writeLocalHistory(userId, readLocalHistory(userId).filter((record) => record.id !== id));
+}
+
 async function requestJson<T>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), init?.timeoutMs ?? 10000);
@@ -217,13 +221,14 @@ export async function saveHistory(record: {
 export async function deleteHistoryRecord(id: string): Promise<boolean> {
   const userId = await fetchCurrentHistoryUserId();
   if (id.startsWith("local-")) {
-    writeLocalHistory(userId, readLocalHistory(userId).filter((record) => record.id !== id));
+    removeLocalHistory(userId, id);
     return true;
   }
   try {
     await requestJson<{ deleted: boolean }>(`/api/history/${id}`, {
       method: "DELETE"
     });
+    removeLocalHistory(userId, id);
     return true;
   } catch (error) {
     if (error instanceof MainAppRedirectError) {
