@@ -11,15 +11,15 @@
     }
   },
   "imageGeneration": {
-    "purpose": "Primary product detail image generation endpoint; each image tries this endpoint first",
-    "apiKeyEnv": "IMAGE_GENERATION_API_KEY",
-    "baseUrl": "https://api.apiyi.com/v1",
+    "purpose": "Default product detail image generation model used when the user has not selected another option",
+    "defaultOptionId": "fallback",
+    "apiKeyEnv": "FALLBACK_IMAGE_GENERATION_API_KEY",
+    "baseUrl": "https://yunwu.ai/v1",
     "endpoint": "/images/generations",
-    "model": "gpt-image-2-vip",
+    "model": "gpt-image-2-all",
     "defaults": {
       "size": "2048x2048",
-      "output_format": "png",
-      "response_format": "url"
+      "n": 1
     },
     "options": [
       {

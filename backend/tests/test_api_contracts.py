@@ -132,7 +132,8 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("gpt-image-2-all", serialized)
         self.assertNotIn("api_key", serialized)
         self.assertNotIn("bearer", serialized)
-        self.assertEqual(config["imageGeneration"]["defaultOptionId"], "primary")
+        self.assertEqual(config["imageGeneration"]["model"], "gpt-image-2-all")
+        self.assertEqual(config["imageGeneration"]["defaultOptionId"], "fallback")
         self.assertEqual(config["imageGeneration"]["options"][0]["id"], "primary")
         self.assertEqual(config["imageGeneration"]["options"][0]["label"], "gpt image2(1)")
         self.assertEqual(config["imageGeneration"]["options"][0]["model"], "gpt-image-2-vip")
@@ -231,7 +232,7 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
         environ["FALLBACK_IMAGE_GENERATION_API_KEY"] = "fallback-key"
         try:
             with patch("app.routers.projects.call_image_model", new=fake_call_image_model):
-                result = await generate_detail_images(["hero"], "green_repair")
+                result = await generate_detail_images(["hero"], "green_repair", image_model_id="primary")
         finally:
             if previous_primary_key is None:
                 environ.pop("IMAGE_GENERATION_API_KEY", None)
@@ -319,7 +320,12 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
             size="2048x2048",
             n=1,
         )
-        settings = SimpleNamespace(image=image, fallback_image=fallback, image_options={"primary": image})
+        settings = SimpleNamespace(
+            image=image,
+            fallback_image=fallback,
+            default_image_option_id="fallback",
+            image_options={"primary": image, "fallback": fallback},
+        )
 
         with patch("app.routers.projects.get_model_settings", return_value=settings):
             result = await generate_detail_images(["hero"], "green_repair")

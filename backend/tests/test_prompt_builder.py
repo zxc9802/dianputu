@@ -136,7 +136,7 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("约 30%-45%", prompt)
         self.assertNotIn("全屏左右分屏", prompt)
 
-    def test_hydration_effect_prompt_uses_prominent_increase_percent_metric(self):
+    def test_hydration_effect_prompt_uses_progress_sized_percent_metric(self):
         build_module_image_prompt = load_prompt_builder()
         effect_module = next(module for module in DEFAULT_MODULES if module["id"] == "effect_comparison")
 
@@ -155,11 +155,34 @@ class PromptBuilderTests(unittest.TestCase):
         )
 
         self.assertIn("水润数据指标区", prompt)
-        self.assertIn("醒目大数字", prompt)
-        self.assertIn("增加了 XX%", prompt)
-        self.assertIn("提升 XX%", prompt)
+        self.assertIn("必须显示百分比数字", prompt)
+        self.assertIn("字号和进度条视觉权重接近", prompt)
+        self.assertIn("不需要超大", prompt)
         self.assertIn("优先使用已有百分比数据", prompt)
-        self.assertIn("不要为了画面效果编造百分比", prompt)
+
+    def test_effect_prompt_uses_percent_placeholders_when_metrics_have_no_values(self):
+        build_module_image_prompt = load_prompt_builder()
+        effect_module = next(module for module in DEFAULT_MODULES if module["id"] == "effect_comparison")
+
+        prompt = build_module_image_prompt(
+            product_info={
+                "product_name": "深层补水精华",
+                "functions": ["深层补水", "舒缓锁水", "水油平衡"],
+                "effect_claims": [
+                    {"claim": "肌肤水润度提升", "value": "", "source_type": "ai_generated"},
+                    {"claim": "肤感舒适度提升", "value": "", "source_type": "ai_generated"},
+                ],
+            },
+            style=STYLE_OPTIONS[0],
+            module=effect_module,
+            module_index=4,
+            total_modules=7,
+        )
+
+        self.assertIn("指标：肌肤水润度提升；数值：示意型百分比占位", prompt)
+        self.assertIn("指标：肤感舒适度提升；数值：示意型百分比占位", prompt)
+        self.assertIn("没有具体数值时必须使用示意型百分比占位", prompt)
+        self.assertIn("不要只画无数字进度条", prompt)
 
     def test_prompts_enforce_realistic_people_when_people_may_appear(self):
         build_module_image_prompt = load_prompt_builder()

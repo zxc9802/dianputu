@@ -43,6 +43,7 @@ class ModelSettings:
     text: TextAnalysisSettings
     image: ImageGenerationSettings
     fallback_image: ImageGenerationSettings
+    default_image_option_id: str
     image_options: dict[str, ImageGenerationSettings]
 
 
@@ -122,7 +123,7 @@ def get_model_settings(env: Mapping[str, str] | None = None, env_file: Path | st
         base_url=_read(source, "FALLBACK_IMAGE_GENERATION_BASE_URL", _read(source, "LEGACY_IMAGE_GENERATION_BASE_URL", "https://yunwu.ai/v1")),
         endpoint_path=_read(source, "FALLBACK_IMAGE_GENERATION_ENDPOINT_PATH", "/images/generations"),
         model=_read(source, "FALLBACK_IMAGE_GENERATION_MODEL", _read(source, "LEGACY_IMAGE_GENERATION_MODEL", "gpt-image-2-all")),
-        size=_read(source, "FALLBACK_IMAGE_GENERATION_SIZE", _read(source, "LEGACY_IMAGE_GENERATION_SIZE", "2048x2048")),
+        size=_read(source, "FALLBACK_IMAGE_GENERATION_SIZE", "2048x2048"),
         n=int(_read(source, "FALLBACK_IMAGE_GENERATION_N", _read(source, "LEGACY_IMAGE_GENERATION_N", "1"))),
     )
     gemini_flash_image = ImageGenerationSettings(
@@ -136,6 +137,15 @@ def get_model_settings(env: Mapping[str, str] | None = None, env_file: Path | st
         n=int(_read(source, "GEMINI_FLASH_IMAGE_N", "1")),
         response_format=_read(source, "GEMINI_FLASH_IMAGE_RESPONSE_FORMAT", "b64_json"),
     )
+    image_options = {
+        primary_image.id: primary_image,
+        fallback_image.id: fallback_image,
+        gemini_flash_image.id: gemini_flash_image,
+    }
+    default_image_option_id = _read(source, "DEFAULT_IMAGE_GENERATION_OPTION_ID", fallback_image.id)
+    if default_image_option_id not in image_options:
+        default_image_option_id = fallback_image.id
+
     return ModelSettings(
         text=TextAnalysisSettings(
             api_key=_read(source, "TEXT_ANALYSIS_API_KEY", ""),
@@ -146,11 +156,8 @@ def get_model_settings(env: Mapping[str, str] | None = None, env_file: Path | st
         ),
         image=primary_image,
         fallback_image=fallback_image,
-        image_options={
-            primary_image.id: primary_image,
-            fallback_image.id: fallback_image,
-            gemini_flash_image.id: gemini_flash_image,
-        },
+        default_image_option_id=default_image_option_id,
+        image_options=image_options,
     )
 
 

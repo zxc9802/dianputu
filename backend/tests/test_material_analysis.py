@@ -613,6 +613,7 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
                     ["main_ingredient", "main_effect"],
                     "green_repair",
                     product_info={"product_name": "积雪草修护精华"},
+                    image_model_id="primary",
                 )
         finally:
             if previous_key is None:
@@ -641,6 +642,7 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
                     ["main_ingredient", "main_effect"],
                     "green_repair",
                     product_info={"product_name": "积雪草修护精华"},
+                    image_model_id="primary",
                 )
         finally:
             if previous_primary_key is None:
