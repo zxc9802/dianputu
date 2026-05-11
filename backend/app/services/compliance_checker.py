@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 from io import BytesIO
 from typing import Any, Protocol
 
 
+IMAGE_COMPLIANCE_CONCURRENCY_LIMIT = 3
 ALL_PLATFORM_IDS = (
     "tmall",
     "jd",
@@ -451,14 +453,17 @@ async def check_image_items(
     source = _provider_source(provider)
     issues: list[dict[str, Any]] = []
     warnings: list[str] = []
+    review_semaphore = asyncio.Semaphore(IMAGE_COMPLIANCE_CONCURRENCY_LIMIT)
 
-    for image_index, image in enumerate(images):
+    async def review_one_image(image_index: int, image: dict[str, Any]) -> tuple[list[dict[str, Any]], list[str]]:
+        image_issues: list[dict[str, Any]] = []
+        image_warnings: list[str] = []
         image_bytes = image.get("bytes")
         location = _image_location(image, image_index)
         if not isinstance(image_bytes, bytes) or not image_bytes:
             reason = str(image.get("read_error") or "image bytes are empty")
-            warnings.append(reason)
-            issues.append(
+            image_warnings.append(reason)
+            image_issues.append(
                 _review_issue(
                     issue_id="image_read_failed",
                     category="image_review",
@@ -469,21 +474,22 @@ async def check_image_items(
                     platform_id=platform_id,
                 )
             )
-            continue
+            return image_issues, image_warnings
 
         metadata = {"location": location, "image_index": image_index, "image_url": image.get("url", "")}
         try:
-            image_report = await provider.review_image(
-                image_bytes,
-                metadata=metadata,
-                platform_id=platform_id,
-                product_info=product_info,
-                debug=debug,
-            )
+            async with review_semaphore:
+                image_report = await provider.review_image(
+                    image_bytes,
+                    metadata=metadata,
+                    platform_id=platform_id,
+                    product_info=product_info,
+                    debug=debug,
+                )
         except ComplianceProviderUnavailableError as exc:
             reason = str(exc)
-            warnings.append(reason)
-            issues.append(
+            image_warnings.append(reason)
+            image_issues.append(
                 _review_issue(
                     issue_id="model_compliance_unavailable",
                     category="image_review",
@@ -494,11 +500,11 @@ async def check_image_items(
                     platform_id=platform_id,
                 )
             )
-            continue
+            return image_issues, image_warnings
         except Exception as exc:
             reason = str(exc)
-            warnings.append(reason)
-            issues.append(
+            image_warnings.append(reason)
+            image_issues.append(
                 _review_issue(
                     issue_id="model_compliance_failed",
                     category="image_review",
@@ -509,10 +515,16 @@ async def check_image_items(
                     platform_id=platform_id,
                 )
             )
-            continue
+            return image_issues, image_warnings
 
         normalized = _normalize_model_report(image_report, source=source, default_location=location, platform_id=platform_id)
-        issues.extend(normalized["issues"])
+        image_issues.extend(normalized["issues"])
+        return image_issues, image_warnings
+
+    image_results = await asyncio.gather(*(review_one_image(image_index, image) for image_index, image in enumerate(images)))
+    for image_issues, image_warnings in image_results:
+        issues.extend(image_issues)
+        warnings.extend(image_warnings)
 
     return {
         "source": source,

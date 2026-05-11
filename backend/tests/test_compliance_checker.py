@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 
 from app.services.compliance_checker import ComplianceProviderUnavailableError, check_image_items, check_text_items
@@ -81,6 +82,37 @@ class TextComplianceCheckerTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ImageComplianceCheckerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_image_review_runs_up_to_three_reviews_concurrently(self):
+        class SlowComplianceProvider:
+            source = "fake_gemini"
+
+            def __init__(self):
+                self.active_count = 0
+                self.max_active_count = 0
+                self.lock = asyncio.Lock()
+
+            async def review_image(self, image_bytes, *, metadata, platform_id=None, product_info=None, debug=False):
+                async with self.lock:
+                    self.active_count += 1
+                    self.max_active_count = max(self.max_active_count, self.active_count)
+                try:
+                    await asyncio.sleep(0.02)
+                finally:
+                    async with self.lock:
+                        self.active_count -= 1
+                return model_report("pass")
+
+        provider = SlowComplianceProvider()
+        report = await check_image_items(
+            [{"url": f"https://example.com/{index}.png", "bytes": b"fake-image"} for index in range(5)],
+            compliance_provider=provider,
+            platform_id="tmall",
+        )
+
+        self.assertEqual(report["summary"]["status"], "pass")
+        self.assertEqual(report["image_count"], 5)
+        self.assertEqual(provider.max_active_count, 3)
+
     async def test_image_review_sends_image_to_model_provider(self):
         class FakeComplianceProvider:
             source = "fake_gemini"
