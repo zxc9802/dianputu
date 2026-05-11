@@ -373,6 +373,27 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["source"], "model")
         self.assertEqual(calls, ["600x600"])
 
+    async def test_detail_generation_forces_nine_to_sixteen_size(self):
+        previous_key = environ.get("IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        calls = []
+
+        async def fake_call_image_model(settings, prompt, image=None, size=None):
+            calls.append(size)
+            return ["https://example.com/detail.png"]
+
+        try:
+            with patch("app.routers.projects.call_image_model", new=fake_call_image_model):
+                result = await generate_detail_images(["hero"], "green_repair", platform_size="2048x2048")
+        finally:
+            if previous_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_key
+
+        self.assertEqual(result["source"], "model")
+        self.assertEqual(calls, ["1152x2048"])
+
     async def test_generation_can_select_gemini_flash_image_model(self):
         previous_key = environ.get("GEMINI_FLASH_IMAGE_API_KEY")
         environ["GEMINI_FLASH_IMAGE_API_KEY"] = "test-key"

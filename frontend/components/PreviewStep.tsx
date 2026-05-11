@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Download, FileImage, Monitor, Save, Smartphone } from "lucide-react";
 import { createComposeLongImageJob, downloadComposeLongImageJob, downloadImage, fetchComposeLongImageJob, prepareComposeLongImageSources } from "@/lib/api";
 import { complianceStatusClass, complianceStatusLabel, highestComplianceStatus } from "@/lib/compliance";
+import { DETAIL_IMAGE_GENERATION_SIZE } from "@/lib/constants";
 import { buildDetailDownloadState } from "@/lib/projectEnhancements";
 import type { CommercePlatform, ComplianceReport, GeneratedImageVersion, GeneratedImageVersionState, ImageGroup, LanguageCode, ModuleConfig } from "@/lib/types";
 
@@ -321,7 +322,7 @@ export function PreviewStep({
           <div className="previewToolbar">
             <Monitor size={20} />
             <Smartphone size={20} />
-            <span>{activeImageGroup === "detail" ? `详情宽 ${selectedPlatform.detailWidth}px` : `主图 ${selectedPlatform.mainSize}`}</span>
+            <span>{activeImageGroup === "detail" ? `详情图 ${DETAIL_IMAGE_GENERATION_SIZE}（9:16）` : `主图 ${selectedPlatform.mainSize}`}</span>
             <em>
               {activeProgress.isGenerating
                 ? `并行生成中 ${activeProgress.completed}/${activeProgress.total}`
@@ -424,7 +425,9 @@ export function PreviewStep({
                     const itemUrl = selectedVersionUrl(selectedVersion, item.url);
                     return (
                       <section className="longImageSection" key={item.module.id} aria-label={`${item.module.name}生成图`}>
-                        <img src={itemUrl} alt={`${item.module.name}生成图`} loading={index > 1 ? "lazy" : "eager"} />
+                        <div className="detailImageFrame">
+                          <img src={itemUrl} alt={`${item.module.name}生成图`} loading={index > 1 ? "lazy" : "eager"} />
+                        </div>
                         <div className="longImageControls">
                           <b>{item.module.name}</b>
                           <ComplianceBadge report={selectedVersionCompliance(selectedVersion)} />

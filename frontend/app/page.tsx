@@ -9,7 +9,7 @@ import { ReviewStep } from "@/components/ReviewStep";
 import { Stepper } from "@/components/Stepper";
 import { StyleStep } from "@/components/StyleStep";
 import { UploadStep } from "@/components/UploadStep";
-import { COMMERCE_PLATFORMS, DEMO_MODEL_CONFIG, OFFICIAL_PROJECT_TEMPLATES } from "@/lib/constants";
+import { COMMERCE_PLATFORMS, DEMO_MODEL_CONFIG, DETAIL_IMAGE_GENERATION_SIZE, OFFICIAL_PROJECT_TEMPLATES } from "@/lib/constants";
 import {
   analyzeUploadedMaterials,
   checkImageCompliance,
@@ -398,6 +398,17 @@ export default function Home() {
     () => COMMERCE_PLATFORMS.find((platform) => platform.id === selectedPlatformId) ?? COMMERCE_PLATFORMS[0],
     [selectedPlatformId]
   );
+  const generationSizeForGroup = useCallback(
+    (group: ImageGroup) => (group === "detail" ? DETAIL_IMAGE_GENERATION_SIZE : selectedPlatform.generationSize),
+    [selectedPlatform.generationSize]
+  );
+  const generationSizeForModuleId = useCallback(
+    (moduleId: string) => {
+      const module = modules.find((item) => item.id === moduleId);
+      return generationSizeForGroup(module ? moduleGroup(module) : activeImageGroup);
+    },
+    [activeImageGroup, generationSizeForGroup, modules]
+  );
   const viewerLabel = appViewer?.nickname || appViewer?.account || "";
   const generatedImages = useMemo(
     () => getSelectedGeneratedImages(imageVersionStore.versions, imageVersionStore.selectedVersionIds),
@@ -562,7 +573,7 @@ export default function Home() {
         productInfo ?? undefined,
         referenceImages,
         group === "campaign" ? promotionInfo : "",
-        selectedPlatform.generationSize,
+        generationSizeForGroup(group),
         [],
         activeCustomStyle,
         selectedImageModelId,
@@ -614,7 +625,7 @@ export default function Home() {
       return;
     }
     setStatusText("AI 微调中");
-    const result = await editGeneratedImage(imageUrl, trimmed, selectedPlatform.generationSize, selectedImageModelId, selectedPlatformId);
+    const result = await editGeneratedImage(imageUrl, trimmed, generationSizeForModuleId(moduleId), selectedImageModelId, selectedPlatformId);
     if (result.source === "model" && result.url) {
       setImageVersionStore((current) =>
         appendImageVersions(current, [{ module_id: moduleId, url: result.url as string, compliance: result.compliance }], "edit", Date.now(), trimmed)
@@ -810,7 +821,7 @@ export default function Home() {
             productInfo,
             referenceImages,
             group === "campaign" ? promotionInfo : "",
-            selectedPlatform.generationSize,
+            generationSizeForGroup(group),
             [],
             activeCustomStyle,
             selectedImageModelId,

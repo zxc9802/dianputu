@@ -166,6 +166,8 @@ export const DEFAULT_MODULES: ModuleConfig[] = [
   { id: "usage", name: "使用方法", description: "商品怎么用", enabled: true, order: 10, image_group: "detail" }
 ];
 
+export const DETAIL_IMAGE_GENERATION_SIZE = "1152x2048";
+
 export const COMMERCE_PLATFORMS: CommercePlatform[] = [
   { id: "tmall", name: "淘宝 / 天猫", mainSize: "800x800", generationSize: "2048x2048", detailWidth: 1500, note: "按 2K 生成，发布前可压缩到平台规格" },
   { id: "jd", name: "京东", mainSize: "800x800", generationSize: "2048x2048", detailWidth: 1500, note: "按 2K 生成，发布前可压缩到平台规格" },

@@ -39,6 +39,7 @@ REFERENCE_GENERATE_MODE = "reference_generate"
 FIXED_PRODUCT_COMPOSITE_MODE = "fixed_product_composite"
 FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR = "固定产品合成需要先上传产品图，系统会把上传图作为产品母版复用，避免模型反复重绘导致包装、Logo 或瓶身变形。"
 STYLE_SAMPLE_IMAGE_SIZE = "1024x1024"
+DETAIL_IMAGE_GENERATION_SIZE = "1152x2048"
 GENERATION_JOBS: dict[str, dict[str, Any]] = {}
 GENERATION_JOB_TTL_SECONDS = 3600  # 1 hour
 EDIT_JOBS: dict[str, dict[str, Any]] = {}
@@ -823,6 +824,7 @@ async def _generate_module_image(
 ) -> tuple[dict[str, Any] | None, str | None]:
     logger.info("detail image generation start %s/%s module=%s", module_index, total_modules, module["id"])
     module_id = str(module["id"])
+    request_size = DETAIL_IMAGE_GENERATION_SIZE if module.get("image_group") == "detail" else platform_size
     if module_id in WHITE_BACKGROUND_MODULE_IDS and reference_images:
         return {"module_id": module_id, "url": reference_images[0]}, None
     fixed_product_mode = generation_mode == FIXED_PRODUCT_COMPOSITE_MODE and bool(reference_images)
@@ -849,7 +851,7 @@ async def _generate_module_image(
     urls: list[str] = []
     if image_settings.api_key:
         try:
-            urls = await call_image_model(image_settings, generation_prompt, image=model_reference_images or None, size=platform_size)
+            urls = await call_image_model(image_settings, generation_prompt, image=model_reference_images or None, size=request_size)
         except Exception as primary_exc:
             primary_error = f"{image_label} failed: {primary_exc}"
             logger.warning("primary image generation failed %s/%s module=%s error=%s", module_index, total_modules, module["id"], primary_exc)
@@ -895,7 +897,7 @@ async def _generate_module_image(
     if image_settings.id == settings.image.id and settings.fallback_image.api_key:
         fallback_label = f"{settings.fallback_image.label} ({settings.fallback_image.model})"
         try:
-            fallback_urls = await call_image_model(settings.fallback_image, generation_prompt, image=model_reference_images or None, size=platform_size)
+            fallback_urls = await call_image_model(settings.fallback_image, generation_prompt, image=model_reference_images or None, size=request_size)
         except Exception as fallback_exc:
             logger.warning("fallback image generation failed %s/%s module=%s error=%s", module_index, total_modules, module["id"], fallback_exc)
             return None, f"{module['id']}: primary {primary_error}; fallback {fallback_label} failed: {fallback_exc}"

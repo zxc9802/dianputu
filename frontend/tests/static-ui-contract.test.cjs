@@ -51,8 +51,12 @@ assertIncludes("lib/api.ts", "/api/projects/generate/jobs", "frontend image gene
 assertNotIncludes("lib/api.ts", "timeoutMs: 600000\n    });\n  } catch (error) {\n    rethrowMainAppRedirect(error);\n    return {\n      source: \"demo\"", "image generation must not wait on a single long synchronous request");
 assertIncludes("lib/api.ts", "timeoutMs: 180000", "material analysis must keep the request open long enough for model output");
 assertIncludes("lib/constants.ts", 'defaults: { size: "2048x2048"', "frontend demo model config must reflect 2K image generation defaults");
-assertIncludes("app/page.tsx", "selectedPlatform.generationSize", "page image generation requests must use the 2K generation size");
-assertIncludes("app/page.tsx", "editGeneratedImage(imageUrl, trimmed, selectedPlatform.generationSize, selectedImageModelId, selectedPlatformId)", "image edits must keep the selected platform 2K generation size, selected image model, and platform id");
+assertIncludes("app/page.tsx", "selectedPlatform.generationSize", "main and campaign image generation requests must keep using the selected platform size");
+assertIncludes("lib/constants.ts", 'DETAIL_IMAGE_GENERATION_SIZE = "1152x2048"', "detail image generation size must be an explicit 9:16 request size");
+assertIncludes("app/page.tsx", "generationSizeForGroup(group)", "detail image generation requests must send the 9:16 size instead of the square platform size");
+assertIncludes("app/page.tsx", "generationSizeForModuleId(moduleId)", "detail image regeneration and edits must keep 9:16 sizing");
+assertIncludes("app/globals.css", "aspect-ratio: 9 / 16", "detail preview frames must render as 9:16 portraits");
+assertIncludes("app/page.tsx", "editGeneratedImage(imageUrl, trimmed, generationSizeForModuleId(moduleId), selectedImageModelId, selectedPlatformId)", "image edits must keep the current module group's request size, selected image model, and platform id");
 assertIncludes("lib/api.ts", "createEditImageJob", "image edits must create a backend job instead of holding one long request");
 assertIncludes("lib/api.ts", "fetchEditImageJob", "image edits must poll the backend edit job");
 assertIncludes("lib/api.ts", "pollEditImageJob", "image edits must wait for job completion through polling");
@@ -87,9 +91,9 @@ assert.ok(!fs.existsSync(path.join(root, "components/AutoUploadStep.tsx")), "com
 assert.ok(!fs.existsSync(path.join(root, "components/AutoProgressStep.tsx")), "components/AutoProgressStep.tsx: full auto progress step should be removed");
 assert.ok(!fs.existsSync(path.join(root, "components/AutoResultStep.tsx")), "components/AutoResultStep.tsx: full auto result step should be removed");
 assertIncludes("components/ModulesStep.tsx", "{platform.name} · 生成 {platform.generationSize}", "platform selector must show the 2K generation size first");
-assertIncludes("components/ModulesStep.tsx", "生成尺寸 {selectedPlatform.generationSize}", "platform summary must lead with actual generation size");
+assertIncludes("components/ModulesStep.tsx", "当前版块生成尺寸 {activeGenerationSizeLabel}", "platform summary must show the active image group generation size");
 assertIncludes("components/ModulesStep.tsx", "发布参考：主图 {selectedPlatform.mainSize}", "platform summary may show platform publishing size only as a reference");
-assertIncludes("components/ModulesStep.tsx", "当前平台生成尺寸 {selectedPlatform.generationSize}", "model panel must show the actual 2K request size");
+assertIncludes("components/ModulesStep.tsx", "当前版块生成尺寸 {activeGenerationSizeLabel}", "model panel must show the active image group request size");
 assertNotIncludes("components/ModulesStep.tsx", "所选模型默认尺寸", "model panel must not present stale provider defaults as the generated output size");
 
 assertIncludes("components/ReviewStep.tsx", "textarea", "review step must allow editing extracted fields");

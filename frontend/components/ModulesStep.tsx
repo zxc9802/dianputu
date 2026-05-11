@@ -1,5 +1,6 @@
 import { Check, ImageIcon, Lock, WandSparkles } from "lucide-react";
 import { complianceStatusClass, complianceStatusLabel } from "@/lib/compliance";
+import { DETAIL_IMAGE_GENERATION_SIZE } from "@/lib/constants";
 import type { CommercePlatform, CommercePlatformId, ComplianceReport, GenerationMode, ImageGroup, ModuleConfig, ProjectTemplate, PublicModelConfig, StyleOption, StyleSource } from "@/lib/types";
 
 const imageGroups: ImageGroup[] = ["main", "campaign", "detail"];
@@ -98,6 +99,8 @@ export function ModulesStep({
   const activeProgress = generationProgress[activeImageGroup];
   const copy = groupCopy[activeImageGroup];
   const selectedPlatform = platforms.find((platform) => platform.id === selectedPlatformId) ?? platforms[0];
+  const activeGenerationSize = activeImageGroup === "detail" ? DETAIL_IMAGE_GENERATION_SIZE : selectedPlatform.generationSize;
+  const activeGenerationSizeLabel = activeImageGroup === "detail" ? `${DETAIL_IMAGE_GENERATION_SIZE}（9:16）` : selectedPlatform.generationSize;
   const imageModelOptions = modelConfig.imageGeneration.options?.length
     ? modelConfig.imageGeneration.options
     : [
@@ -159,7 +162,7 @@ export function ModulesStep({
               </select>
             </label>
             <p>
-              生成尺寸 {selectedPlatform.generationSize}，详情图宽 {selectedPlatform.detailWidth}px。发布参考：主图 {selectedPlatform.mainSize}。
+              当前版块生成尺寸 {activeGenerationSizeLabel}，详情图固定 9:16。发布参考：主图 {selectedPlatform.mainSize}。
               {selectedPlatform.note}
             </p>
           </div>
@@ -332,12 +335,12 @@ export function ModulesStep({
               >
                 {imageModelOptions.map((option) => (
                   <option key={option.id} value={option.id}>
-                    {option.label} · {selectedPlatform.generationSize}
+                    {option.label} · {activeGenerationSize}
                   </option>
                 ))}
               </select>
               <p>
-                当前平台生成尺寸 {selectedPlatform.generationSize}，图片请求按平台尺寸提交。
+                当前版块生成尺寸 {activeGenerationSizeLabel}，图片请求按该尺寸提交。
               </p>
               <label className="fieldLabel" htmlFor="generation-mode-select">
                 生成模式

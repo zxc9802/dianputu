@@ -1469,6 +1469,14 @@ a {
   border-bottom: 1px solid #edf3ef;
 }
 
+.detailImageFrame {
+  aspect-ratio: 9 / 16;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
 .longImageControls {
   display: grid;
   gap: 10px;
@@ -1485,11 +1493,10 @@ a {
   border-bottom: 0;
 }
 
-.longImage img {
+.detailImageFrame img {
   display: block;
   width: 100%;
-  height: auto;
-  min-height: 0;
+  height: 100%;
   object-fit: contain;
 }
 
