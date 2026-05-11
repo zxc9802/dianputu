@@ -7,6 +7,7 @@ from app.core.config import get_model_settings
 
 def build_public_model_config() -> dict[str, Any]:
     settings = get_model_settings()
+    default_image = settings.image_options.get(settings.default_image_option_id, settings.image)
     image_options = [
         {
             "id": option.id,
@@ -37,18 +38,18 @@ def build_public_model_config() -> dict[str, Any]:
             "configured": bool(settings.text.api_key),
         },
         "imageGeneration": {
-            "baseUrl": settings.image.base_url,
-            "endpoint": settings.image.endpoint_path,
-            "model": settings.image.model,
+            "baseUrl": default_image.base_url,
+            "endpoint": default_image.endpoint_path,
+            "model": default_image.model,
             "defaults": {
-                "size": settings.image.size,
-                "n": settings.image.n,
-                "quality": settings.image.quality,
-                "output_format": settings.image.output_format,
-                "response_format": settings.image.response_format,
+                "size": default_image.size,
+                "n": default_image.n,
+                "quality": default_image.quality,
+                "output_format": default_image.output_format,
+                "response_format": default_image.response_format,
             },
-            "configured": bool(settings.image.api_key),
-            "defaultOptionId": settings.image.id,
+            "configured": bool(default_image.api_key),
+            "defaultOptionId": settings.default_image_option_id,
             "options": image_options,
             "fallback": {
                 "label": settings.fallback_image.label,

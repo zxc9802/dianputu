@@ -55,6 +55,9 @@ assertIncludes("app/page.tsx", "selectedPlatform.generationSize", "page image ge
 assertIncludes("app/page.tsx", "editGeneratedImage(imageUrl, trimmed, selectedPlatform.generationSize, selectedImageModelId, selectedPlatformId)", "image edits must keep the selected platform 2K generation size, selected image model, and platform id");
 assertIncludes("components/ModulesStep.tsx", "选择图片模型", "modules step must expose the image model selector");
 assertIncludes("lib/api.ts", "image_model_id: imageModelId", "frontend generation/edit requests must send the selected image model id");
+assertIncludes("lib/constants.ts", 'defaultOptionId: "fallback"', "frontend demo model config should default to gpt image2(2)");
+assertIncludes("app/page.tsx", "DEFAULT_IMAGE_MODEL_ID", "page should centralize the default image model id");
+assertNotIncludes("app/page.tsx", 'useState("primary")', "page should not initialize the image model selector to gpt image2(1)");
 assertIncludes("lib/types.ts", 'GenerationMode = "reference_generate" | "fixed_product_composite"', "frontend must model both image generation modes");
 assertIncludes("lib/api.ts", "generation_mode: generationMode", "frontend generation requests must send the selected generation mode");
 assertIncludes("app/page.tsx", "selectedGenerationMode", "page must keep selected generation mode in state");
@@ -78,6 +81,7 @@ assertIncludes("components/ModulesStep.tsx", "{platform.name} · 生成 {platfor
 assertIncludes("components/ModulesStep.tsx", "生成尺寸 {selectedPlatform.generationSize}", "platform summary must lead with actual generation size");
 assertIncludes("components/ModulesStep.tsx", "发布参考：主图 {selectedPlatform.mainSize}", "platform summary may show platform publishing size only as a reference");
 assertIncludes("components/ModulesStep.tsx", "当前平台生成尺寸 {selectedPlatform.generationSize}", "model panel must show the actual 2K request size");
+assertNotIncludes("components/ModulesStep.tsx", "所选模型默认尺寸", "model panel must not present stale provider defaults as the generated output size");
 
 assertIncludes("components/ReviewStep.tsx", "textarea", "review step must allow editing extracted fields");
 assertIncludes("components/ReviewStep.tsx", "onUpdateProductInfo", "review step must propagate edits to page state");

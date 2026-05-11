@@ -72,14 +72,14 @@ def _format_authority_assets(value: Any) -> str:
 def _format_effect_claims(value: Any) -> str:
     if not isinstance(value, list) or not value:
         return (
-            "1. 指标：水润感；呈现：进度条或对比卡片视觉；表达：体验感导向，避免绝对化医疗表达"
+            "1. 指标：水润感；数值：示意型百分比占位；呈现：进度条或对比卡片视觉；表达：体验感导向，避免绝对化医疗表达"
         )
 
     lines: list[str] = []
     for index, item in enumerate(value, start=1):
         if isinstance(item, dict):
             claim = _text(item.get("claim"), "")
-            value_text = _text(item.get("value"), "柔和进度视觉")
+            value_text = _text(item.get("value"), "示意型百分比占位")
             source_type = str(item.get("source_type", "")).strip()
             if claim:
                 source_label = f"；依据：{source_type}" if source_type and source_type != "ai_generated" else ""
@@ -87,10 +87,10 @@ def _format_effect_claims(value: Any) -> str:
         else:
             claim = str(item).strip()
             if claim:
-                lines.append(f"{index}. 指标：{claim}；数值：柔和进度视觉")
+                lines.append(f"{index}. 指标：{claim}；数值：示意型百分比占位")
     if not lines:
         return (
-            "1. 指标：水润感；呈现：进度条或对比卡片视觉；表达：体验感导向，避免绝对化医疗表达"
+            "1. 指标：水润感；数值：示意型百分比占位；呈现：进度条或对比卡片视觉；表达：体验感导向，避免绝对化医疗表达"
         )
     return "\n".join(lines)
 
@@ -342,13 +342,13 @@ def _effect_comparison_layout_guardrails(module: dict[str, Any], product_info: d
         "- 对比卡片可以放在产品两侧、中部或下方信息区，必须清晰可见，但只是完整电商图的一部分。",
         "- 前后变化要明显但可信：使用前可表现干燥、暗沉、粗糙、紧绷或泛红；使用后表现更水润、平滑、均匀、透亮，但不能像换脸或医疗治愈。",
     ]
-    if _is_hydration_effect_context(product_info):
-        lines.extend(
-            [
-                "- 水润数据指标区必须使用醒目大数字表达，例如「增加了 XX%」「提升 XX%」，数字字号要明显大于说明文字。",
-                "- 优先使用已有百分比数据和对应指标名，例如肌肤含水量、保湿力、水润度；不要为了画面效果编造百分比。",
-            ]
-        )
+    metric_area_label = "水润数据指标区" if _is_hydration_effect_context(product_info) else "效果数据指标区"
+    lines.extend(
+        [
+            f"- {metric_area_label}必须显示百分比数字，字号和进度条视觉权重接近即可，不需要超大；不要只画无数字进度条、无数值圆环或抽象仪表盘。",
+            "- 优先使用已有百分比数据和对应指标名；没有具体数值时必须使用示意型百分比占位，并保持体验型、非绝对承诺表达。",
+        ]
+    )
     return "\n".join(lines)
 
 

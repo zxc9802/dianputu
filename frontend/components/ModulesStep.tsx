@@ -332,12 +332,12 @@ export function ModulesStep({
               >
                 {imageModelOptions.map((option) => (
                   <option key={option.id} value={option.id}>
-                    {option.label} · {option.defaults.size}
+                    {option.label} · {selectedPlatform.generationSize}
                   </option>
                 ))}
               </select>
               <p>
-                当前平台生成尺寸 {selectedPlatform.generationSize}，所选模型默认尺寸 {selectedImageModel.defaults.size}。
+                当前平台生成尺寸 {selectedPlatform.generationSize}，图片请求按平台尺寸提交。
               </p>
               <label className="fieldLabel" htmlFor="generation-mode-select">
                 生成模式

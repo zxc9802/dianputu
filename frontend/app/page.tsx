@@ -73,6 +73,7 @@ const PROJECT_STATE_SCHEMA_VERSION = 2;
 const DEFAULT_CATEGORY = "";
 const DEFAULT_STYLE_ID = "green_repair";
 const DEFAULT_PLATFORM_ID: CommercePlatformId = "tmall";
+const DEFAULT_IMAGE_MODEL_ID = DEMO_MODEL_CONFIG.imageGeneration.defaultOptionId ?? "primary";
 const DEFAULT_GENERATION_MODE: GenerationMode = "reference_generate";
 const LANGUAGE_LABELS: Record<LanguageCode, string> = {
   "zh-CN": "中文",
@@ -156,7 +157,7 @@ function readPersistedProjectState(): PersistedProjectState | null {
       selectedCategory: parsed.selectedCategory || DEFAULT_CATEGORY,
       activeImageGroup,
       selectedPlatformId: COMMERCE_PLATFORMS.some((platform) => platform.id === parsed.selectedPlatformId) ? (parsed.selectedPlatformId as CommercePlatformId) : DEFAULT_PLATFORM_ID,
-      selectedImageModelId: parsed.selectedImageModelId || "primary",
+      selectedImageModelId: parsed.selectedImageModelId || DEFAULT_IMAGE_MODEL_ID,
       generationMode: normalizeGenerationMode(parsed.generationMode, schemaVersion),
       promotionInfo: parsed.promotionInfo || "",
       modules: Array.isArray(parsed.modules) ? parsed.modules : [],
@@ -269,7 +270,7 @@ export default function Home() {
   const [isGeneratingStyleSample, setIsGeneratingStyleSample] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(DEFAULT_CATEGORY);
   const [selectedPlatformId, setSelectedPlatformId] = useState<CommercePlatformId>(DEFAULT_PLATFORM_ID);
-  const [selectedImageModelId, setSelectedImageModelId] = useState("primary");
+  const [selectedImageModelId, setSelectedImageModelId] = useState(DEFAULT_IMAGE_MODEL_ID);
   const [selectedGenerationMode, setSelectedGenerationMode] = useState<GenerationMode>(DEFAULT_GENERATION_MODE);
   const [modelConfig, setModelConfig] = useState<PublicModelConfig>(DEMO_MODEL_CONFIG);
   const [imageVersionStore, setImageVersionStore] = useState<ImageVersionStore>(() => createEmptyImageVersionStore());
@@ -309,7 +310,7 @@ export default function Home() {
         setStyleSource(restored.styleSource);
         setSelectedCategory(restored.selectedCategory);
         setSelectedPlatformId(restored.selectedPlatformId);
-        setSelectedImageModelId(restored.selectedImageModelId || models.imageGeneration.defaultOptionId || "primary");
+        setSelectedImageModelId(restored.selectedImageModelId || models.imageGeneration.defaultOptionId || DEFAULT_IMAGE_MODEL_ID);
         setSelectedGenerationMode(normalizeGenerationMode(restored.generationMode, restored.projectStateSchemaVersion));
         setActiveImageGroup(restored.activeImageGroup);
         setPromotionInfo(restored.promotionInfo);
@@ -323,6 +324,7 @@ export default function Home() {
         setStatusText(restored.generatedImages.length || Object.keys(restored.generatedImageVersions).length ? "已恢复生成结果" : restored.statusText);
       } else {
         setModules(defaults.modules);
+        setSelectedImageModelId(models.imageGeneration.defaultOptionId || DEFAULT_IMAGE_MODEL_ID);
       }
       setHasRestoredProjectState(true);
     }
@@ -422,7 +424,7 @@ export default function Home() {
     setStyleSource(state.styleSource);
     setSelectedCategory(state.selectedCategory);
     setSelectedPlatformId(state.selectedPlatformId);
-    setSelectedImageModelId(state.selectedImageModelId || modelConfig.imageGeneration.defaultOptionId || "primary");
+    setSelectedImageModelId(state.selectedImageModelId || modelConfig.imageGeneration.defaultOptionId || DEFAULT_IMAGE_MODEL_ID);
     setSelectedGenerationMode(normalizeGenerationMode(state.generationMode, state.projectStateSchemaVersion));
     setActiveImageGroup(state.activeImageGroup);
     setPromotionInfo(state.promotionInfo);
@@ -498,7 +500,7 @@ export default function Home() {
     setStyleSource("preset");
     setSelectedCategory(DEFAULT_CATEGORY);
     setSelectedPlatformId("tmall");
-    setSelectedImageModelId(modelConfig.imageGeneration.defaultOptionId || "primary");
+    setSelectedImageModelId(modelConfig.imageGeneration.defaultOptionId || DEFAULT_IMAGE_MODEL_ID);
     setSelectedGenerationMode(DEFAULT_GENERATION_MODE);
     setModules(defaultModules.map((module) => ({ ...module })));
     setImageVersionStore(createEmptyImageVersionStore());

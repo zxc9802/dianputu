@@ -17,8 +17,8 @@
 
 - 文字分析模型：`gemini-3.1-pro-preview`
 - 默认输出额度：`max_tokens = 4096`
-- 图片生成模型：`gpt-image-2-all`
-- 默认图片尺寸：`1024x1024`
+- 默认图片生成模型：`gpt-image-2-all`（`gpt image2(2)`），`gpt-image-2-vip` 仍可作为可选模型
+- 默认图片尺寸：`2048x2048`
 
 ## MVP 范围
 

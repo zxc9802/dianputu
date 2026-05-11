@@ -26,6 +26,7 @@ class ModelPayloadTests(unittest.TestCase):
         self.assertEqual(settings.fallback_image.size, "2048x2048")
         self.assertEqual(settings.fallback_image.label, "gpt image2(2)")
         self.assertEqual(settings.fallback_image.model, "gpt-image-2-all")
+        self.assertEqual(settings.default_image_option_id, "fallback")
         self.assertIn("fallback", settings.image_options)
         self.assertIn("gemini_flash_image", settings.image_options)
         self.assertEqual(list(settings.image_options)[:2], ["primary", "fallback"])
@@ -158,6 +159,12 @@ class ModelPayloadTests(unittest.TestCase):
         self.assertEqual(settings.image.size, "1536x1024")
         self.assertEqual(settings.image.quality, "medium")
         self.assertEqual(settings.fallback_image.model, "custom-fallback")
+
+    def test_fallback_image_size_does_not_inherit_legacy_1024_default(self):
+        settings = get_model_settings({"LEGACY_IMAGE_GENERATION_SIZE": "1024x1024"})
+
+        self.assertEqual(settings.fallback_image.size, "2048x2048")
+        self.assertEqual(settings.image_options["fallback"].size, "2048x2048")
 
     def test_dotenv_file_is_loaded_when_explicitly_provided(self):
         with TemporaryDirectory() as tmp:

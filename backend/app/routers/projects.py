@@ -13,7 +13,7 @@ from typing import Any, Callable
 from urllib.parse import quote
 from uuid import uuid4
 
-from app.core.config import get_model_settings
+from app.core.config import ImageGenerationSettings, ModelSettings, get_model_settings
 from app.demo_data import DEFAULT_MODULES, DEMO_IMAGE_URLS, STYLE_OPTIONS
 from app.services.compliance_checker import OcrProvider, VisionModelOcrProvider, check_image_items, check_text_items
 from app.services.image_model import call_image_edit_model, call_image_model
@@ -44,6 +44,10 @@ GENERATION_JOB_TTL_SECONDS = 3600  # 1 hour
 COMPOSE_JOBS: dict[str, dict[str, Any]] = {}
 COMPOSE_JOB_TTL_SECONDS = 600  # 10 minutes
 WHITE_BACKGROUND_REFERENCE_REQUIRED_ERROR = "白底图需要先上传产品图，系统会直接复用上传图以避免模型重绘导致包装、Logo 或瓶身变形。"
+
+
+def resolve_image_settings(settings: ModelSettings, image_model_id: str | None) -> ImageGenerationSettings:
+    return settings.image_options.get(image_model_id or settings.default_image_option_id, settings.image)
 
 
 def _cleanup_expired_generation_jobs() -> None:
@@ -742,7 +746,7 @@ async def _generate_module_image(
         *(reference_images or []),
         *(style_reference_images or []),
     ]
-    image_settings = settings.image_options.get(image_model_id or settings.image.id, settings.image)
+    image_settings = resolve_image_settings(settings, image_model_id)
     image_label = f"{image_settings.label} ({image_settings.model})"
     primary_error = ""
     urls: list[str] = []
@@ -842,7 +846,7 @@ async def generate_detail_images(
     target_language: str | None = None,
 ) -> dict[str, Any]:
     settings = get_model_settings()
-    image_settings = settings.image_options.get(image_model_id or settings.image.id, settings.image)
+    image_settings = resolve_image_settings(settings, image_model_id)
     enabled_modules = [module for module in DEFAULT_MODULES if module["id"] in module_ids]
     style = next((item for item in STYLE_OPTIONS if item["id"] == style_id), STYLE_OPTIONS[0])
     normalized_generation_mode = generation_mode or REFERENCE_GENERATE_MODE
@@ -947,7 +951,7 @@ async def edit_generated_image(
     )
 
     settings = get_model_settings()
-    image_settings = settings.image_options.get(image_model_id or settings.image.id, settings.image)
+    image_settings = resolve_image_settings(settings, image_model_id)
     if not image_settings.api_key and not settings.fallback_image.api_key:
         return {"source": "error", "error": "image model is not configured"}
 
