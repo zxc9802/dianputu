@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Download, FileImage, Monitor, Save, Smartphone } from "lucide-react";
 import { createComposeLongImageJob, downloadComposeLongImageJob, downloadImage, fetchComposeLongImageJob, prepareComposeLongImageSources } from "@/lib/api";
-import { complianceStatusClass, complianceStatusLabel, highestComplianceStatus } from "@/lib/compliance";
+import { complianceIssueLocationLabel, complianceStatusClass, complianceStatusLabel, highestComplianceStatus } from "@/lib/compliance";
 import { DETAIL_IMAGE_GENERATION_SIZE } from "@/lib/constants";
 import { buildDetailDownloadState } from "@/lib/projectEnhancements";
 import type { CommercePlatform, ComplianceReport, GeneratedImageVersion, GeneratedImageVersionState, ImageGroup, LanguageCode, ModuleConfig } from "@/lib/types";
@@ -115,7 +115,7 @@ function ComplianceIssueList({ report }: { report?: ComplianceReport | null }) {
     <ul className="complianceIssueList compact">
       {report.issues.slice(0, 3).map((issue, index) => (
         <li key={`${issue.term}-${index}`}>
-          <strong>{issue.term}</strong>
+          <strong>{[complianceIssueLocationLabel(issue), issue.term].filter(Boolean).join(" · ")}</strong>
           <span>{issue.reason}</span>
           <em>{issue.suggestion}</em>
         </li>

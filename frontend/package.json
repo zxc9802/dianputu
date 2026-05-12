@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "test:static": "node tests/static-ui-contract.test.cjs",
-    "test": "npm run test:static && node tests/product-info-merge.test.cjs && node tests/project-enhancements.test.cjs && node tests/history-api.test.cjs"
+    "test": "npm run test:static && node tests/compliance.test.cjs && node tests/product-info-merge.test.cjs && node tests/project-enhancements.test.cjs && node tests/history-api.test.cjs"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

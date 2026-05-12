@@ -1,4 +1,4 @@
-import type { ComplianceReport, ComplianceStatus, ComplianceTextItem, ProductInfo } from "./types";
+import type { ComplianceIssue, ComplianceReport, ComplianceStatus, ComplianceTextItem, ProductInfo } from "./types";
 
 const statusRank: Record<ComplianceStatus, number> = { pass: 0, review: 1, warn: 2, block: 3 };
 
@@ -18,6 +18,14 @@ export function highestComplianceStatus(reports: Array<ComplianceReport | null |
     const status = report?.summary.status ?? "pass";
     return statusRank[status] > statusRank[highest] ? status : highest;
   }, "pass");
+}
+
+export function complianceIssueLocationLabel(issue: ComplianceIssue) {
+  const imageIndex = issue.location?.image_index;
+  if (typeof imageIndex === "number" && Number.isInteger(imageIndex) && imageIndex >= 0) {
+    return `第 ${imageIndex + 1} 张`;
+  }
+  return "";
 }
 
 export function buildProductInfoComplianceItems(productInfo: ProductInfo | null): ComplianceTextItem[] {
