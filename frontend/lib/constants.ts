@@ -155,15 +155,15 @@ export const DEFAULT_MODULES: ModuleConfig[] = [
   { id: "campaign_effect", name: "活动次图-效果", description: "核心功效 + 促销转化", enabled: true, order: 4, image_group: "campaign" },
   { id: "campaign_usage_scene", name: "活动次图-使用场景", description: "使用场景 + 活动元素", enabled: true, order: 5, image_group: "campaign" },
   { id: "hero", name: "详情首图", description: "产品大图 + 核心卖点", enabled: true, order: 1, image_group: "detail" },
-  { id: "authority", name: "权威资质展示", description: "实验室 / 科学家 / 报告 / 专利", enabled: true, order: 2, image_group: "detail" },
-  { id: "pain_scene", name: "痛点场景", description: "皮肤问题 + 尝试无效", enabled: true, order: 3, image_group: "detail" },
-  { id: "effect_comparison", name: "效果对比", description: "使用前后 + 百分比数据", enabled: true, order: 4, image_group: "detail" },
-  { id: "competitor_comparison", name: "竞品对比", description: "质地 / 成分 / 效果 / 负面体验", enabled: true, order: 5, image_group: "detail" },
-  { id: "ingredient_overview", name: "成分总览", description: "整体成分体系 + 配方逻辑", enabled: true, order: 6, image_group: "detail" },
-  { id: "ingredient_1", name: "成分 1 讲解", description: "第 1 个核心成分作用讲解", enabled: true, order: 7, image_group: "detail" },
-  { id: "ingredient_2", name: "成分 2 讲解", description: "第 2 个核心成分作用讲解", enabled: true, order: 8, image_group: "detail" },
-  { id: "ingredient_3", name: "成分 3 讲解", description: "第 3 个核心成分作用讲解", enabled: true, order: 9, image_group: "detail" },
-  { id: "usage", name: "使用方法", description: "商品怎么用", enabled: true, order: 10, image_group: "detail" }
+  { id: "brand_qualification", name: "品牌与资质背书", description: "品牌背景与权威认证", enabled: true, order: 2, image_group: "detail" },
+  { id: "research_strength", name: "研发实力", description: "研发流程 / 真人测试 / 科学配方", enabled: true, order: 3, image_group: "detail" },
+  { id: "pain_scene", name: "痛点场景", description: "皮肤问题 + 尝试无效", enabled: true, order: 4, image_group: "detail" },
+  { id: "effect_comparison", name: "效果对比", description: "使用前后 + 百分比数据", enabled: true, order: 5, image_group: "detail" },
+  { id: "competitor_comparison", name: "竞品对比", description: "质地 / 成分 / 效果 / 负面体验", enabled: true, order: 6, image_group: "detail" },
+  { id: "product_showcase", name: "产品大图强化", description: "产品大图 + 功效 + 质地 + 0添加", enabled: true, order: 7, image_group: "detail" },
+  { id: "ingredient_overview", name: "成分总览", description: "整体成分体系 + 配方逻辑", enabled: true, order: 8, image_group: "detail" },
+  { id: "usage", name: "使用方法", description: "商品怎么用", enabled: true, order: 9, image_group: "detail" },
+  { id: "product_info", name: "产品信息", description: "产品基础信息 / 参数 / 成分说明", enabled: true, order: 10, image_group: "detail" }
 ];
 
 export const DETAIL_IMAGE_GENERATION_SIZE = "1152x2048";
@@ -192,13 +192,15 @@ export const OFFICIAL_PROJECT_TEMPLATES: ProjectTemplate[] = [
       { id: "main_effect", enabled: true, order: 4 },
       { id: "main_usage_scene", enabled: true, order: 5 },
       { id: "hero", enabled: true, order: 1 },
-      { id: "authority", enabled: true, order: 2 },
-      { id: "effect_comparison", enabled: true, order: 3 },
-      { id: "ingredient_overview", enabled: true, order: 4 },
-      { id: "ingredient_1", enabled: true, order: 5 },
-      { id: "ingredient_2", enabled: true, order: 6 },
-      { id: "ingredient_3", enabled: true, order: 7 },
-      { id: "usage", enabled: true, order: 8 }
+      { id: "brand_qualification", enabled: true, order: 2 },
+      { id: "research_strength", enabled: true, order: 3 },
+      { id: "pain_scene", enabled: true, order: 4 },
+      { id: "effect_comparison", enabled: true, order: 5 },
+      { id: "competitor_comparison", enabled: true, order: 6 },
+      { id: "product_showcase", enabled: true, order: 7 },
+      { id: "ingredient_overview", enabled: true, order: 8 },
+      { id: "usage", enabled: true, order: 9 },
+      { id: "product_info", enabled: true, order: 10 }
     ]
   },
   {
@@ -215,14 +217,15 @@ export const OFFICIAL_PROJECT_TEMPLATES: ProjectTemplate[] = [
       { id: "campaign_white_bg", enabled: true, order: 1 },
       { id: "campaign_hero_selling_point", enabled: true, order: 2 },
       { id: "hero", enabled: true, order: 1 },
-      { id: "pain_scene", enabled: true, order: 2 },
-      { id: "effect_comparison", enabled: true, order: 3 },
-      { id: "competitor_comparison", enabled: true, order: 4 },
-      { id: "ingredient_overview", enabled: true, order: 5 },
-      { id: "ingredient_1", enabled: true, order: 6 },
-      { id: "ingredient_2", enabled: true, order: 7 },
-      { id: "ingredient_3", enabled: true, order: 8 },
-      { id: "usage", enabled: true, order: 9 }
+      { id: "brand_qualification", enabled: true, order: 2 },
+      { id: "research_strength", enabled: true, order: 3 },
+      { id: "pain_scene", enabled: true, order: 4 },
+      { id: "effect_comparison", enabled: true, order: 5 },
+      { id: "competitor_comparison", enabled: true, order: 6 },
+      { id: "product_showcase", enabled: true, order: 7 },
+      { id: "ingredient_overview", enabled: true, order: 8 },
+      { id: "usage", enabled: true, order: 9 },
+      { id: "product_info", enabled: true, order: 10 }
     ]
   },
   {
@@ -237,12 +240,15 @@ export const OFFICIAL_PROJECT_TEMPLATES: ProjectTemplate[] = [
       { id: "main_hero_selling_point", enabled: true, order: 2 },
       { id: "main_usage_scene", enabled: true, order: 3 },
       { id: "hero", enabled: true, order: 1 },
-      { id: "pain_scene", enabled: true, order: 2 },
-      { id: "ingredient_overview", enabled: true, order: 3 },
-      { id: "ingredient_1", enabled: true, order: 4 },
-      { id: "ingredient_2", enabled: true, order: 5 },
-      { id: "ingredient_3", enabled: true, order: 6 },
-      { id: "usage", enabled: true, order: 7 }
+      { id: "brand_qualification", enabled: true, order: 2 },
+      { id: "research_strength", enabled: true, order: 3 },
+      { id: "pain_scene", enabled: true, order: 4 },
+      { id: "effect_comparison", enabled: true, order: 5 },
+      { id: "competitor_comparison", enabled: true, order: 6 },
+      { id: "product_showcase", enabled: true, order: 7 },
+      { id: "ingredient_overview", enabled: true, order: 8 },
+      { id: "usage", enabled: true, order: 9 },
+      { id: "product_info", enabled: true, order: 10 }
     ]
   }
 ];

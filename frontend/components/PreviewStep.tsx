@@ -19,7 +19,8 @@ const languageOptions: Array<{ code: LanguageCode; label: string }> = [
   { code: "zh-CN", label: "中文" },
   { code: "en", label: "English" },
   { code: "th", label: "ไทย" },
-  { code: "ms", label: "Malay" }
+  { code: "ms", label: "Malay" },
+  { code: "vi", label: "Tiếng Việt" }
 ];
 
 const groupCopy: Record<ImageGroup, { title: string; empty: string; directory: string }> = {

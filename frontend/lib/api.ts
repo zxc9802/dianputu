@@ -1,8 +1,104 @@
 import { DEFAULT_MODULES, DEMO_MODEL_CONFIG, STYLE_OPTIONS } from "./constants";
 import { MainAppRedirectError, extractApiErrorMessage, readJsonSafely, redirectToMainAppIfNeeded } from "./client/api-response";
-import type { CommercePlatformId, ComplianceReport, ComplianceTextItem, GenerationMode, LanguageCode, LanguageVersion, MaterialPayload, ModuleConfig, ProductInfo, PublicModelConfig, StyleOption, TextLayer } from "./types";
+import type { CommercePlatformId, ComplianceReport, ComplianceTextItem, GenerationMode, LanguageCode, LanguageVersion, MaterialPayload, ModuleConfig, ProductInfo, PromptBranch, PublicModelConfig, SavedStyleRecord, StyleOption, TextLayer } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+const LOCAL_SAVED_STYLES_STORAGE_KEY = "detail-image-agent-saved-styles";
+const LOCAL_DEV_SAVED_STYLES_USER_ID = "detail-image-agent-local-dev-user";
+const LOCAL_SAVED_STYLE_HOSTNAMES = new Set(["localhost", "127.0.0.1", "0.0.0.0"]);
+
+let currentSavedStyleUserIdPromise: Promise<string> | null = null;
+
+function isLocalSavedStyleFallbackEnabled() {
+  return typeof window !== "undefined" && LOCAL_SAVED_STYLE_HOSTNAMES.has(window.location.hostname);
+}
+
+function getScopedLocalSavedStyleStorageKey(userId: string) {
+  return `${LOCAL_SAVED_STYLES_STORAGE_KEY}:${userId || LOCAL_DEV_SAVED_STYLES_USER_ID}`;
+}
+
+async function fetchCurrentSavedStyleUserId(): Promise<string> {
+  if (currentSavedStyleUserIdPromise) {
+    return currentSavedStyleUserIdPromise;
+  }
+
+  currentSavedStyleUserIdPromise = (async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/session`, {
+        method: "GET",
+        cache: "no-store",
+        credentials: "include"
+      });
+      const payload = await readJsonSafely<{
+        data?: { session?: { user?: { id?: unknown } | null } | null };
+      }>(response);
+      redirectToMainAppIfNeeded(response, payload);
+      if (!response.ok) {
+        throw new Error(extractApiErrorMessage(payload, "读取当前登录状态失败"));
+      }
+
+      const userId = payload?.data?.session?.user?.id;
+      return typeof userId === "string" && userId.trim() ? userId.trim() : LOCAL_DEV_SAVED_STYLES_USER_ID;
+    } catch (error) {
+      if (error instanceof MainAppRedirectError) {
+        throw error;
+      }
+      currentSavedStyleUserIdPromise = null;
+      return LOCAL_DEV_SAVED_STYLES_USER_ID;
+    }
+  })();
+
+  return currentSavedStyleUserIdPromise;
+}
+
+function readLocalSavedStyles(userId: string): SavedStyleRecord[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(getScopedLocalSavedStyleStorageKey(userId)) ?? "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalSavedStyles(userId: string, records: SavedStyleRecord[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(getScopedLocalSavedStyleStorageKey(userId), JSON.stringify(records.slice(0, 50)));
+  } catch {
+    // The current project can still continue if local fallback persistence is unavailable.
+  }
+}
+
+function createLocalSavedStyleId() {
+  const randomPart = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}`;
+  return `local-${randomPart}`;
+}
+
+function mergeSavedStyleRecords(localItems: SavedStyleRecord[], remoteItems: SavedStyleRecord[]) {
+  const localIds = new Set(localItems.map((item) => item.id));
+  return [...localItems, ...remoteItems.filter((item) => !localIds.has(item.id))];
+}
+
+function saveLocalSavedStyle(userId: string, style: StyleOption, name: string): SavedStyleRecord {
+  const now = new Date().toISOString();
+  const saved: SavedStyleRecord = {
+    id: createLocalSavedStyleId(),
+    name,
+    style: { ...style, name },
+    created_at: now,
+    updated_at: now
+  };
+  writeLocalSavedStyles(userId, [saved, ...readLocalSavedStyles(userId)]);
+  return saved;
+}
+
+function deleteLocalSavedStyle(userId: string, id: string) {
+  const before = readLocalSavedStyles(userId);
+  const after = before.filter((record) => record.id !== id);
+  writeLocalSavedStyles(userId, after);
+  return after.length !== before.length;
+}
 
 async function requestJson<T>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
   const controller = new AbortController();
@@ -90,7 +186,8 @@ export async function generateImages(
   generationMode: GenerationMode = "reference_generate",
   platformId: CommercePlatformId = "tmall",
   layeredText = false,
-  targetLanguage = ""
+  targetLanguage = "",
+  promptBranch: PromptBranch = "current"
 ) {
   try {
     const { job_id: jobId } = await createGenerateImageJob(
@@ -106,7 +203,8 @@ export async function generateImages(
       generationMode,
       platformId,
       layeredText,
-      targetLanguage
+      targetLanguage,
+      promptBranch
     );
     return await pollGenerateImageJob(jobId);
   } catch (error) {
@@ -170,7 +268,8 @@ export async function createGenerateImageJob(
   generationMode: GenerationMode = "reference_generate",
   platformId: CommercePlatformId = "tmall",
   layeredText = false,
-  targetLanguage = ""
+  targetLanguage = "",
+  promptBranch: PromptBranch = "current"
 ) {
   return requestJson<{ job_id: string }>("/api/projects/generate/jobs", {
     method: "POST",
@@ -187,7 +286,8 @@ export async function createGenerateImageJob(
       image_model_id: imageModelId,
       generation_mode: generationMode,
       layered_text: layeredText,
-      target_language: targetLanguage
+      target_language: targetLanguage,
+      prompt_branch: promptBranch
     }),
     timeoutMs: 15000
   });
@@ -294,6 +394,70 @@ export async function generateAiCustomStyleSample(style: StyleOption, productInf
       source: "error",
       error: error instanceof Error ? error.message : "AI 风格样例图请求失败"
     };
+  }
+}
+
+export async function fetchSavedStyles() {
+  const useLocalFallback = isLocalSavedStyleFallbackEnabled();
+  const localUserId = useLocalFallback ? await fetchCurrentSavedStyleUserId() : "";
+  const localItems = useLocalFallback ? readLocalSavedStyles(localUserId) : [];
+  try {
+    const result = await requestJson<{ items: SavedStyleRecord[]; limit: number; offset: number }>("/api/styles/saved", {
+      timeoutMs: 15000
+    });
+    return {
+      ...result,
+      items: mergeSavedStyleRecords(localItems, result.items)
+    };
+  } catch (error) {
+    if (error instanceof MainAppRedirectError) {
+      throw error;
+    }
+    if (useLocalFallback) {
+      return { items: localItems, limit: 50, offset: 0 };
+    }
+    return { items: [], limit: 50, offset: 0 };
+  }
+}
+
+export async function saveSavedStyle(style: StyleOption, name: string) {
+  try {
+    return await requestJson<SavedStyleRecord>("/api/styles/saved", {
+      method: "POST",
+      body: JSON.stringify({ name, style }),
+      timeoutMs: 15000
+    });
+  } catch (error) {
+    if (error instanceof MainAppRedirectError) {
+      throw error;
+    }
+    if (isLocalSavedStyleFallbackEnabled()) {
+      return saveLocalSavedStyle(await fetchCurrentSavedStyleUserId(), style, name);
+    }
+    throw error;
+  }
+}
+
+export async function deleteSavedStyle(id: string) {
+  const useLocalFallback = isLocalSavedStyleFallbackEnabled();
+  const localUserId = useLocalFallback ? await fetchCurrentSavedStyleUserId() : "";
+  if (useLocalFallback && id.startsWith("local-")) {
+    deleteLocalSavedStyle(localUserId, id);
+    return { deleted: true, id };
+  }
+  try {
+    return await requestJson<{ deleted: boolean; id: string }>(`/api/styles/saved/${id}`, {
+      method: "DELETE",
+      timeoutMs: 15000
+    });
+  } catch (error) {
+    if (error instanceof MainAppRedirectError) {
+      throw error;
+    }
+    if (useLocalFallback && deleteLocalSavedStyle(localUserId, id)) {
+      return { deleted: true, id };
+    }
+    throw error;
   }
 }
 

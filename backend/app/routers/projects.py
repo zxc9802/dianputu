@@ -911,6 +911,7 @@ async def _generate_module_image(
     generation_mode: str = REFERENCE_GENERATE_MODE,
     layered_text: bool = False,
     target_language: str | None = None,
+    prompt_branch: str | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
     logger.info("detail image generation start %s/%s module=%s", module_index, total_modules, module["id"])
     module_id = str(module["id"])
@@ -929,6 +930,7 @@ async def _generate_module_image(
         has_style_reference=bool(style_reference_images),
         text_layer_mode=layered_text,
         target_language=target_language,
+        prompt_branch=prompt_branch,
     )
     generation_prompt = build_fixed_product_background_prompt(prompt, module) if fixed_product_mode else prompt
     model_reference_images = [*(style_reference_images or [])] if fixed_product_mode else [
@@ -998,6 +1000,7 @@ async def _generate_module_image(
                         module_id=module_id,
                         background_url=fallback_urls[0],
                         product_url=reference_images[0],
+                        platform_id=platform_id,
                     )
                 except Exception as composite_exc:
                     return None, f"{module['id']}: primary {primary_error}; fallback fixed product composite failed: {composite_exc}"
@@ -1033,6 +1036,7 @@ async def generate_detail_images(
     generation_mode: str | None = REFERENCE_GENERATE_MODE,
     layered_text: bool = False,
     target_language: str | None = None,
+    prompt_branch: str | None = None,
 ) -> dict[str, Any]:
     settings = get_model_settings()
     image_settings = resolve_image_settings(settings, image_model_id)
@@ -1084,6 +1088,7 @@ async def generate_detail_images(
                     generation_mode=normalized_generation_mode,
                     layered_text=layered_text,
                     target_language=target_language,
+                    prompt_branch=prompt_branch,
                 )
                 for index, module in enumerate(enabled_modules, start=1)
             )
@@ -1309,6 +1314,7 @@ try:
         generation_mode: str | None = REFERENCE_GENERATE_MODE
         layered_text: bool = False
         target_language: str | None = None
+        prompt_branch: str | None = None
 
     class EditImageRequest(BaseModel):
         image_url: str
@@ -1332,6 +1338,7 @@ try:
             "generation_mode": request.generation_mode,
             "layered_text": request.layered_text,
             "target_language": request.target_language,
+            "prompt_branch": request.prompt_branch,
         }
 
     def _edit_payload_from_request(request: EditImageRequest) -> dict[str, Any]:
@@ -1373,6 +1380,7 @@ try:
                 generation_mode=payload.get("generation_mode") or REFERENCE_GENERATE_MODE,
                 layered_text=bool(payload.get("layered_text")),
                 target_language=payload.get("target_language"),
+                prompt_branch=payload.get("prompt_branch"),
             )
             job.update(
                 {
@@ -1524,6 +1532,7 @@ try:
             generation_mode=request.generation_mode,
             layered_text=request.layered_text,
             target_language=request.target_language,
+            prompt_branch=request.prompt_branch,
         )
 
     @router.post("/generate/jobs")

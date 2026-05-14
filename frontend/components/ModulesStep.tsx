@@ -1,9 +1,16 @@
 import { Check, ImageIcon, Lock, WandSparkles } from "lucide-react";
 import { complianceStatusClass, complianceStatusLabel } from "@/lib/compliance";
 import { DETAIL_IMAGE_GENERATION_SIZE } from "@/lib/constants";
-import type { CommercePlatform, CommercePlatformId, ComplianceReport, GenerationMode, ImageGroup, ModuleConfig, ProjectTemplate, PublicModelConfig, StyleOption, StyleSource } from "@/lib/types";
+import type { CommercePlatform, CommercePlatformId, ComplianceReport, GenerationMode, ImageGroup, LanguageCode, ModuleConfig, ProjectTemplate, PromptBranch, PublicModelConfig, StyleOption, StyleSource } from "@/lib/types";
 
 const imageGroups: ImageGroup[] = ["main", "campaign", "detail"];
+const languageOptions: Array<{ code: LanguageCode; label: string }> = [
+  { code: "zh-CN", label: "中文" },
+  { code: "en", label: "English" },
+  { code: "th", label: "ไทย" },
+  { code: "ms", label: "Malay" },
+  { code: "vi", label: "Tiếng Việt" }
+];
 
 const groupCopy: Record<ImageGroup, { title: string; description: string; output: string; moduleLabel: string; buttonLabel: string }> = {
   main: {
@@ -55,11 +62,15 @@ export function ModulesStep({
   templates,
   selectedImageModelId,
   generationMode,
+  generationLanguage,
+  promptBranch,
   promotionCompliance,
   onPromotionInfoChange,
   onPlatformChange,
   onImageModelChange,
   onGenerationModeChange,
+  onGenerationLanguageChange,
+  onPromptBranchChange,
   onTemplateApply,
   onTemplateSave,
   onImageGroupChange,
@@ -80,11 +91,15 @@ export function ModulesStep({
   templates: ProjectTemplate[];
   selectedImageModelId: string;
   generationMode: GenerationMode;
+  generationLanguage: LanguageCode;
+  promptBranch: PromptBranch;
   promotionCompliance?: ComplianceReport | null;
   onPromotionInfoChange: (value: string) => void;
   onPlatformChange: (id: CommercePlatformId) => void;
   onImageModelChange: (id: string) => void;
   onGenerationModeChange: (mode: GenerationMode) => void;
+  onGenerationLanguageChange: (language: LanguageCode) => void;
+  onPromptBranchChange: (branch: PromptBranch) => void;
   onTemplateApply: (template: ProjectTemplate) => void;
   onTemplateSave: () => void;
   onImageGroupChange: (group: ImageGroup) => void;
@@ -308,6 +323,14 @@ export function ModulesStep({
                 <span>目标平台</span>
                 <b>{selectedPlatform.name}</b>
               </div>
+              <div>
+                <span>生成语言</span>
+                <b>{languageOptions.find((language) => language.code === generationLanguage)?.label ?? generationLanguage}</b>
+              </div>
+              <div>
+                <span>提示词分支</span>
+                <b>{promptBranch === "prompt_optimization" ? "提示词优化分支" : "当前分支"}</b>
+              </div>
             </div>
           </div>
           <div className="modelStack">
@@ -357,6 +380,41 @@ export function ModulesStep({
               </select>
               <p>
                 默认使用 AI 参考生成：模型根据提示词和产品图一次性生成整张图。需要严格复用原产品母版时，再切换固定产品合成。
+              </p>
+              <label className="fieldLabel" htmlFor="generation-language-select">
+                生成语言
+              </label>
+              <select
+                id="generation-language-select"
+                className="selectInput"
+                value={generationLanguage}
+                onChange={(event) => onGenerationLanguageChange(event.target.value as LanguageCode)}
+                disabled={activeProgress.isGenerating}
+              >
+                {languageOptions.map((language) => (
+                  <option key={language.code} value={language.code}>
+                    {language.label}
+                  </option>
+                ))}
+              </select>
+              <p>
+                这里选择后，本次勾选模块会直接按该语言生成；预览页仍可对单张图补生成其他语言版本。
+              </p>
+              <label className="fieldLabel" htmlFor="prompt-branch-select">
+                提示词分支
+              </label>
+              <select
+                id="prompt-branch-select"
+                className="selectInput"
+                value={promptBranch}
+                onChange={(event) => onPromptBranchChange(event.target.value as PromptBranch)}
+                disabled={activeProgress.isGenerating}
+              >
+                <option value="current">当前分支</option>
+                <option value="prompt_optimization">提示词优化分支</option>
+              </select>
+              <p>
+                当前分支保持现有提示词；提示词优化分支会加入高级护肤商业摄影规范，方便同模块重新生成后对比。
               </p>
             </article>
           </div>

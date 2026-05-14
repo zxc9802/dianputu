@@ -100,6 +100,51 @@ class HistoryIsolationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("DELETE FROM project_history WHERE user_id = $1 AND id = $2", sql)
         self.assertEqual(args, ("user-a", "record-1"))
 
+    async def test_list_saved_styles_filters_by_user_id(self):
+        await database.list_saved_styles("user-a", 20, 5)
+
+        method, sql, args = self.conn.calls[-1]
+        self.assertEqual(method, "fetch")
+        self.assertIn("FROM saved_styles", sql)
+        self.assertIn("WHERE user_id = $1", sql)
+        self.assertEqual(args, ("user-a", 20, 5))
+
+    async def test_save_style_writes_owner_fields(self):
+        await database.save_style(
+            "user-a",
+            {"user_id": "user-a", "account": "a@example.test"},
+            {
+                "id": "style-1",
+                "name": "冷萃晶透风",
+                "style": {
+                    "id": "style_reference",
+                    "name": "冷萃晶透风",
+                    "keywords": ["冷感"],
+                    "primary_color": "#A8DDE8",
+                },
+            },
+        )
+
+        method, sql, args = self.conn.calls[-1]
+        self.assertEqual(method, "execute")
+        self.assertIn("INSERT INTO saved_styles", sql)
+        self.assertIn("user_id", sql)
+        self.assertIn("user_snapshot_json", sql)
+        self.assertIn("WHERE saved_styles.user_id = EXCLUDED.user_id", sql)
+        self.assertEqual(args[1], "user-a")
+        self.assertIn('"user_id": "user-a"', args[2])
+        self.assertEqual(args[3], "冷萃晶透风")
+        self.assertIn('"primary_color": "#A8DDE8"', args[4])
+
+    async def test_delete_saved_style_filters_by_user_id_and_record_id(self):
+        deleted = await database.delete_saved_style("user-a", "style-1")
+
+        method, sql, args = self.conn.calls[-1]
+        self.assertTrue(deleted)
+        self.assertEqual(method, "execute")
+        self.assertIn("DELETE FROM saved_styles WHERE user_id = $1 AND id = $2", sql)
+        self.assertEqual(args, ("user-a", "style-1"))
+
 
 if __name__ == "__main__":
     unittest.main()

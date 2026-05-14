@@ -67,18 +67,20 @@ class ApiContractTests(unittest.TestCase):
             [module["id"] for module in detail_modules],
             [
                 "hero",
-                "authority",
+                "brand_qualification",
+                "research_strength",
                 "pain_scene",
                 "effect_comparison",
                 "competitor_comparison",
+                "product_showcase",
                 "ingredient_overview",
-                "ingredient_1",
-                "ingredient_2",
-                "ingredient_3",
                 "usage",
+                "product_info",
             ],
         )
         self.assertNotIn("ingredient", [module["id"] for module in detail_modules])
+        self.assertNotIn("authority", [module["id"] for module in detail_modules])
+        self.assertNotIn("ingredient_1", [module["id"] for module in detail_modules])
 
     def test_product_info_contains_confirmation_fields(self):
         required = {
@@ -186,6 +188,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(style["seed_id"], "benchmark_image")
         self.assertEqual(style["name"], "冷萃晶透风")
         self.assertIn("不要复刻参考图中的品牌", style["forbidden"])
+
 
 class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_generation_returns_one_image_per_requested_module(self):
@@ -438,6 +441,38 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["source"], "model")
         self.assertEqual(calls, ["1152x2048"])
 
+    async def test_generation_can_select_prompt_optimization_branch(self):
+        previous_key = environ.get("IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        prompts = []
+
+        async def fake_call_image_model(settings, prompt, image=None, size=None):
+            prompts.append(prompt)
+            return ["https://example.com/prompt-optimized.png"]
+
+        try:
+            with patch("app.routers.projects.call_image_model", new=fake_call_image_model):
+                result = await generate_detail_images(
+                    ["main_hero_selling_point"],
+                    "deep_sea_hydration",
+                    product_info={
+                        "product_name": "水润保湿精华",
+                        "category": "护肤精华",
+                        "core_selling_points": ["干皮急救", "妆前服帖"],
+                        "functions": ["补水保湿"],
+                    },
+                    prompt_branch="prompt_optimization",
+                )
+        finally:
+            if previous_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_key
+
+        self.assertEqual(result["source"], "model")
+        self.assertIn("提示词优化分支", prompts[0])
+        self.assertIn("premium skincare commercial photography", prompts[0])
+
     async def test_generation_can_select_gemini_flash_image_model(self):
         previous_key = environ.get("GEMINI_FLASH_IMAGE_API_KEY")
         environ["GEMINI_FLASH_IMAGE_API_KEY"] = "test-key"
@@ -548,7 +583,7 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result["text_layers"])
         self.assertIn("zh-CN", result["language_versions"])
 
-    async def test_single_ingredient_text_layers_use_specific_benefit_not_placeholder(self):
+    async def test_ingredient_overview_text_layers_use_specific_benefit_not_placeholder(self):
         layers = build_text_layers(
             {
                 "product_name": "水润保湿面霜",
@@ -560,7 +595,7 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
                     {"name": "泛醇", "benefit": "辅助保湿维稳"},
                 ],
             },
-            next(module for module in DEFAULT_MODULES if module["id"] == "ingredient_1"),
+            next(module for module in DEFAULT_MODULES if module["id"] == "ingredient_overview"),
         )
 
         layer_text = " / ".join(layer["text"] for layer in layers)
@@ -589,6 +624,27 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["language_label"], "English")
         self.assertTrue(result["url"].startswith("data:image/png;base64,"))
         self.assertEqual(result["layers"][0]["text"], "Deep Hydration")
+
+    async def test_render_language_version_supports_vietnamese(self):
+        image = Image.new("RGB", (320, 320), (240, 240, 255))
+        buffer = BytesIO()
+        image.save(buffer, format="PNG")
+        data_url = "data:image/png;base64," + b64encode(buffer.getvalue()).decode("ascii")
+        layers = build_text_layers(
+            {"product_name": "修护精华", "core_selling_points": ["深层补水"], "functions": ["水润透亮"]},
+            next(module for module in DEFAULT_MODULES if module["id"] == "main_hero_selling_point"),
+        )
+
+        with (
+            patch("app.routers.projects.translate_text_layers", new=AsyncMock(return_value=[{**layers[0], "text": "Cấp ẩm sâu"}])),
+            patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(side_effect=lambda url, folder: url)),
+            patch("app.routers.projects.create_default_compliance_provider", return_value=StaticComplianceProvider("pass")),
+        ):
+            result = await render_layered_language_version(base_url=data_url, layers=layers[:1], language="vi")
+
+        self.assertEqual(result["language"], "vi")
+        self.assertEqual(result["language_label"], "Tiếng Việt")
+        self.assertEqual(result["layers"][0]["text"], "Cấp ẩm sâu")
 
     async def test_layered_generation_includes_compliance_report(self):
         image = Image.new("RGB", (320, 320), (230, 244, 235))
@@ -852,6 +908,81 @@ class DownloadContractTests(unittest.TestCase):
         self.assertEqual(payload["issues"][0]["term"], "100%")
         self.assertEqual(payload["issues"][0]["location"]["source_type"], "image_review")
         self.assertEqual(set(payload), {"source", "summary", "issues", "image_count", "warnings"})
+
+
+class SavedStylesContractTests(unittest.TestCase):
+    def make_client(self) -> TestClient:
+        from app.routers.styles import router as styles_router
+
+        app = FastAPI()
+        app.dependency_overrides[require_app_user] = lambda: AppSessionUserSnapshot(user_id="test-user")
+        app.include_router(styles_router)
+        return TestClient(app)
+
+    def test_save_style_endpoint_uses_current_user(self):
+        saved_record = {
+            "id": "style-1",
+            "name": "冷萃晶透风",
+            "style": {
+                "id": "style_reference",
+                "name": "冷萃晶透风",
+                "keywords": ["冷感"],
+                "primary_color": "#A8DDE8",
+            },
+            "created_at": "2026-05-14T00:00:00+00:00",
+            "updated_at": "2026-05-14T00:00:00+00:00",
+        }
+        with patch("app.routers.styles.save_style", new=AsyncMock(return_value=saved_record)) as save_mock:
+            response = self.make_client().post(
+                "/api/styles/saved",
+                json={
+                    "name": "冷萃晶透风",
+                    "style": {
+                        "id": "style_reference",
+                        "name": "旧名",
+                        "keywords": ["冷感"],
+                        "primary_color": "#A8DDE8",
+                    },
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["style"]["name"], "冷萃晶透风")
+        self.assertEqual(save_mock.call_args.args[0], "test-user")
+
+    def test_list_style_endpoint_returns_current_user_records(self):
+        with patch(
+            "app.routers.styles.list_saved_styles",
+            new=AsyncMock(
+                return_value=[
+                    {
+                        "id": "style-1",
+                        "name": "冷萃晶透风",
+                        "style": {
+                            "id": "style_reference",
+                            "name": "冷萃晶透风",
+                            "keywords": ["冷感"],
+                            "primary_color": "#A8DDE8",
+                        },
+                        "created_at": "2026-05-14T00:00:00+00:00",
+                        "updated_at": "2026-05-14T00:00:00+00:00",
+                    }
+                ]
+            ),
+        ) as list_mock:
+            response = self.make_client().get("/api/styles/saved")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["items"][0]["name"], "冷萃晶透风")
+        self.assertEqual(list_mock.call_args.args[0], "test-user")
+
+    def test_delete_style_endpoint_deletes_current_user_record(self):
+        with patch("app.routers.styles.delete_saved_style", new=AsyncMock(return_value=True)) as delete_mock:
+            response = self.make_client().delete("/api/styles/saved/style-1")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"deleted": True, "id": "style-1"})
+        self.assertEqual(delete_mock.call_args.args, ("test-user", "style-1"))
 
 
 if __name__ == "__main__":

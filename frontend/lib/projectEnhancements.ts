@@ -12,7 +12,18 @@ import type {
 const MAX_IMAGE_VERSIONS = 3;
 const DEFAULT_IMAGE_GENERATION_CONCURRENCY_LIMIT = 2;
 const MAX_IMAGE_GENERATION_CONCURRENCY_LIMIT = 20;
-const DETAIL_INGREDIENT_BLOCK_IDS = ["ingredient_overview", "ingredient_1", "ingredient_2", "ingredient_3"];
+const DETAIL_MODULE_ORDER = [
+  "hero",
+  "brand_qualification",
+  "research_strength",
+  "pain_scene",
+  "effect_comparison",
+  "competitor_comparison",
+  "product_showcase",
+  "ingredient_overview",
+  "usage",
+  "product_info"
+];
 
 type GeneratedImageInput = { module_id: string; url: string; compliance?: ComplianceReport };
 type DetailDownloadItem = { module: ModuleConfig; url: string };
@@ -60,13 +71,15 @@ export function appendImageVersions(
 
   images.forEach((image) => {
     const existing = versions[image.module_id] ?? [];
+    const languageVersionKeys = Object.keys(image.language_versions ?? {}) as LanguageCode[];
+    const selectedLanguage = languageVersionKeys.includes("zh-CN" as LanguageCode) ? "zh-CN" as LanguageCode : languageVersionKeys[0];
     const nextVersion: GeneratedImageVersion = {
       id: `${image.module_id}-${now}-${existing.length + 1}`,
       module_id: image.module_id,
       url: image.url,
       ...(image.base_url ? { baseUrl: image.base_url } : {}),
       ...(image.text_layers?.length ? { textLayers: image.text_layers } : {}),
-      ...(image.language_versions ? { languageVersions: image.language_versions, selectedLanguage: "zh-CN" as LanguageCode } : {}),
+      ...(image.language_versions ? { languageVersions: image.language_versions, ...(selectedLanguage ? { selectedLanguage } : {}) } : {}),
       ...(image.compliance ? { compliance: image.compliance } : {}),
       label: `v${existing.length + 1}`,
       source,
@@ -224,35 +237,12 @@ export function normalizeDetailIngredientModuleOrder(modules: ModuleConfig[]) {
   const detailEntries = indexed
     .filter((entry) => moduleGroup(entry.module) === "detail")
     .sort((a, b) => a.module.order - b.module.order || a.index - b.index);
-  const overviewIndex = detailEntries.findIndex((entry) => entry.module.id === "ingredient_overview");
-  if (overviewIndex < 0) return modules;
-
-  const blockEntries = DETAIL_INGREDIENT_BLOCK_IDS
-    .map((moduleId) => detailEntries.find((entry) => entry.module.id === moduleId))
-    .filter((entry): entry is { module: ModuleConfig; index: number } => Boolean(entry));
-  if (blockEntries.length < DETAIL_INGREDIENT_BLOCK_IDS.length) return modules;
-
-  const ingredientBlockIds = new Set(DETAIL_INGREDIENT_BLOCK_IDS);
-  const nonBlockEntries = detailEntries.filter((entry) => !ingredientBlockIds.has(entry.module.id));
-  const insertIndex = detailEntries
-    .slice(0, overviewIndex)
-    .filter((entry) => !ingredientBlockIds.has(entry.module.id)).length;
-  const orderedDetailEntries = [
-    ...nonBlockEntries.slice(0, insertIndex),
-    ...blockEntries,
-    ...nonBlockEntries.slice(insertIndex)
-  ];
-
-  const lastIngredientIndex = orderedDetailEntries.findIndex((entry) => entry.module.id === "ingredient_3");
-  const usageIndex = orderedDetailEntries.findIndex((entry) => entry.module.id === "usage");
-  if (usageIndex >= 0 && usageIndex < lastIngredientIndex) {
-    const [usageEntry] = orderedDetailEntries.splice(usageIndex, 1);
-    const nextLastIngredientIndex = orderedDetailEntries.findIndex((entry) => entry.module.id === "ingredient_3");
-    orderedDetailEntries.splice(nextLastIngredientIndex + 1, 0, usageEntry);
-  }
+  const detailOrder = new Map(DETAIL_MODULE_ORDER.map((moduleId, index) => [moduleId, index + 1]));
+  const knownEntries = detailEntries.filter((entry) => detailOrder.has(entry.module.id));
+  if (!knownEntries.length) return modules;
 
   const orderById = new Map(
-    orderedDetailEntries.map((entry, index) => [entry.module.id, index + 1])
+    detailEntries.map((entry, index) => [entry.module.id, detailOrder.get(entry.module.id) ?? DETAIL_MODULE_ORDER.length + index + 1])
   );
   return modules.map((module) => {
     const normalizedOrder = orderById.get(module.id);

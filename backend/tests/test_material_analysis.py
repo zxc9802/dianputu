@@ -793,6 +793,7 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
                 generation_mode="reference_generate",
                 layered_text=False,
                 target_language=None,
+                prompt_branch=None,
             )
         finally:
             projects.GENERATION_JOBS.pop("generate_test", None)

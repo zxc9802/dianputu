@@ -906,6 +906,83 @@ a {
   font-weight: 700;
 }
 
+.savedStyleLibrary {
+  margin-top: 24px;
+  display: grid;
+  gap: 14px;
+}
+
+.savedStyleHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.savedStyleHeader h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.savedStyleHeader span,
+.savedStyleEmpty {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.savedStyleEmpty {
+  margin: 0;
+}
+
+.savedStyleGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.savedStyleCard {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 14px;
+  min-width: 0;
+}
+
+.savedStyleCard h4 {
+  margin: 0 0 6px;
+  font-size: 17px;
+}
+
+.savedStyleCard p {
+  margin: 0;
+  color: var(--muted);
+  min-height: 22px;
+}
+
+.savedStyleActions {
+  display: grid;
+  grid-template-columns: 1fr 40px;
+  gap: 8px;
+  align-items: center;
+}
+
+.smallIconButton {
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: var(--ink);
+}
+
+.dangerIconButton {
+  color: #a53434;
+  background: #fff5f5;
+}
+
 .fieldList {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -1703,6 +1780,10 @@ a {
   }
 
   .styleGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .savedStyleGrid {
     grid-template-columns: 1fr;
   }
 

@@ -15,6 +15,7 @@ LANGUAGE_OPTIONS: dict[str, dict[str, str]] = {
     "en": {"label": "English", "instruction": "natural concise ecommerce English"},
     "th": {"label": "ไทย", "instruction": "natural concise Thai for ecommerce"},
     "ms": {"label": "Malay", "instruction": "natural concise Bahasa Melayu for ecommerce"},
+    "vi": {"label": "Tiếng Việt", "instruction": "natural concise Vietnamese for ecommerce"},
 }
 
 DEFAULT_LANGUAGE = "zh-CN"
@@ -33,6 +34,9 @@ def normalize_language(value: str | None) -> str:
         "malay": "ms",
         "my": "ms",
         "ms-my": "ms",
+        "vietnamese": "vi",
+        "vietnam": "vi",
+        "vi-vn": "vi",
     }
     normalized = aliases.get(raw.lower(), raw)
     return normalized if normalized in LANGUAGE_OPTIONS else DEFAULT_LANGUAGE
@@ -208,11 +212,15 @@ def _detail_layers(info: dict[str, Any], module_id: str) -> list[dict[str, Any]]
     recipes: dict[str, tuple[str, str, list[str]]] = {
         "hero": (product_name, selling_points[0] if selling_points else _first(info.get("functions"), "核心护理"), selling_points[1:3] or functions[:2]),
         "authority": ("安心品质", "成分可信 · 品控流程", ["真实保障", "使用放心"]),
+        "brand_qualification": ("品牌与资质背书", "品牌背景 · 权威认证", (_string_items(info.get("material_highlights")) + _string_items(info.get("authority_assets")))[:2] or ["官方渠道", "正品保障"]),
+        "research_strength": ("研发实力", "实验室 · 科学配方", _string_items(info.get("authority_assets"))[:2] or ["真实测试", "品控流程"]),
         "pain_scene": ("肌肤困扰", functions[0] if functions else "针对日常护理痛点", _string_items(info.get("target_users"))[:2]),
         "effect_comparison": ("效果看得见", effects[0] if effects else _first(info.get("functions"), "水润改善"), effects[1:3] or functions[:2]),
         "competitor_comparison": ("优势对比", selling_points[0] if selling_points else "本产品优势", ["普通同类", "本产品"]),
+        "product_showcase": ("产品大图强化", selling_points[0] if selling_points else _first(info.get("functions"), "核心功效"), functions[:2] or ["质地清透", "温和配方"]),
         "ingredient_overview": ("核心成分体系", "多重成分复配", ingredients[:3]),
         "usage": ("使用方法", usage[0] if usage else "洁面后使用", usage[1:3]),
+        "product_info": ("产品信息", f"{_clean_text(info.get('category'), '护肤品')} · {_clean_text(info.get('spec'), '常规规格')}", _string_items(info.get("material_highlights"))[:2] or functions[:2]),
     }
     if single_ingredient_match:
         ingredient_index = int(single_ingredient_match.group(1)) - 1

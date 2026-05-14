@@ -86,6 +86,22 @@ _CREATE_USER_INDEX_SQL = """
 CREATE INDEX IF NOT EXISTS idx_history_user_created ON project_history (user_id, created_at DESC);
 """
 
+_CREATE_SAVED_STYLES_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS saved_styles (
+    id           TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL,
+    user_snapshot_json TEXT NOT NULL DEFAULT '{}',
+    name         TEXT NOT NULL DEFAULT '',
+    style_json   TEXT NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+"""
+
+_CREATE_SAVED_STYLES_USER_INDEX_SQL = """
+CREATE INDEX IF NOT EXISTS idx_saved_styles_user_created ON saved_styles (user_id, created_at DESC);
+"""
+
 
 async def ensure_tables() -> None:
     """Create the ``project_history`` table if it does not already exist."""
@@ -99,6 +115,8 @@ async def ensure_tables() -> None:
         await conn.execute(_ALTER_TABLE_SQL)
         await conn.execute(_CREATE_INDEX_SQL)
         await conn.execute(_CREATE_USER_INDEX_SQL)
+        await conn.execute(_CREATE_SAVED_STYLES_TABLE_SQL)
+        await conn.execute(_CREATE_SAVED_STYLES_USER_INDEX_SQL)
     logger.info("project_history table ensured")
 
 
@@ -264,5 +282,103 @@ async def delete_history(user_id: str, record_id: str) -> bool:
             "DELETE FROM project_history WHERE user_id = $1 AND id = $2",
             user_id,
             record_id,
+        )
+    return result == "DELETE 1"
+
+
+def _saved_style_row_to_dict(row: Any) -> dict[str, Any]:
+    style: dict[str, Any] = {}
+    try:
+        style = json.loads(row["style_json"])
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "style": style,
+        "created_at": row["created_at"].isoformat() if row["created_at"] else "",
+        "updated_at": row["updated_at"].isoformat() if row["updated_at"] else "",
+    }
+
+
+async def list_saved_styles(user_id: str, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+    """Return account-scoped saved Gemini style records."""
+    pool = await _get_pool()
+    if pool is None:
+        return []
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, name, style_json, created_at, updated_at
+            FROM saved_styles
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2 OFFSET $3
+            """,
+            user_id,
+            limit,
+            offset,
+        )
+    return [_saved_style_row_to_dict(row) for row in rows]
+
+
+async def save_style(user_id: str, user_snapshot: dict[str, Any], record: dict[str, Any]) -> dict[str, Any]:
+    """Insert or update an account-scoped saved style."""
+    pool = await _get_pool()
+    if pool is None:
+        return {"error": "database not configured"}
+
+    record_id = record.get("id") or uuid4().hex
+    now = datetime.now(UTC)
+    style = dict(record.get("style") or {})
+    name = str(record.get("name") or style.get("name") or "未命名风格").strip() or "未命名风格"
+    style["name"] = name
+    style_json = json.dumps(style, ensure_ascii=False, default=str)
+    user_snapshot_json = json.dumps(user_snapshot or {}, ensure_ascii=False, default=str)
+
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO saved_styles
+                (id, user_id, user_snapshot_json, name, style_json, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (id) DO UPDATE SET
+                user_snapshot_json = EXCLUDED.user_snapshot_json,
+                name = EXCLUDED.name,
+                style_json = EXCLUDED.style_json,
+                updated_at = EXCLUDED.updated_at
+            WHERE saved_styles.user_id = EXCLUDED.user_id
+            """,
+            record_id,
+            user_id,
+            user_snapshot_json,
+            name,
+            style_json,
+            now,
+            now,
+        )
+
+    return {
+        "id": record_id,
+        "name": name,
+        "style": style,
+        "created_at": now.isoformat(),
+        "updated_at": now.isoformat(),
+    }
+
+
+async def delete_saved_style(user_id: str, style_id: str) -> bool:
+    """Delete an account-scoped saved style by ID."""
+    pool = await _get_pool()
+    if pool is None:
+        return False
+
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM saved_styles WHERE user_id = $1 AND id = $2",
+            user_id,
+            style_id,
         )
     return result == "DELETE 1"

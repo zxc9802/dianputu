@@ -6,6 +6,8 @@ export type StyleSource = "preset" | "ai_custom";
 
 export type GenerationMode = "reference_generate" | "fixed_product_composite";
 
+export type PromptBranch = "current" | "prompt_optimization";
+
 export type StyleOption = {
   id: string;
   seed_id?: string;
@@ -151,6 +153,14 @@ export type ProjectTemplate = {
   source: "official" | "user";
 };
 
+export type SavedStyleRecord = {
+  id: string;
+  name: string;
+  style: StyleOption;
+  created_at: string;
+  updated_at: string;
+};
+
 export type MaterialPayload = {
   id?: string;
   slot: UploadSlot;
@@ -206,7 +216,7 @@ export type PublicModelConfig = {
 
 export type GeneratedImage = { module_id: string; url: string; compliance?: ComplianceReport };
 
-export type LanguageCode = "zh-CN" | "en" | "th" | "ms";
+export type LanguageCode = "zh-CN" | "en" | "th" | "ms" | "vi";
 
 export type TextLayer = {
   id: string;
@@ -249,6 +259,8 @@ export type PersistedProjectState = {
   selectedPlatformId: CommercePlatformId;
   selectedImageModelId?: string;
   generationMode: GenerationMode;
+  generationLanguage?: LanguageCode;
+  promptBranch?: PromptBranch;
   activeImageGroup: ImageGroup;
   promotionInfo: string;
   modules: ModuleConfig[];

@@ -1,7 +1,7 @@
 "use client";
 
-import { Check, ImagePlus, Sparkles, Wand2, X } from "lucide-react";
-import type { StyleOption, StyleSource, UploadedFileInfo } from "@/lib/types";
+import { Check, ImagePlus, Sparkles, Trash2, Wand2, X } from "lucide-react";
+import type { SavedStyleRecord, StyleOption, StyleSource, UploadedFileInfo } from "@/lib/types";
 
 export function StyleStep({
   styles,
@@ -12,10 +12,17 @@ export function StyleStep({
   isPlanningCustomStyle,
   isAnalyzingStyleReference,
   isGeneratingStyleSample,
+  savedStyles,
+  isLoadingSavedStyles,
+  isSavingStyle,
+  deletingSavedStyleId,
   recommendedStyleId,
   onSelect,
   onAiCustomStyleSelect,
   onPlanAiCustomStyle,
+  onSaveCustomStyle,
+  onSelectSavedStyle,
+  onDeleteSavedStyle,
   onStyleReferenceFilesAdded,
   onStyleReferenceFileRemove,
   onAnalyzeStyleReference,
@@ -31,10 +38,17 @@ export function StyleStep({
   isPlanningCustomStyle: boolean;
   isAnalyzingStyleReference: boolean;
   isGeneratingStyleSample: boolean;
+  savedStyles: SavedStyleRecord[];
+  isLoadingSavedStyles: boolean;
+  isSavingStyle: boolean;
+  deletingSavedStyleId: string;
   recommendedStyleId: string;
   onSelect: (id: string) => void;
   onAiCustomStyleSelect: () => void;
   onPlanAiCustomStyle: () => void;
+  onSaveCustomStyle: () => void;
+  onSelectSavedStyle: (record: SavedStyleRecord) => void;
+  onDeleteSavedStyle: (id: string) => void;
   onStyleReferenceFilesAdded: (files: File[]) => void;
   onStyleReferenceFileRemove: (id: string) => void;
   onAnalyzeStyleReference: () => void;
@@ -122,6 +136,9 @@ export function StyleStep({
                 <button className="outlineButton fullWidth" type="button" onClick={onGenerateAiStyleSample} disabled={isGeneratingStyleSample}>
                   {isGeneratingStyleSample ? "样例图生成中..." : customStyle.asset ? "重新生成样例图" : "生成样例图"}
                 </button>
+                <button className="outlineButton fullWidth" type="button" onClick={onSaveCustomStyle} disabled={isSavingStyle}>
+                  {isSavingStyle ? "保存中..." : "保存到我的风格"}
+                </button>
               </>
             ) : null}
             <button className="primaryButton fullWidth aiPlanButton" type="button" onClick={() => onPlanAiCustomStyle()} disabled={isPlanningCustomStyle}>
@@ -164,6 +181,44 @@ export function StyleStep({
               </article>
             );
           })}
+        </div>
+
+        <div className="savedStyleLibrary">
+          <div className="savedStyleHeader">
+            <h3>我的保存风格</h3>
+            <span>{isLoadingSavedStyles ? "读取中..." : `${savedStyles.length} 个`}</span>
+          </div>
+          {savedStyles.length ? (
+            <div className="savedStyleGrid">
+              {savedStyles.map((record) => (
+                <article className="savedStyleCard" key={record.id}>
+                  <h4 style={{ color: record.style.primary_color }}>{record.name}</h4>
+                  <p>{record.style.keywords.slice(0, 4).join(" / ")}</p>
+                  <div className="keywordRow">
+                    {record.style.keywords.slice(0, 6).map((keyword) => (
+                      <span key={keyword}>{keyword}</span>
+                    ))}
+                  </div>
+                  <div className="savedStyleActions">
+                    <button className="outlineButton" type="button" onClick={() => onSelectSavedStyle(record)}>
+                      使用
+                    </button>
+                    <button
+                      className="smallIconButton dangerIconButton"
+                      type="button"
+                      aria-label={`删除 ${record.name}`}
+                      onClick={() => onDeleteSavedStyle(record.id)}
+                      disabled={deletingSavedStyleId === record.id}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="savedStyleEmpty">暂无保存风格</p>
+          )}
         </div>
       </section>
 

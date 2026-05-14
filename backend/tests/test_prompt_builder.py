@@ -1,4 +1,4 @@
-import unittest
+﻿import unittest
 
 from app.demo_data import DEFAULT_MODULES, STYLE_OPTIONS
 
@@ -12,9 +12,54 @@ def load_prompt_builder():
 
 
 class PromptBuilderTests(unittest.TestCase):
-    def test_authority_prompt_prefers_scientist_lab_scene_with_paper_report_support(self):
+    def test_brand_qualification_prompt_uses_brand_assets_and_user_materials_first(self):
         build_module_image_prompt = load_prompt_builder()
-        authority_module = next(module for module in DEFAULT_MODULES if module["id"] == "authority")
+        brand_module = next(module for module in DEFAULT_MODULES if module["id"] == "brand_qualification")
+
+        prompt = build_module_image_prompt(
+            product_info={
+                "product_name": "用户修改后的 CICA 精华",
+                "category": "屏障修护精华",
+                "core_selling_points": ["用户补充的强韧屏障卖点"],
+                "material_highlights": [
+                    "源自法国护肤研发体系",
+                    "品牌线下旗舰店陈列",
+                    "GMP 生产管理认证"
+                ],
+                "authority_assets": ["GMP 认证", "官方旗舰店正品保障"],
+            },
+            style=STYLE_OPTIONS[0],
+            module=brand_module,
+            module_index=2,
+            total_modules=10,
+        )
+
+        self.assertIn("固定模块结构", prompt)
+        self.assertIn("只生成当前模块", prompt)
+        self.assertIn("不能新增一级模块", prompt)
+        self.assertIn("当前模块：品牌与资质背书", prompt)
+        self.assertIn("用户修改后的 CICA 精华", prompt)
+        self.assertIn("用户补充的强韧屏障卖点", prompt)
+        self.assertIn("源自法国护肤研发体系", prompt)
+        self.assertIn("品牌线下旗舰店陈列", prompt)
+        self.assertIn("GMP 生产管理认证", prompt)
+        self.assertIn("官方旗舰店正品保障", prompt)
+        self.assertIn("用户上传资料和手写信息优先", prompt)
+        self.assertIn("AI 只在资料缺失时做安全泛化补充", prompt)
+        self.assertIn("品牌与资质背书", prompt)
+        self.assertIn("法式建筑", prompt)
+        self.assertIn("品牌门店", prompt)
+        self.assertIn("街景橱窗", prompt)
+        self.assertIn("产地来源", prompt)
+        self.assertIn("权威认证", prompt)
+        self.assertIn("不能编造真实机构", prompt)
+        self.assertIn("禁止出现科学家实验画面为主体", prompt)
+        self.assertIn("显微镜", prompt)
+        self.assertNotIn("SGS-CICA-2026-042", prompt)
+
+    def test_research_strength_prompt_prefers_scientist_lab_scene_with_paper_report_support(self):
+        build_module_image_prompt = load_prompt_builder()
+        research_module = next(module for module in DEFAULT_MODULES if module["id"] == "research_strength")
 
         prompt = build_module_image_prompt(
             product_info={
@@ -32,22 +77,20 @@ class PromptBuilderTests(unittest.TestCase):
                 "effect_claims": [],
             },
             style=STYLE_OPTIONS[0],
-            module=authority_module,
-            module_index=2,
-            total_modules=7,
+            module=research_module,
+            module_index=3,
+            total_modules=10,
         )
 
-        self.assertIn("固定模块结构", prompt)
-        self.assertIn("只生成当前模块", prompt)
-        self.assertIn("不能新增一级模块", prompt)
-        self.assertIn("当前模块：权威资质展示", prompt)
-        self.assertIn("用户修改后的 CICA 精华", prompt)
-        self.assertIn("用户补充的强韧屏障卖点", prompt)
+        self.assertIn("当前模块：研发实力", prompt)
+        self.assertIn("用户上传资料和手写信息优先", prompt)
         self.assertIn("SGS 第三方检测报告", prompt)
         self.assertIn("科学家实验画面为主体", prompt)
         self.assertIn("研究员", prompt)
         self.assertIn("实验室", prompt)
         self.assertIn("显微镜", prompt)
+        self.assertIn("烧瓶", prompt)
+        self.assertIn("真人测试", prompt)
         self.assertIn("纸质资质只占画面局部", prompt)
         self.assertIn("不超过画面 25%", prompt)
         self.assertIn("纸张纤维", prompt)
@@ -59,6 +102,7 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("成分可信", prompt)
         self.assertIn("品控流程", prompt)
         self.assertIn("使用放心", prompt)
+        self.assertIn("禁止出现品牌门店", prompt)
         self.assertNotIn("研发资质感呈现", prompt)
         self.assertNotIn("核心视觉必须是真实纸质检测报告", prompt)
         self.assertNotIn("不要把实验室人物当作主视觉", prompt)
@@ -67,7 +111,7 @@ class PromptBuilderTests(unittest.TestCase):
 
     def test_detail_prompts_keep_hidden_notes_out_of_visible_image_copy(self):
         build_module_image_prompt = load_prompt_builder()
-        authority_module = next(module for module in DEFAULT_MODULES if module["id"] == "authority")
+        research_module = next(module for module in DEFAULT_MODULES if module["id"] == "research_strength")
 
         prompt = build_module_image_prompt(
             product_info={
@@ -75,9 +119,9 @@ class PromptBuilderTests(unittest.TestCase):
                 "authority_assets": ["实验室研发", "实验报告", "专研配方理念"],
             },
             style=STYLE_OPTIONS[0],
-            module=authority_module,
-            module_index=2,
-            total_modules=7,
+            module=research_module,
+            module_index=3,
+            total_modules=10,
         )
 
         self.assertIn("图片必须像可直接用于店铺上架的成品物料", prompt)
@@ -117,7 +161,7 @@ class PromptBuilderTests(unittest.TestCase):
             style=STYLE_OPTIONS[0],
             module=effect_module,
             module_index=4,
-            total_modules=7,
+            total_modules=10,
         )
 
         self.assertIn("当前模块：效果对比", prompt)
@@ -126,6 +170,7 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("14 天人体功效测试", prompt)
         self.assertIn("细纹观感改善", prompt)
         self.assertIn("87%", prompt)
+        self.assertIn("指标：细纹观感改善；数值：87%", prompt)
         self.assertNotIn("ai_generated", prompt)
         self.assertIn("体验型视觉", prompt)
         self.assertIn("避免绝对化医疗表达", prompt)
@@ -151,7 +196,7 @@ class PromptBuilderTests(unittest.TestCase):
             style=STYLE_OPTIONS[0],
             module=effect_module,
             module_index=4,
-            total_modules=7,
+            total_modules=10,
         )
 
         self.assertIn("水润数据指标区", prompt)
@@ -176,13 +221,47 @@ class PromptBuilderTests(unittest.TestCase):
             style=STYLE_OPTIONS[0],
             module=effect_module,
             module_index=4,
-            total_modules=7,
+            total_modules=10,
         )
 
         self.assertIn("指标：肌肤水润度提升；数值：示意型百分比占位", prompt)
         self.assertIn("指标：肤感舒适度提升；数值：示意型百分比占位", prompt)
         self.assertIn("没有具体数值时必须使用示意型百分比占位", prompt)
         self.assertIn("不要只画无数字进度条", prompt)
+
+    def test_prompt_optimization_branch_adds_premium_skincare_scheme_without_changing_default_branch(self):
+        build_module_image_prompt = load_prompt_builder()
+        module = next(module for module in DEFAULT_MODULES if module["id"] == "main_hero_selling_point")
+        product_info = {
+            "product_name": "水润保湿精华",
+            "category": "护肤精华",
+            "core_selling_points": ["深层补水"],
+            "functions": ["补水保湿"],
+        }
+
+        default_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[1],
+            module=module,
+            module_index=2,
+            total_modules=5,
+        )
+        optimized_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[1],
+            module=module,
+            module_index=2,
+            total_modules=5,
+            prompt_branch="prompt_optimization",
+        )
+
+        self.assertNotIn("提示词优化分支", default_prompt)
+        self.assertNotIn("premium skincare commercial photography", default_prompt)
+        self.assertIn("提示词优化分支", optimized_prompt)
+        self.assertIn("premium skincare commercial photography", optimized_prompt)
+        self.assertIn("图片模型优先负责产品摄影感", optimized_prompt)
+        self.assertIn("cheap Taobao poster style", optimized_prompt)
+        self.assertIn("材质道具控制在 1-2 个", optimized_prompt)
 
     def test_prompts_enforce_realistic_people_when_people_may_appear(self):
         build_module_image_prompt = load_prompt_builder()
@@ -197,7 +276,7 @@ class PromptBuilderTests(unittest.TestCase):
             style=STYLE_OPTIONS[0],
             module=usage_module,
             module_index=7,
-            total_modules=7,
+            total_modules=10,
         )
 
         self.assertIn("人物真实感约束", prompt)
@@ -217,7 +296,7 @@ class PromptBuilderTests(unittest.TestCase):
             style=STYLE_OPTIONS[0],
             module=hero_module,
             module_index=1,
-            total_modules=7,
+            total_modules=10,
             has_style_reference=True,
         )
 
@@ -270,7 +349,7 @@ class PromptBuilderTests(unittest.TestCase):
             },
             module=hero_module,
             module_index=1,
-            total_modules=7,
+            total_modules=10,
         )
 
         self.assertIn("风格参考色", prompt)
@@ -361,6 +440,104 @@ class PromptBuilderTests(unittest.TestCase):
         ]:
             self.assertNotIn(forbidden, prompt)
 
+    def test_product_showcase_prompt_reinforces_product_texture_effect_and_zero_additions(self):
+        build_module_image_prompt = load_prompt_builder()
+        showcase_module = next(module for module in DEFAULT_MODULES if module["id"] == "product_showcase")
+
+        prompt = build_module_image_prompt(
+            product_info={
+                "product_name": "水润保湿精华",
+                "category": "护肤精华",
+                "core_selling_points": ["双效补水提亮", "0 酒精温和配方"],
+                "functions": ["补水保湿", "改善暗沉"],
+                "material_highlights": ["清透精华水质地", "不添加酒精、色素、香精"],
+            },
+            style=STYLE_OPTIONS[1],
+            module=showcase_module,
+            module_index=7,
+            total_modules=10,
+        )
+
+        self.assertIn("当前模块：产品大图强化", prompt)
+        self.assertIn("产品大图 + 功效 + 质地 + 0添加", prompt)
+        self.assertIn("双效补水提亮", prompt)
+        self.assertIn("0 酒精温和配方", prompt)
+        self.assertIn("清透精华水质地", prompt)
+        self.assertIn("不添加酒精、色素、香精", prompt)
+        self.assertIn("产品瓶身作为最大主视觉", prompt)
+        self.assertIn("质地液体", prompt)
+        self.assertIn("0 酒精", prompt)
+        self.assertIn("0 色素", prompt)
+        self.assertIn("0 添加图标", prompt)
+        self.assertIn("禁止品牌门店", prompt)
+        self.assertIn("不讲品牌门店、研发报告、竞品或使用步骤", prompt)
+
+    def test_product_info_prompt_uses_uploaded_specs_before_ai_fallback(self):
+        build_module_image_prompt = load_prompt_builder()
+        info_module = next(module for module in DEFAULT_MODULES if module["id"] == "product_info")
+
+        prompt = build_module_image_prompt(
+            product_info={
+                "product_name": "用户手写名称精华水",
+                "category": "精华水",
+                "spec": "360ml",
+                "functions": ["补水保湿", "提亮肤色观感"],
+                "ingredients": [{"name": "烟酰胺", "benefit": "帮助提亮肤色观感"}],
+                "usage_method": ["洁面后取适量轻拍至吸收"],
+                "material_highlights": ["产地：法国", "保质期：4 年", "适用肤质：敏感肌适用"],
+            },
+            style=STYLE_OPTIONS[0],
+            module=info_module,
+            module_index=10,
+            total_modules=10,
+        )
+
+        self.assertIn("当前模块：产品信息", prompt)
+        self.assertIn("用户上传资料和手写信息优先", prompt)
+        self.assertIn("AI 只在资料缺失时做安全泛化补充", prompt)
+        self.assertIn("用户手写名称精华水", prompt)
+        self.assertIn("360ml", prompt)
+        self.assertIn("产地：法国", prompt)
+        self.assertIn("保质期：4 年", prompt)
+        self.assertIn("适用肤质：敏感肌适用", prompt)
+        self.assertIn("产品名称、功效、规格、保质期、产地、成分", prompt)
+        self.assertIn("米色纸质背景", prompt)
+        self.assertIn("正式说明书", prompt)
+        self.assertIn("不能编造产地", prompt)
+
+    def test_detail_prompts_define_product_visibility_by_page_role(self):
+        build_module_image_prompt = load_prompt_builder()
+        product_info = {
+            "product_name": "水润保湿精华",
+            "core_selling_points": ["深层补水"],
+            "functions": ["补水保湿"],
+            "ingredients": [{"name": "透明质酸", "benefit": "帮助提升水润肤感"}],
+            "usage_method": ["洁面后取适量涂抹"],
+        }
+
+        prompts = {
+            module["id"]: build_module_image_prompt(
+                product_info=product_info,
+                style=STYLE_OPTIONS[1],
+                module=module,
+                module_index=module["order"],
+                total_modules=10,
+            )
+            for module in DEFAULT_MODULES
+            if module.get("image_group") == "detail"
+        }
+
+        for module_id in ["hero", "product_showcase", "usage"]:
+            self.assertIn("产品露出策略：必须出现产品", prompts[module_id])
+
+        for module_id in ["effect_comparison", "competitor_comparison"]:
+            self.assertIn("产品露出策略：产品只能辅助出现", prompts[module_id])
+
+        self.assertIn("产品露出策略：产品可不出现", prompts["ingredient_overview"])
+
+        for module_id in ["brand_qualification", "research_strength", "pain_scene", "product_info"]:
+            self.assertIn("产品露出策略：不要出现产品瓶身、包装、商品主图或产品陈列", prompts[module_id])
+
     def test_single_ingredient_prompt_only_explains_assigned_ingredient(self):
         build_module_image_prompt = load_prompt_builder()
         ingredient_module = {
@@ -436,15 +613,31 @@ class PromptBuilderTests(unittest.TestCase):
             style=STYLE_OPTIONS[1],
             module=hero_module,
             module_index=1,
-            total_modules=7,
+            total_modules=10,
             target_language="en",
         )
 
         self.assertIn("【图片语言】", prompt)
         self.assertIn("English", prompt)
         self.assertIn("所有可见标题、标签、数字说明和角标文字都必须直接生成在图片里", prompt)
-        self.assertIn("不要把中文、英文、泰语或马来语混排", prompt)
+        self.assertIn("不要把中文、英文、泰语、马来语或越南语混排", prompt)
         self.assertNotIn("分层文字模式", prompt)
+
+    def test_target_language_prompt_supports_vietnamese(self):
+        build_module_image_prompt = load_prompt_builder()
+        hero_module = next(module for module in DEFAULT_MODULES if module["id"] == "hero")
+
+        prompt = build_module_image_prompt(
+            product_info={"product_name": "水润保湿精华", "core_selling_points": ["深层补水"]},
+            style=STYLE_OPTIONS[1],
+            module=hero_module,
+            module_index=1,
+            total_modules=10,
+            target_language="vi",
+        )
+
+        self.assertIn("Tiếng Việt", prompt)
+        self.assertIn("不要把中文、英文、泰语、马来语或越南语混排", prompt)
 
     def test_main_image_recipes_use_premium_commercial_photography_language(self):
         build_module_image_prompt = load_prompt_builder()
@@ -509,7 +702,7 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("丁达尔光晕", usage_prompt)
         self.assertIn("优雅手部姿态", usage_prompt)
 
-    def test_detail_authority_and_pain_scene_use_editorial_mood_without_ui_or_ugly_skin(self):
+    def test_detail_research_and_pain_scene_use_editorial_mood_without_ui_or_ugly_skin(self):
         build_module_image_prompt = load_prompt_builder()
         product_info = {
             "product_name": "屏障修护精华",
@@ -518,28 +711,28 @@ class PromptBuilderTests(unittest.TestCase):
             "authority_assets": ["第三方检测报告", "现代研发中心"],
         }
 
-        authority_prompt = build_module_image_prompt(
+        research_prompt = build_module_image_prompt(
             product_info=product_info,
             style=STYLE_OPTIONS[0],
-            module=next(module for module in DEFAULT_MODULES if module["id"] == "authority"),
-            module_index=2,
-            total_modules=7,
+            module=next(module for module in DEFAULT_MODULES if module["id"] == "research_strength"),
+            module_index=3,
+            total_modules=10,
         )
         pain_prompt = build_module_image_prompt(
             product_info=product_info,
             style=STYLE_OPTIONS[0],
             module=next(module for module in DEFAULT_MODULES if module["id"] == "pain_scene"),
-            module_index=3,
-            total_modules=7,
+            module_index=4,
+            total_modules=10,
         )
 
-        self.assertIn("冷峻克制的高科技蓝色/银色调", authority_prompt)
-        self.assertIn("极度整洁的现代研发中心", authority_prompt)
-        self.assertIn("玻璃器皿的锐利高光", authority_prompt)
-        self.assertIn("精密仪器金属质感", authority_prompt)
-        self.assertIn("非对称高级画册构图", authority_prompt)
-        self.assertIn("不要半透明 UI 卡片", authority_prompt)
-        self.assertNotIn("未来科技感玻璃拟态卡片", authority_prompt)
+        self.assertIn("冷峻克制的高科技蓝色/银色调", research_prompt)
+        self.assertIn("极度整洁的现代研发中心", research_prompt)
+        self.assertIn("玻璃器皿的锐利高光", research_prompt)
+        self.assertIn("精密仪器金属质感", research_prompt)
+        self.assertIn("非对称高级画册构图", research_prompt)
+        self.assertIn("不要半透明 UI 卡片", research_prompt)
+        self.assertNotIn("未来科技感玻璃拟态卡片", research_prompt)
 
         self.assertIn("情绪化电影灯光", pain_prompt)
         self.assertIn("冷色调或暗调背景", pain_prompt)
@@ -650,11 +843,18 @@ class PromptBuilderTests(unittest.TestCase):
             module_index=6,
             total_modules=10,
         )
-        single_prompt = build_module_image_prompt(
+        showcase_prompt = build_module_image_prompt(
             product_info=product_info,
             style=STYLE_OPTIONS[2],
-            module=next(module for module in DEFAULT_MODULES if module["id"] == "ingredient_2"),
-            module_index=8,
+            module=next(module for module in DEFAULT_MODULES if module["id"] == "product_showcase"),
+            module_index=7,
+            total_modules=10,
+        )
+        info_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[2],
+            module=next(module for module in DEFAULT_MODULES if module["id"] == "product_info"),
+            module_index=10,
             total_modules=10,
         )
 
@@ -678,9 +878,13 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("补水 + 修护 + 舒缓", overview_prompt)
         self.assertIn("成分浮岛", overview_prompt)
 
-        self.assertIn("一张图只出现一个成分", single_prompt)
-        self.assertIn("一个成分只对应一个主要作用", single_prompt)
-        self.assertIn("不出现其他成分名称", single_prompt)
+        self.assertIn("产品大图强化", showcase_prompt)
+        self.assertIn("功效 + 质地 + 0添加", showcase_prompt)
+        self.assertIn("产品瓶身作为最大主视觉", showcase_prompt)
+
+        self.assertIn("产品信息", info_prompt)
+        self.assertIn("正式说明书", info_prompt)
+        self.assertIn("产品名称、功效、规格、保质期、产地、成分", info_prompt)
 
     def test_campaign_prompts_keep_promotion_elements_secondary_and_user_provided(self):
         build_module_image_prompt = load_prompt_builder()
@@ -738,7 +942,9 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertLessEqual(sum(len(prompt) for prompt in prompts), 39000)
         self.assertTrue(any("产品大 + 卖点狠 + 证据短 + 视觉亮 + 信息少" in prompt for prompt in prompts))
         self.assertTrue(any("每张图必须有一个视觉矛盾" in prompt for prompt in prompts))
-        self.assertTrue(any("一张图只出现一个成分" in prompt for prompt in prompts))
+        self.assertTrue(any("品牌与资质背书" in prompt for prompt in prompts))
+        self.assertTrue(any("产品大图 + 功效 + 质地 + 0添加" in prompt for prompt in prompts))
+        self.assertTrue(any("产品名称、功效、规格、保质期、产地、成分" in prompt for prompt in prompts))
 
 
 if __name__ == "__main__":

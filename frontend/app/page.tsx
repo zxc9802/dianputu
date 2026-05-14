@@ -15,12 +15,15 @@ import {
   analyzeUploadedMaterials,
   checkImageCompliance,
   checkTextCompliance,
+  deleteSavedStyle,
   editGeneratedImage,
   fetchModelConfig,
   fetchProjectDefaults,
+  fetchSavedStyles,
   generateAiCustomStyleSample,
   generateImages,
-  planAiCustomStyle
+  planAiCustomStyle,
+  saveSavedStyle
 } from "@/lib/api";
 import { buildProductInfoComplianceItems } from "@/lib/compliance";
 import { useAppViewer } from "@/lib/client/app-session";
@@ -59,9 +62,11 @@ import type {
   MaterialPayload,
   ModuleConfig,
   PersistedProjectState,
+  PromptBranch,
   ProductInfo,
   ProjectTemplate,
   PublicModelConfig,
+  SavedStyleRecord,
   StepId,
   StyleOption,
   StyleSource,
@@ -77,12 +82,16 @@ const DEFAULT_STYLE_ID = "space_repair";
 const DEFAULT_PLATFORM_ID: CommercePlatformId = "tmall";
 const DEFAULT_IMAGE_MODEL_ID = DEMO_MODEL_CONFIG.imageGeneration.defaultOptionId ?? "primary";
 const DEFAULT_GENERATION_MODE: GenerationMode = "reference_generate";
+const DEFAULT_GENERATION_LANGUAGE: LanguageCode = "zh-CN";
+const DEFAULT_PROMPT_BRANCH: PromptBranch = "current";
 const LANGUAGE_LABELS: Record<LanguageCode, string> = {
   "zh-CN": "中文",
   en: "English",
   th: "ไทย",
-  ms: "Malay"
+  ms: "Malay",
+  vi: "Tiếng Việt"
 };
+const LANGUAGE_CODES = Object.keys(LANGUAGE_LABELS) as LanguageCode[];
 
 const groupLabel: Record<ImageGroup, string> = {
   main: "主图",
@@ -139,6 +148,14 @@ function normalizeGenerationMode(rawMode: unknown, schemaVersion?: number): Gene
   return mode;
 }
 
+function normalizePromptBranch(rawBranch: unknown): PromptBranch {
+  return rawBranch === "prompt_optimization" ? "prompt_optimization" : DEFAULT_PROMPT_BRANCH;
+}
+
+function normalizeLanguageCode(rawLanguage: unknown): LanguageCode {
+  return LANGUAGE_CODES.includes(rawLanguage as LanguageCode) ? rawLanguage as LanguageCode : DEFAULT_GENERATION_LANGUAGE;
+}
+
 function readPersistedProjectState(): PersistedProjectState | null {
   if (typeof window === "undefined") return null;
   try {
@@ -162,6 +179,8 @@ function readPersistedProjectState(): PersistedProjectState | null {
       selectedPlatformId: COMMERCE_PLATFORMS.some((platform) => platform.id === parsed.selectedPlatformId) ? (parsed.selectedPlatformId as CommercePlatformId) : DEFAULT_PLATFORM_ID,
       selectedImageModelId: parsed.selectedImageModelId || DEFAULT_IMAGE_MODEL_ID,
       generationMode: normalizeGenerationMode(parsed.generationMode, schemaVersion),
+      generationLanguage: normalizeLanguageCode(parsed.generationLanguage),
+      promptBranch: normalizePromptBranch(parsed.promptBranch),
       promotionInfo: parsed.promotionInfo || "",
       modules: Array.isArray(parsed.modules) ? parsed.modules : [],
       generatedImages: Array.isArray(parsed.generatedImages) ? parsed.generatedImages : [],
@@ -204,6 +223,8 @@ function createProjectStateSnapshot(input: {
   selectedPlatformId: CommercePlatformId;
   selectedImageModelId: string;
   generationMode: GenerationMode;
+  generationLanguage: LanguageCode;
+  promptBranch: PromptBranch;
   activeImageGroup: ImageGroup;
   promotionInfo: string;
   modules: ModuleConfig[];
@@ -224,6 +245,8 @@ function createProjectStateSnapshot(input: {
     selectedPlatformId: input.selectedPlatformId,
     selectedImageModelId: input.selectedImageModelId,
     generationMode: input.generationMode,
+    generationLanguage: input.generationLanguage,
+    promptBranch: input.promptBranch,
     activeImageGroup: input.activeImageGroup,
     promotionInfo: input.promotionInfo,
     modules: input.modules,
@@ -277,9 +300,15 @@ export default function Home() {
   const [selectedPlatformId, setSelectedPlatformId] = useState<CommercePlatformId>(DEFAULT_PLATFORM_ID);
   const [selectedImageModelId, setSelectedImageModelId] = useState(DEFAULT_IMAGE_MODEL_ID);
   const [selectedGenerationMode, setSelectedGenerationMode] = useState<GenerationMode>(DEFAULT_GENERATION_MODE);
+  const [selectedGenerationLanguage, setSelectedGenerationLanguage] = useState<LanguageCode>(DEFAULT_GENERATION_LANGUAGE);
+  const [selectedPromptBranch, setSelectedPromptBranch] = useState<PromptBranch>(DEFAULT_PROMPT_BRANCH);
   const [modelConfig, setModelConfig] = useState<PublicModelConfig>(DEMO_MODEL_CONFIG);
   const [imageVersionStore, setImageVersionStore] = useState<ImageVersionStore>(() => createEmptyImageVersionStore());
   const [userTemplates, setUserTemplates] = useState<ProjectTemplate[]>([]);
+  const [savedStyles, setSavedStyles] = useState<SavedStyleRecord[]>([]);
+  const [isLoadingSavedStyles, setIsLoadingSavedStyles] = useState(false);
+  const [isSavingStyle, setIsSavingStyle] = useState(false);
+  const [deletingSavedStyleId, setDeletingSavedStyleId] = useState("");
   const [generationProgress, setGenerationProgress] = useState<GenerationProgressMap>(() => createIdleGenerationProgress());
   const [languageGeneration, setLanguageGeneration] = useState<LanguageGenerationState>(null);
   const [statusText, setStatusText] = useState("原型预览");
@@ -303,10 +332,12 @@ export default function Home() {
 
   useEffect(() => {
     async function loadDefaults() {
-      const [defaults, models] = await Promise.all([fetchProjectDefaults(), fetchModelConfig()]);
+      setIsLoadingSavedStyles(true);
+      const [defaults, models, savedStyleList] = await Promise.all([fetchProjectDefaults(), fetchModelConfig(), fetchSavedStyles()]);
       const restored = readPersistedProjectState();
       setStyles(defaults.styles);
       setModelConfig(models);
+      setSavedStyles(savedStyleList.items);
       const normalizedDefaultModules = normalizeDetailIngredientModuleOrder(defaults.modules);
       setDefaultModules(normalizedDefaultModules);
       if (restored) {
@@ -321,6 +352,8 @@ export default function Home() {
         setSelectedPlatformId(restored.selectedPlatformId);
         setSelectedImageModelId(restored.selectedImageModelId || models.imageGeneration.defaultOptionId || DEFAULT_IMAGE_MODEL_ID);
         setSelectedGenerationMode(normalizeGenerationMode(restored.generationMode, restored.projectStateSchemaVersion));
+        setSelectedGenerationLanguage(normalizeLanguageCode(restored.generationLanguage));
+        setSelectedPromptBranch(normalizePromptBranch(restored.promptBranch));
         setActiveImageGroup(restored.activeImageGroup);
         setPromotionInfo(restored.promotionInfo);
         setModules(mergeRestoredModules(normalizedDefaultModules, restored.modules));
@@ -335,6 +368,7 @@ export default function Home() {
         setModules(normalizedDefaultModules);
         setSelectedImageModelId(models.imageGeneration.defaultOptionId || DEFAULT_IMAGE_MODEL_ID);
       }
+      setIsLoadingSavedStyles(false);
       setHasRestoredProjectState(true);
     }
     void loadDefaults();
@@ -354,6 +388,8 @@ export default function Home() {
       selectedPlatformId,
       selectedImageModelId,
       generationMode: selectedGenerationMode,
+      generationLanguage: selectedGenerationLanguage,
+      promptBranch: selectedPromptBranch,
       activeImageGroup,
       promotionInfo,
       modules,
@@ -361,7 +397,7 @@ export default function Home() {
       userTemplates,
       statusText
     }));
-  }, [activeImageGroup, customStyle, hasAiProductInfo, hasRestoredProjectState, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedGenerationMode, selectedImageModelId, selectedPlatformId, selectedStyleId, statusText, styleReferenceFiles, styleSource, uploadedFiles, userTemplates]);
+  }, [activeImageGroup, customStyle, hasAiProductInfo, hasRestoredProjectState, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedGenerationLanguage, selectedGenerationMode, selectedImageModelId, selectedPlatformId, selectedPromptBranch, selectedStyleId, statusText, styleReferenceFiles, styleSource, uploadedFiles, userTemplates]);
 
   useEffect(() => {
     if (!modules.length) return;
@@ -437,6 +473,8 @@ export default function Home() {
       selectedPlatformId,
       selectedImageModelId,
       generationMode: selectedGenerationMode,
+      generationLanguage: selectedGenerationLanguage,
+      promptBranch: selectedPromptBranch,
       activeImageGroup,
       promotionInfo,
       modules,
@@ -458,6 +496,8 @@ export default function Home() {
     setSelectedPlatformId(state.selectedPlatformId);
     setSelectedImageModelId(state.selectedImageModelId || modelConfig.imageGeneration.defaultOptionId || DEFAULT_IMAGE_MODEL_ID);
     setSelectedGenerationMode(normalizeGenerationMode(state.generationMode, state.projectStateSchemaVersion));
+    setSelectedGenerationLanguage(normalizeLanguageCode(state.generationLanguage));
+    setSelectedPromptBranch(normalizePromptBranch(state.promptBranch));
     setActiveImageGroup(state.activeImageGroup);
     setPromotionInfo(state.promotionInfo);
     if (state.modules?.length) {
@@ -561,6 +601,8 @@ export default function Home() {
     setSelectedPlatformId("tmall");
     setSelectedImageModelId(modelConfig.imageGeneration.defaultOptionId || DEFAULT_IMAGE_MODEL_ID);
     setSelectedGenerationMode(DEFAULT_GENERATION_MODE);
+    setSelectedGenerationLanguage(DEFAULT_GENERATION_LANGUAGE);
+    setSelectedPromptBranch(DEFAULT_PROMPT_BRANCH);
     setModules(normalizeDetailIngredientModuleOrder(defaultModules.map((module) => ({ ...module }))));
     setImageVersionStore(createEmptyImageVersionStore());
     setGenerationProgress(createIdleGenerationProgress());
@@ -619,7 +661,8 @@ export default function Home() {
         selectedGenerationMode,
         selectedPlatformId,
         false,
-        languageRequest.targetLanguage
+        languageRequest.targetLanguage,
+        selectedPromptBranch
       );
       const generated = result.images[0];
       if (result.source !== "error" && generated?.url) {
@@ -688,6 +731,44 @@ export default function Home() {
     setStyleSource("ai_custom");
   }
 
+  async function handleSaveCustomStyle() {
+    if (!customStyle) {
+      setStatusText("请先让 Gemini 规划或分析一个风格");
+      return;
+    }
+    const name = window.prompt("保存风格名称", customStyle.name)?.trim();
+    if (!name) return;
+    setIsSavingStyle(true);
+    try {
+      const saved = await saveSavedStyle(customStyle, name);
+      setSavedStyles((current) => [saved, ...current.filter((item) => item.id !== saved.id)].slice(0, 50));
+      setStatusText(`已保存风格：${saved.name}`);
+    } catch {
+      setStatusText("保存风格失败");
+    } finally {
+      setIsSavingStyle(false);
+    }
+  }
+
+  function selectSavedStyle(record: SavedStyleRecord) {
+    setCustomStyle({ ...record.style, name: record.name });
+    setStyleSource("ai_custom");
+    setStatusText(`已使用保存风格：${record.name}`);
+  }
+
+  async function handleDeleteSavedStyle(id: string) {
+    setDeletingSavedStyleId(id);
+    try {
+      await deleteSavedStyle(id);
+      setSavedStyles((current) => current.filter((item) => item.id !== id));
+      setStatusText("已删除保存风格");
+    } catch {
+      setStatusText("删除风格失败");
+    } finally {
+      setDeletingSavedStyleId("");
+    }
+  }
+
   async function handlePlanAiCustomStyle() {
     if (isPlanningCustomStyle) return;
     if (!productInfo || !hasAiProductInfo) {
@@ -718,7 +799,6 @@ export default function Home() {
       setIsPlanningCustomStyle(false);
     }
   }
-
 
   async function handleAnalyzeStyleReference() {
     if (isAnalyzingStyleReference) return;
@@ -874,6 +954,7 @@ export default function Home() {
         errorCount: 0
       }
     }));
+    const languageRequest = { targetLanguage: selectedGenerationLanguage };
     setStatusText(`${groupLabel[group]}并行生成中 0/${modulesToGenerate.length}`);
 
     try {
@@ -892,11 +973,29 @@ export default function Home() {
             selectedImageModelId,
             selectedGenerationMode,
             selectedPlatformId,
-            false
+            false,
+            languageRequest.targetLanguage,
+            selectedPromptBranch
           ),
         (module, result, progress) => {
           if (result.images.length) {
-            setImageVersionStore((current) => appendImageVersions(current, result.images, result.source || "model"));
+            const images =
+              languageRequest.targetLanguage === "zh-CN"
+                ? result.images
+                : result.images.map((image) => ({
+                    ...image,
+                    language_versions: {
+                      ...(image.language_versions ?? {}),
+                      [languageRequest.targetLanguage]: {
+                        language: languageRequest.targetLanguage,
+                        language_label: LANGUAGE_LABELS[languageRequest.targetLanguage],
+                        url: image.url,
+                        compliance: image.compliance,
+                        createdAt: Date.now()
+                      }
+                    }
+                  }));
+            setImageVersionStore((current) => appendImageVersions(current, images, result.source || "model"));
           }
           setGenerationProgress((current) => ({
             ...current,
@@ -954,6 +1053,8 @@ export default function Home() {
           selectedPlatformId,
           selectedImageModelId,
           generationMode: selectedGenerationMode,
+          generationLanguage: selectedGenerationLanguage,
+          promptBranch: selectedPromptBranch,
           activeImageGroup,
           promotionInfo,
           modules,
@@ -972,7 +1073,7 @@ export default function Home() {
     } finally {
       setIsSavingHistory(false);
     }
-  }, [activeImageGroup, currentHistoryId, customStyle, hasAiProductInfo, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedGenerationMode, selectedImageModelId, selectedPlatformId, selectedStyleId, styleReferenceFiles, styleSource, styles, uploadedFiles, userTemplates]);
+  }, [activeImageGroup, currentHistoryId, customStyle, hasAiProductInfo, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedGenerationLanguage, selectedGenerationMode, selectedImageModelId, selectedPlatformId, selectedPromptBranch, selectedStyleId, styleReferenceFiles, styleSource, styles, uploadedFiles, userTemplates]);
 
   // Mark dirty when new images are generated
   useEffect(() => {
@@ -1102,10 +1203,17 @@ export default function Home() {
             isPlanningCustomStyle={isPlanningCustomStyle}
             isAnalyzingStyleReference={isAnalyzingStyleReference}
             isGeneratingStyleSample={isGeneratingStyleSample}
+            savedStyles={savedStyles}
+            isLoadingSavedStyles={isLoadingSavedStyles}
+            isSavingStyle={isSavingStyle}
+            deletingSavedStyleId={deletingSavedStyleId}
             recommendedStyleId=""
             onSelect={selectPresetStyle}
             onAiCustomStyleSelect={selectAiCustomStyle}
             onPlanAiCustomStyle={handlePlanAiCustomStyle}
+            onSaveCustomStyle={handleSaveCustomStyle}
+            onSelectSavedStyle={selectSavedStyle}
+            onDeleteSavedStyle={(id) => void handleDeleteSavedStyle(id)}
             onStyleReferenceFilesAdded={(files) => void addStyleReferenceFiles(files)}
             onStyleReferenceFileRemove={(id) => setStyleReferenceFiles((current) => current.filter((file) => file.id !== id))}
             onAnalyzeStyleReference={handleAnalyzeStyleReference}
@@ -1140,11 +1248,15 @@ export default function Home() {
             templates={allTemplates}
             selectedImageModelId={selectedImageModelId}
             generationMode={selectedGenerationMode}
+            generationLanguage={selectedGenerationLanguage}
+            promptBranch={selectedPromptBranch}
             promotionCompliance={promotionCompliance}
             onPromotionInfoChange={setPromotionInfo}
             onPlatformChange={setSelectedPlatformId}
             onImageModelChange={setSelectedImageModelId}
             onGenerationModeChange={setSelectedGenerationMode}
+            onGenerationLanguageChange={setSelectedGenerationLanguage}
+            onPromptBranchChange={setSelectedPromptBranch}
             onTemplateApply={applyProjectTemplate}
             onTemplateSave={saveCurrentTemplate}
             onImageGroupChange={setActiveImageGroup}

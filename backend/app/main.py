@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.routers import history, models, projects, session
+from app.routers import history, models, projects, session, styles
 from app.services.app_session import AppSessionUnauthorizedError, app_session_error_payload
 from app.services.database import close_pool, ensure_tables
 
@@ -43,6 +43,8 @@ def create_app() -> FastAPI:
         app.include_router(models.router)
     if projects.router is not None:
         app.include_router(projects.router)
+    if styles.router is not None:
+        app.include_router(styles.router)
     if history.router is not None:
         app.include_router(history.router)
     return app

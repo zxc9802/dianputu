@@ -88,19 +88,19 @@ const generatedDetailImages = DEFAULT_MODULES
   .map((module) => ({ module_id: module.id, url: `https://img.example.com/${module.id}.png` }));
 const detailDownloadState = buildDetailDownloadState(DEFAULT_MODULES, generatedDetailImages);
 assert.deepEqual(
-  JSON.parse(JSON.stringify(detailDownloadState.manifest.map((item) => item.module_id).slice(5, 9))),
-  ["ingredient_overview", "ingredient_1", "ingredient_2", "ingredient_3"]
+  JSON.parse(JSON.stringify(detailDownloadState.manifest.map((item) => item.module_id))),
+  ["hero", "brand_qualification", "research_strength", "pain_scene", "effect_comparison", "competitor_comparison", "product_showcase", "ingredient_overview", "usage", "product_info"]
 );
 assert.deepEqual(
-  JSON.parse(JSON.stringify(detailDownloadState.items.map((item) => item.module.id).slice(5, 9))),
-  ["ingredient_overview", "ingredient_1", "ingredient_2", "ingredient_3"]
+  JSON.parse(JSON.stringify(detailDownloadState.items.map((item) => item.module.id))),
+  ["hero", "brand_qualification", "research_strength", "pain_scene", "effect_comparison", "competitor_comparison", "product_showcase", "ingredient_overview", "usage", "product_info"]
 );
 assert.equal(detailDownloadState.missingModules.length, 0);
-const missingIngredientDownloadState = buildDetailDownloadState(
+const missingProductInfoDownloadState = buildDetailDownloadState(
   DEFAULT_MODULES,
-  generatedDetailImages.filter((image) => image.module_id !== "ingredient_2")
+  generatedDetailImages.filter((image) => image.module_id !== "product_info")
 );
-assert.deepEqual(JSON.parse(JSON.stringify(missingIngredientDownloadState.missingModules.map((module) => module.id))), ["ingredient_2"]);
+assert.deepEqual(JSON.parse(JSON.stringify(missingProductInfoDownloadState.missingModules.map((module) => module.id))), ["product_info"]);
 
 const layered = appendImageVersions(
   { versions: {}, selectedVersionIds: {} },
@@ -179,6 +179,24 @@ const backToChinese = selectLanguageVersion(withEnglish, "hero", layeredVersion.
 assert.equal(backToChinese.versions.hero[0].selectedLanguage, "zh-CN");
 assert.deepEqual(JSON.parse(JSON.stringify(getSelectedGeneratedImages(backToChinese.versions, backToChinese.selectedVersionIds))), [{ module_id: "hero", url: "hero-zh.png" }]);
 
+const vietnameseBase = appendImageVersions(
+  { versions: {}, selectedVersionIds: {} },
+  [{
+    module_id: "hero",
+    url: "hero-vi.png",
+    language_versions: {
+      vi: {
+        language: "vi",
+        language_label: "Tiếng Việt",
+        url: "hero-vi.png"
+      }
+    }
+  }],
+  "model",
+  6500
+);
+assert.equal(vietnameseBase.versions.hero[0].selectedLanguage, "vi");
+
 const nonLayeredBase = appendImageVersions(
   { versions: {}, selectedVersionIds: {} },
   [{ module_id: "main_hero_selling_point", url: "main-zh.png" }],
@@ -239,44 +257,47 @@ assert.deepEqual(
   JSON.parse(JSON.stringify(templated.map((module) => ({ id: module.id, enabled: module.enabled, order: module.order })))),
   [
     { id: "hero", enabled: true, order: 1 },
-    { id: "usage", enabled: false, order: 2 }
+    { id: "usage", enabled: false, order: 9 }
   ]
 );
 
 for (const template of OFFICIAL_PROJECT_TEMPLATES) {
   const moduleIds = template.modules.map((module) => module.id);
+  assert.ok(moduleIds.includes("brand_qualification"), `${template.id} must keep the brand qualification page`);
+  assert.ok(moduleIds.includes("research_strength") || moduleIds.includes("pain_scene"), `${template.id} must keep trust or pain-building detail pages`);
+  assert.ok(moduleIds.includes("product_showcase"), `${template.id} must keep the product showcase page`);
   assert.ok(moduleIds.includes("ingredient_overview"), `${template.id} must keep the ingredient overview page`);
-  assert.ok(moduleIds.includes("ingredient_1"), `${template.id} must keep ingredient explanation page 1`);
-  assert.ok(moduleIds.includes("ingredient_2"), `${template.id} must keep ingredient explanation page 2`);
-  assert.ok(moduleIds.includes("ingredient_3"), `${template.id} must keep ingredient explanation page 3`);
+  assert.ok(moduleIds.includes("product_info"), `${template.id} must keep the product information page`);
+  assert.ok(!moduleIds.includes("ingredient_1"), `${template.id} must not keep old ingredient explanation page 1`);
+  assert.ok(!moduleIds.includes("ingredient_2"), `${template.id} must not keep old ingredient explanation page 2`);
+  assert.ok(!moduleIds.includes("ingredient_3"), `${template.id} must not keep old ingredient explanation page 3`);
 }
 
-const restoredBadIngredientOrder = normalizeDetailIngredientModuleOrder([
+const restoredBadDetailOrder = normalizeDetailIngredientModuleOrder([
   { id: "hero", name: "详情首图", description: "", enabled: true, order: 1, image_group: "detail" },
-  { id: "authority", name: "权威资质展示", description: "", enabled: true, order: 2, image_group: "detail" },
-  { id: "pain_scene", name: "痛点场景", description: "", enabled: true, order: 3, image_group: "detail" },
-  { id: "effect_comparison", name: "效果对比", description: "", enabled: true, order: 4, image_group: "detail" },
-  { id: "competitor_comparison", name: "竞品对比", description: "", enabled: true, order: 5, image_group: "detail" },
-  { id: "ingredient_overview", name: "成分总览", description: "", enabled: true, order: 6, image_group: "detail" },
-  { id: "ingredient_1", name: "成分 1 讲解", description: "", enabled: true, order: 7, image_group: "detail" },
-  { id: "usage", name: "使用方法", description: "", enabled: true, order: 8, image_group: "detail" },
-  { id: "ingredient_2", name: "成分 2 讲解", description: "", enabled: true, order: 9, image_group: "detail" },
-  { id: "ingredient_3", name: "成分 3 讲解", description: "", enabled: true, order: 10, image_group: "detail" }
+  { id: "product_info", name: "产品信息", description: "", enabled: true, order: 2, image_group: "detail" },
+  { id: "usage", name: "使用方法", description: "", enabled: true, order: 3, image_group: "detail" },
+  { id: "ingredient_overview", name: "成分总览", description: "", enabled: true, order: 4, image_group: "detail" },
+  { id: "product_showcase", name: "产品大图强化", description: "", enabled: true, order: 5, image_group: "detail" },
+  { id: "competitor_comparison", name: "竞品对比", description: "", enabled: true, order: 6, image_group: "detail" },
+  { id: "effect_comparison", name: "效果对比", description: "", enabled: true, order: 7, image_group: "detail" },
+  { id: "pain_scene", name: "痛点场景", description: "", enabled: true, order: 8, image_group: "detail" },
+  { id: "research_strength", name: "研发实力", description: "", enabled: true, order: 9, image_group: "detail" },
+  { id: "brand_qualification", name: "品牌与资质背书", description: "", enabled: true, order: 10, image_group: "detail" }
 ]);
 assert.deepEqual(
-  restoredBadIngredientOrder
+  restoredBadDetailOrder
     .filter((module) => module.image_group === "detail")
     .sort((a, b) => a.order - b.order)
-    .map((module) => module.id)
-    .slice(5),
-  ["ingredient_overview", "ingredient_1", "ingredient_2", "ingredient_3", "usage"]
+    .map((module) => module.id),
+  ["hero", "brand_qualification", "research_strength", "pain_scene", "effect_comparison", "competitor_comparison", "product_showcase", "ingredient_overview", "usage", "product_info"]
 );
 
 const singleGenerateModules = [
   { id: "main_ingredient", name: "次图-成分", description: "", enabled: false, order: 3, image_group: "main" },
   { id: "campaign_effect", name: "活动次图-效果", description: "", enabled: false, order: 4, image_group: "campaign" },
-  { id: "pain_scene", name: "痛点场景", description: "", enabled: false, order: 3, image_group: "detail" },
-  { id: "usage", name: "使用方法", description: "", enabled: true, order: 7, image_group: "detail" }
+  { id: "pain_scene", name: "痛点场景", description: "", enabled: false, order: 4, image_group: "detail" },
+  { id: "usage", name: "使用方法", description: "", enabled: true, order: 9, image_group: "detail" }
 ];
 const enabledMainSingle = enableModuleForSingleGeneration(singleGenerateModules, "main_ingredient");
 const enabledCampaignSingle = enableModuleForSingleGeneration(singleGenerateModules, "campaign_effect");

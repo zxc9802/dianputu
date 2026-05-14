@@ -153,9 +153,35 @@ def _format_authority_assets(value: Any) -> str:
             "画面表达：科学家实验场景中的局部纸质资质、证书纸张和泛化标签，机构名称与编号保持模糊处理"
         )
     return "\n".join(
-        f"{index}. 权威方向：{_authority_asset_label(item)}；画面表达：科学家实验场景中的局部纸质资质、证书页、纸张纹理、图表形状和泛化标签，编号、样本量、机构编号等细节保持模糊处理"
+        f"{index}. 权威方向：{_authority_asset_label(item)}；画面表达：局部纸质资质、证书页、图表形状和泛化标签，编号细节模糊处理"
         for index, item in enumerate(items, start=1)
     )
+
+
+def _user_priority_note() -> str:
+    return "用户上传资料和手写信息优先；AI 只在资料缺失时做安全泛化补充，不覆盖用户已确认字段。"
+
+
+def _format_brand_assets(info: dict[str, Any]) -> str:
+    items = [*_string_items(info.get("material_highlights")), *_string_items(info.get("authority_assets"))]
+    if not items:
+        items = ["品牌背景", "产地来源", "官方渠道保障", "泛化权威认证"]
+    return _numbered_lines(items[:5], "品牌背景与资质背书")
+
+
+def _format_product_detail_items(info: dict[str, Any]) -> str:
+    lines = [
+        f"产品名称：{_text(info.get('product_name'), '当前护肤产品')}",
+        f"品类：{_text(info.get('category'), '护肤品')}",
+        f"规格：{_text(info.get('spec'), '常规规格')}",
+        "核心功效：" + " / ".join(_string_items(info.get("functions"))[:3] or ["日常护肤护理"]),
+        "核心成分：" + " / ".join(f"{item['name']}：{item['benefit']}" for item in _selected_ingredients(info.get("ingredients"))),
+        "使用方法：" + " / ".join(_string_items(info.get("usage_method"))[:3] or ["洁面后取适量使用"]),
+    ]
+    highlights = _string_items(info.get("material_highlights"))[:4]
+    if highlights:
+        lines.extend(highlights)
+    return "\n".join(f"{index}. {item}" for index, item in enumerate(lines, start=1))
 
 
 def _format_effect_claims(value: Any) -> str:
@@ -287,11 +313,35 @@ MODULE_VISUAL_RECIPES: dict[str, dict[str, str]] = {
         "product_role": "嵌入场景中清晰可见",
         "forbidden": "数据图表、成分列表、原料卡片、产品居中环绕文字构图、凌乱居家背景、随意自拍感",
     },
+    "brand_qualification": {
+        "layout": "品牌与资质背书整屏：主体使用法式建筑、品牌门店或街景橱窗建立品牌来源感；下方可用少量产地、官方渠道、正品保障和认证图标收束",
+        "primary_visual": "法式建筑立面 + 品牌门店橱窗 + 产地来源文字氛围 + 官方旗舰店/正品保障/权威认证小标识，像品牌官网和线下门店背书页",
+        "product_role": "产品可小比例放在门店橱窗、柜台或角落作品牌商品提示，不作为画面中心",
+        "forbidden": "实验室器械、显微镜、烧瓶、研发人员、效果对比、肌肤痛点、成分微距、使用步骤、虚假真实机构和可核验编号",
+    },
+    "research_strength": {
+        "layout": "研发实力拼图：实验室主图 + 研发流程/真人测试小图 + 局部检测报告或印章纸张",
+        "primary_visual": "实验室器械、烧瓶、试管、显微镜、科研人员、真人测试、报告文件和印章轮廓",
+        "product_role": "产品可作为实验样本或配方来源小比例出现，不抢实验室和研发证据主视觉",
+        "forbidden": "品牌门店、法式街景、竞品对比、产品大图海报、完整成分表、使用步骤、可核验编号",
+    },
+    "product_showcase": {
+        "layout": "产品大图强化：产品瓶身作为最大主视觉，占画面 45%-60%；旁边展示质地液体、功效短标签和 0 添加图标",
+        "primary_visual": "产品大图 + 功效 + 质地 + 0添加；可加入清透精华质地、水润液滴、柔和流线、0 酒精/0 色素/0 添加图标",
+        "product_role": "最大视觉主体，瓶身包装清晰，使用商业护肤品棚拍光和克制倒影；质地与图标围绕产品服务",
+        "forbidden": "品牌门店、实验室报告、痛点人脸、竞品表格、完整成分表、使用步骤、过密说明文字",
+    },
     "ingredient_overview": {
         "layout": "成分体系总览：顶部短标题，中部用 3 个成分体系节点或原料浮岛建立配方逻辑，下方用一句复配总结收束",
         "primary_visual": "多重成分复配体系 + 原料微距浮岛 + 精华液流动纹理 + 清透商业摄影光影",
         "product_role": "产品缩小放角落作为配方来源提示，不作为主视觉中心",
         "forbidden": "完整成分表、超过 3 个成分卡片、长段说明文字、药品疗效、密集百科式排版、脏乱植物堆叠",
+    },
+    "product_info": {
+        "layout": "产品信息页：米色纸质背景或浅色说明书版式，标题区 + 参数分组 + 成分/使用说明短段落，整体正式、干净、可阅读",
+        "primary_visual": "产品名称、功效、规格、保质期、产地、成分、使用说明等参数信息；可配极少量产品线稿或小比例产品图",
+        "product_role": "产品小比例辅助出现，重点是参数信息和说明书质感，不做大图海报",
+        "forbidden": "功效夸张承诺、编造产地和保质期、品牌门店、实验室大场景、肌肤对比图、竞品攻击、促销贴纸",
     },
     "ingredient_1": {
         "layout": "单成分讲解图：一个核心成分占主视觉，成分名做大标题，作用只保留一句短标签，画面留出高级负空间",
@@ -344,6 +394,44 @@ def build_module_specific_brief(product_info: dict[str, Any] | None, module: dic
     if module_id in {"main_ingredient", "campaign_ingredient"}:
         return "\n".join([*base_lines, "- 本图只使用核心成分信息：", _format_ingredients(info.get("ingredients"))])
 
+    if module_id == "brand_qualification":
+        return "\n".join(
+            [
+                *base_lines,
+                f"- 品类：{_text(info.get('category'), '护肤品')}",
+                "- 用户手写核心卖点优先作为品牌页辅助定位：",
+                _limited_numbered_lines(info.get("core_selling_points"), "温和护理", 2),
+                f"- 资料优先级：{_user_priority_note()}",
+                "- 本图只使用品牌背景、产地来源、渠道保障和资质认证类信息：",
+                _format_brand_assets(info),
+            ]
+        )
+
+    if module_id in {"research_strength", "authority"}:
+        return "\n".join(
+            [
+                *base_lines,
+                f"- 品类：{_text(info.get('category'), '护肤品')}",
+                f"- 资料优先级：{_user_priority_note()}",
+                "- 本图只使用研发、实验、检测、报告、专利或测试类信息：",
+                _format_authority_assets(info.get("authority_assets")),
+            ]
+        )
+
+    if module_id == "product_showcase":
+        return "\n".join(
+            [
+                *base_lines,
+                f"- 品类：{_text(info.get('category'), '护肤品')}",
+                "- 本图只使用核心卖点：",
+                _limited_numbered_lines(info.get("core_selling_points"), "温和护理", 3),
+                "- 本图只使用核心功效：",
+                _limited_numbered_lines(info.get("functions"), "补水保湿", 3),
+                "- 可用资料亮点：",
+                _limited_numbered_lines(info.get("material_highlights"), "质地清透，配方温和", 4),
+            ]
+        )
+
     if module_id == "ingredient_overview":
         selected = _selected_ingredients(info.get("ingredients"))
         return "\n".join(
@@ -352,7 +440,7 @@ def build_module_specific_brief(product_info: dict[str, Any] | None, module: dic
                 f"- 品类：{_text(info.get('category'), '护肤品')}",
                 "- 本图只做成分体系总览，最多展示以下 3 个核心成分：",
                 _format_ingredient_items(selected),
-                "- 复配总结：多重成分复配体系，先建立配方可信感，不在本图逐个展开长篇解释。",
+                "- 复配总结：多重成分复配体系，建立配方可信感，不在本图逐个展开长篇解释。",
             ]
         )
 
@@ -398,6 +486,16 @@ def build_module_specific_brief(product_info: dict[str, Any] | None, module: dic
     if module_id == "usage":
         return "\n".join([*base_lines, "- 使用方法：", _limited_numbered_lines(info.get("usage_method"), "洁面后取适量涂抹", 4)])
 
+    if module_id == "product_info":
+        return "\n".join(
+            [
+                *base_lines,
+                f"- 资料优先级：{_user_priority_note()}",
+                "- 本图只使用已上传资料、手写确认信息和安全泛化字段，产品参数如下：",
+                _format_product_detail_items(info),
+            ]
+        )
+
     # Fallback: inject comprehensive product context for detail modules
     return "\n".join(
         [
@@ -414,9 +512,21 @@ def build_module_specific_brief(product_info: dict[str, Any] | None, module: dic
     )
 
 
+
+PROMPT_OPTIMIZATION_BRANCH = "prompt_optimization"
+
+
+def _is_prompt_optimization_branch(prompt_branch: str | None) -> bool:
+    return str(prompt_branch or "").strip() == PROMPT_OPTIMIZATION_BRANCH
+
+
+def _module_visual_recipe(module_id: str) -> dict[str, str] | None:
+    return MODULE_VISUAL_RECIPES.get(module_id)
+
+
 def _module_visual_constraints(module: dict[str, Any]) -> str:
     module_id = str(module.get("id"))
-    recipe = MODULE_VISUAL_RECIPES.get(module_id)
+    recipe = _module_visual_recipe(module_id)
     if not recipe:
         return ""
 
@@ -435,13 +545,22 @@ def _module_visual_constraints(module: dict[str, Any]) -> str:
 
 def _detail_text_guardrails(module: dict[str, Any]) -> str:
     module_id = str(module.get("id"))
+    if module_id == "product_info":
+        return "\n".join(
+            [
+                "【图片文字边界】",
+                "- 产品信息页允许清晰参数表、短成分摘要和使用说明短段落，但必须像正式说明书/产品信息页，不像风险提示或免责声明。",
+                "- 用户上传资料和手写信息优先；没有资料的字段可用泛化安全表达，不能出现信息缺失、核验提醒、补全提醒或半成品提示。",
+                "- 不能编造产地、保质期、备案编号、检测编号、真实机构名称或绝对化功效承诺。",
+            ]
+        )
     lines = [
         "【图片文字边界】",
         "- 图片必须像可直接用于店铺上架的成品物料，只呈现标题、卖点标签、指标或步骤。",
         "- 隐藏 brief、模块职责、资料限制、合规提醒只作为生成依据，不能排版成图片里的说明框、段落、清单、脚注或底部文字区域。",
         "- 资料不足时减少文字密度，只保留确定卖点；不能出现信息缺失、核验提醒、补全提醒或半成品提示。",
     ]
-    if module_id == "authority":
+    if module_id in {"research_strength", "authority"}:
         lines.append(
             "- 纸质资质只作为辅助物件；当报告出现时只能做成真实纸质材质，正文用不可读纹理、抽象线条或极短泛化标签。"
         )
@@ -563,8 +682,29 @@ def _campaign_promotion_guardrails(module: dict[str, Any]) -> str:
     )
 
 
-def _detail_conversion_rules(module: dict[str, Any]) -> str:
+def _detail_product_visibility_rules(module: dict[str, Any]) -> str:
     module_id = str(module.get("id"))
+    policies = {
+        "hero": "产品露出策略：必须出现产品",
+        "effect_comparison": "产品露出策略：产品只能辅助出现",
+        "competitor_comparison": "产品露出策略：产品只能辅助出现",
+        "product_showcase": "产品露出策略：必须出现产品",
+        "ingredient_overview": "产品露出策略：产品可不出现，成分体系是主视觉。",
+        "usage": "产品露出策略：必须出现产品",
+        "brand_qualification": "产品露出策略：不要出现产品瓶身、包装、商品主图或产品陈列",
+        "research_strength": "产品露出策略：不要出现产品瓶身、包装、商品主图或产品陈列",
+        "pain_scene": "产品露出策略：不要出现产品瓶身、包装、商品主图或产品陈列",
+        "product_info": "产品露出策略：不要出现产品瓶身、包装、商品主图或产品陈列",
+    }
+    policy = policies.get(module_id)
+    if not policy:
+        return ""
+    return f"- {policy}"
+
+
+def _detail_conversion_rules(module: dict[str, Any], prompt_branch: str | None = None) -> str:
+    module_id = str(module.get("id"))
+    optimized = _is_prompt_optimization_branch(prompt_branch)
     lines = [
         "【详情页销售型生成策略】",
         "- 当前详情页结构不变，但每个模块必须从说明型图片升级为销售型图片。",
@@ -578,17 +718,41 @@ def _detail_conversion_rules(module: dict[str, Any]) -> str:
             "- 产品作为主视觉，占画面 35%-50%；主标题短、狠、直接，只打一个核心卖点。",
             "- 搭配 2-4 个卖点标签，背景使用商业摄影光影；不要做成只有品牌氛围的海报。",
         ],
+        "brand_qualification": [
+            "- 品牌与资质背书页任务是建立品牌可信度和来源感，不讲研发实验细节。",
+            "- 主视觉参考示例图的法式建筑、品牌门店、街景橱窗、产地来源和认证小标识。",
+            "- 用户上传资料和手写信息优先；AI 只在资料缺失时做安全泛化补充，不能编造真实机构、授权编号或门店地址。",
+        ],
+        "research_strength": [
+            "- 研发实力页任务是证明研发流程、真人测试和科学配方依据；不编造真实机构或编号。",
+        ],
         "authority": [
             "- 权威页任务是建立信任感；主视觉使用实验室、研究员、仪器、试管、检测台和研发记录。",
             "- 报告、证书、文件只能作为局部辅助物件；不能编造真实机构、专利数量、临床数据或检测编号。",
-            "- 光影使用冷白、银色金属反光、蓝色科技光或少量红色数据屏，避免医院广告感。",
+            (
+                "- 光影使用冷白、柔灰、银色金属反光和玻璃反射，避免夸张蓝色科技光、红色大屏和医院广告感。"
+                if optimized
+                else "- 光影使用冷白、银色金属反光、蓝色科技光或少量红色数据屏，避免医院广告感。"
+            ),
         ],
         "pain_scene": [
             "- 痛点页任务是让用户产生强烈代入感，觉得这就是我的问题。",
-            "- 人物要有困扰表情，可出现皱眉、照镜子、摸脸、上妆卡粉等动作。",
+            (
+                "- 人物可以有轻微困扰表情，可出现皱眉、照镜子、摸脸、上妆卡粉等动作，但不要崩溃、哭泣或丑化。"
+                if optimized
+                else "- 人物要有困扰表情，可出现皱眉、照镜子、摸脸、上妆卡粉等动作。"
+            ),
             "- 痛点必须可视化，例如卡粉起皮、干到发紧、粗糙、紧绷、暗沉、泛红。",
-            "- 增加局部放大镜、肌肤纹理特写或问题区域标注，并使用红色警示标签点名问题。",
-            "- 背景用镜前、梳妆台、浴室等问题现场，不要做成漂亮但无痛感的护肤氛围照。",
+            (
+                "- 可增加局部放大镜、肌肤纹理特写或问题区域标注；标注用细线和低饱和强调色，不做红色警示贴纸。"
+                if optimized
+                else "- 增加局部放大镜、肌肤纹理特写或问题区域标注，并使用红色警示标签点名问题。"
+            ),
+            (
+                "- 背景用镜前、梳妆台、浴室等问题现场，画面要有真实痛点但保持干净高级，不贩卖焦虑。"
+                if optimized
+                else "- 背景用镜前、梳妆台、浴室等问题现场，不要做成漂亮但无痛感的护肤氛围照。"
+            ),
         ],
         "effect_comparison": [
             "- 效果页任务是让用户看到变化，并相信产品有使用收益。",
@@ -601,6 +765,11 @@ def _detail_conversion_rules(module: dict[str, Any]) -> str:
             "- 右侧视觉偏亮、润、干净，展示本产品的差异化优势。",
             "- 不指名真实竞品品牌，不恶意攻击竞品；对比维度控制在 3-5 个。",
         ],
+        "product_showcase": [
+            "- 产品大图强化页任务是再次把注意力拉回产品本身，强化功效、质地和温和安全感。",
+            "- 画面必须是产品大图 + 功效 + 质地 + 0添加，不讲品牌门店、研发报告、竞品或使用步骤。",
+            "- 产品瓶身作为最大主视觉，旁边用质地液体和 0 酒精、0 色素、0 添加图标承接卖点。",
+        ],
         "ingredient_overview": [
             "- 成分总览只做体系介绍，不展开单个成分的长篇解释。",
             "- 最多展示 3 个核心成分，每个成分对应一个护理方向，例如补水 + 修护 + 舒缓。",
@@ -611,6 +780,11 @@ def _detail_conversion_rules(module: dict[str, Any]) -> str:
             "- 使用方法页任务是降低使用门槛，让用户觉得简单、清楚、容易执行。",
             "- 控制在 3-4 步，每一步配真实动作，例如取量、点涂、推开、按摩吸收。",
             "- 场景使用干净浴室、梳妆台、自然窗光；产品必须清楚出现。",
+        ],
+        "product_info": [
+            "- 产品信息页任务是收口，把产品名称、功效、规格、保质期、产地、成分和使用说明整理成正式说明书。",
+            "- 版式参考示例图的米色纸质背景、参数分组、清晰横线和说明书式排版，图片元素少，文字信息完整。",
+            "- 用户上传资料和手写信息优先；缺失字段只做安全泛化，不编造产地、保质期、真实备案或检测编号。",
         ],
     }
     if module_id.startswith("ingredient_") and module_id != "ingredient_overview":
@@ -630,6 +804,7 @@ LANGUAGE_LABELS = {
     "en": "English",
     "th": "Thai",
     "ms": "Malay",
+    "vi": "Tiếng Việt",
 }
 
 
@@ -642,15 +817,20 @@ def _language_rules(target_language: str | None) -> str:
             "【图片语言】",
             f"- 本张图的目标语言是 {language}。",
             f"- 所有可见标题、标签、数字说明和角标文字都必须直接生成在图片里，并且必须使用 {language}。",
-            "- 不要把中文、英文、泰语或马来语混排；除产品包装本身已有文字外，营销文案只使用目标语言。",
+            "- 不要把中文、英文、泰语、马来语或越南语混排；除产品包装本身已有文字外，营销文案只使用目标语言。",
             "- 文字需要像真实电商设计一样融入画面：有清晰层级、合理留白、自然光影或底纹承托，不要像后期贴上去的字幕。",
         ]
     )
 
 
-def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | None) -> str:
+def _module_requirements(
+    module: dict[str, Any],
+    product_info: dict[str, Any] | None,
+    prompt_branch: str | None = None,
+) -> str:
     module_id = module.get("id")
     info = product_info or {}
+    optimized = _is_prompt_optimization_branch(prompt_branch)
     authority_report = _format_authority_assets(info.get("authority_assets"))
     effect_report = _format_effect_claims(info.get("effect_claims"))
     ingredients_report = _format_ingredients(info.get("ingredients"))
@@ -670,13 +850,37 @@ def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | 
         ],
         "main_hero_selling_point": [
             "画面呈现店铺首图，这是用户在电商货架上看到的第一张图，必须在 0.3 秒内抓住注意力。",
-            "背景：使用品牌主色系的渐变铺满整个画面，避免大面积空白或纯白；可用径向渐变、光晕、深→浅过渡、体积感环境光、流动丝绸质感或水波纹焦散营造高级氛围。",
-            "产品：作为最大视觉主体居中展示，放置在水面、石材或亚克力镜面的质感陈列台上，用空间透视、微投影和微倒影增强立体感；产品不能孤零零放在空白上。",
-            "光影：使用商业香水/护肤品级布光，主光柔和、强轮廓边缘光清晰，瓶身边缘从背景中跃出。",
-            "品类质感元素：根据产品品类和风格，在产品周围自然散布 2-4 个质感装饰（如水珠、植物叶片、精华液滴、丝绸纹理、光泽粒子），装饰元素控制在 2-4 个，增加画面丰富度但不能抢过产品。",
+            (
+                "背景：暖白、象牙白、浅米色、柔灰或浅石材色，可加入一个低饱和品牌强调色；保留自然的大留白或低纹理文案区。"
+                if optimized
+                else "背景：使用品牌主色系的渐变铺满整个画面，避免大面积空白或纯白；可用径向渐变、光晕、深→浅过渡、体积感环境光、流动丝绸质感或水波纹焦散营造高级氛围。"
+            ),
+            (
+                "产品：作为最大视觉主体放在石材、磨砂亚克力、水面或镜面陈列台上，用空间透视、微投影和克制倒影增强立体感；包装细节必须清楚。"
+                if optimized
+                else "产品：作为最大视觉主体居中展示，放置在水面、石材或亚克力镜面的质感陈列台上，用空间透视、微投影和微倒影增强立体感；产品不能孤零零放在空白上。"
+            ),
+            (
+                "光影：使用柔和棚拍光、真实接触阴影、克制高光和轻微反射，避免硬阴影、廉价发光和过度眩光。"
+                if optimized
+                else "光影：使用商业香水/护肤品级布光，主光柔和、强轮廓边缘光清晰，瓶身边缘从背景中跃出。"
+            ),
+            (
+                "品类质感元素：根据产品品类和风格自然加入 1-2 个质感装饰（如水珠、植物影子、精华液滴、丝绸纹理），增加画面层次但不能抢过产品。"
+                if optimized
+                else "品类质感元素：根据产品品类和风格，在产品周围自然散布 2-4 个质感装饰（如水珠、植物叶片、精华液滴、丝绸纹理、光泽粒子），装饰元素控制在 2-4 个，增加画面丰富度但不能抢过产品。"
+            ),
             "文字层级：主标题用核心卖点（字号大、醒目、放在视觉焦点区域），副标题用品类或功效关键词（字号小、作为辅助信息）。文字要有透视感或阴影，不能像贴纸一样平贴在画面上。",
-            "装饰光效：可添加光斑 bokeh、微粒漂浮、柔光光晕等元素，增加高级感和画面呼吸感。",
-            "整体目标：像天猫爆款护肤品首图一样——饱满、高级、有冲击力，不是简约留白风。",
+            (
+                "整体目标：像高端护肤品牌首图一样，清晰、高级、可信，同时具备货架点击力；不是廉价促销海报。"
+                if optimized
+                else "装饰光效：可添加光斑 bokeh、微粒漂浮、柔光光晕等元素，增加高级感和画面呼吸感。"
+            ),
+            (
+                ""
+                if optimized
+                else "整体目标：像高点击货架爆款护肤品首图一样——饱满、直接、有冲击力，不是简约留白风。"
+            ),
         ],
         "main_ingredient": [
             "画面只呈现成分次图，突出核心成分、原料质感和成分标签。",
@@ -714,14 +918,38 @@ def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | 
         ],
         "campaign_hero_selling_point": [
             "画面呈现活动首图，这是活动期间用户在货架看到的第一张图，必须同时传递产品价值和促销刺激。",
-            "背景：使用带活动感的品牌色渐变铺满画面，可叠加节日/促销氛围光效、体积感环境光或水波纹焦散，避免大面积空白或纯白。",
-            "产品：作为最大视觉主体居中展示，放置在水面、石材或亚克力镜面的质感陈列台上，用空间透视、柔和光影和微投影/倒影增强立体感；必须压过活动装饰。",
-            "光影：使用商业香水/护肤品级布光，主光柔和、强轮廓边缘光清晰，活动光效只能作为辅助。",
-            "品类质感元素：根据产品品类在产品周围散布 2-4 个质感装饰（水珠、叶片、精华液滴等），装饰元素控制在 2-4 个，增加画面丰富度。",
+            (
+                "背景：使用低饱和品牌色和活动色做层次，避免强饱和红黄蓝、廉价金色渐变和满屏贴纸；保留可承载活动文案的干净区域。"
+                if optimized
+                else "背景：使用带活动感的品牌色渐变铺满画面，可叠加节日/促销氛围光效、体积感环境光或水波纹焦散，避免大面积空白或纯白。"
+            ),
+            (
+                "产品：作为最大视觉主体展示，放置在石材、亚克力或镜面陈列台上，用柔和光影和微投影/倒影增强立体感；必须压过活动装饰。"
+                if optimized
+                else "产品：作为最大视觉主体居中展示，放置在水面、石材或亚克力镜面的质感陈列台上，用空间透视、柔和光影和微投影/倒影增强立体感；必须压过活动装饰。"
+            ),
+            (
+                "光影：使用商业护肤品级柔光、真实接触阴影和克制高光，活动光效只能作为辅助。"
+                if optimized
+                else "光影：使用商业香水/护肤品级布光，主光柔和、强轮廓边缘光清晰，活动光效只能作为辅助。"
+            ),
+            (
+                "品类质感元素：根据产品品类在产品周围加入 1-2 个质感装饰（水珠、叶片、精华液滴等），增加画面丰富度但不堆元素。"
+                if optimized
+                else "品类质感元素：根据产品品类在产品周围散布 2-4 个质感装饰（水珠、叶片、精华液滴等），装饰元素控制在 2-4 个，增加画面丰富度。"
+            ),
             "文字层级：主标题用核心卖点（字号大），副标题放促销利益点（优惠券、限时角标、满减标签），层级分明不混乱。",
             "促销表达需来自用户填写的活动信息，可使用优惠券、限时角标、满减标签、折扣贴纸等电商活动元素。",
-            "装饰光效：可添加光斑、微粒、活动礼花等元素增加节日感。",
-            "整体目标：像天猫大促护肤首图——饱满、有冲击力、有促销紧迫感。",
+            (
+                "整体目标：像高点击电商大促护肤首图，但视觉仍克制、高级、可信，不做廉价促销贴纸堆叠。"
+                if optimized
+                else "装饰光效：可添加光斑、微粒、活动礼花等元素增加节日感。"
+            ),
+            (
+                ""
+                if optimized
+                else "整体目标：像高点击电商大促护肤首图——饱满、有冲击力、有促销紧迫感。"
+            ),
         ],
         "campaign_ingredient": [
             "画面呈现活动成分次图，展示核心成分与原料质感，同时加入活动氛围元素。",
@@ -755,6 +983,30 @@ def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | 
             "突出产品名称、品类、规格和 2-3 个核心卖点；装饰元素控制在 2-4 个，留出高级负空间。",
             "与货架主图的差异：详情首图可以有更丰富的背景层次、更多文案信息和更强的品牌氛围感，不需要像主图那样在 0.3 秒抓注意力。",
             "不要塞入权威报告、效果对比表或使用步骤，这些属于其他模块。",
+        ],
+        "brand_qualification": [
+            "画面只呈现品牌与资质背书，视觉重点是品牌背景、产地来源和权威认证，不进入研发实验室。",
+            f"资料优先级：{_user_priority_note()}",
+            "主体画面参考示例：法式建筑立面、品牌门店、街景橱窗、柜台陈列、官方旗舰店正品保障图标，形成真实品牌来源感。",
+            "必须参考以下品牌/资质资料，但不要把原文完整搬进画面：",
+            _format_brand_assets(info),
+            "文字只保留品牌背景、源自某地、官方渠道、正品保障、权威认证等短标签；没有明确地名时用泛化产地来源，不编造具体地址或机构。",
+            "版式建议：大标题为品牌背景与权威认证，主体是建筑/门店/橱窗照片感，下方 3-4 个小型认证或保障标识。",
+            "禁止出现科学家实验画面为主体、显微镜、试管、烧瓶、真人测试、效果对比或完整成分表。",
+        ],
+        "research_strength": [
+            "画面只呈现研发实力，科学家实验画面为主体：研究员在真实实验室中操作显微镜、滴管、试管、烧瓶或样本瓶。",
+            f"资料优先级：{_user_priority_note()}",
+            "色调与环境：冷峻克制的高科技蓝色/银色调，极度整洁的现代研发中心，不像医院或廉价摆拍实验室。",
+            "玻璃器皿的锐利高光、精密仪器金属质感和克制实验室光线要真实可信。",
+            "非对称高级画册构图：研发流程小图、真人测试画面、科学配方、纸质资质和仪器形成前中后景。",
+            "纸质资质只占画面局部，不超过画面 25%；不要让纸质资质成为主视觉；纸张纤维和折痕要真实。",
+            "文字必须小且虚化/泛化，不写具体报告编号、样本编号、机构编号或可核验编号。",
+            "可见中文只用信任短词：安心品质、真实保障、成分可信、品控流程、使用放心。",
+            "不要半透明 UI 卡片、悬浮数据面板、玻璃拟态卡片或电子屏幕式报告。",
+            "参考以下权威资料方向，但不要把完整原文搬到画面上：",
+            authority_report,
+            "禁止出现品牌门店、法式街景、产地来源橱窗、竞品对比或产品大图海报。",
         ],
         "authority": [
             "画面只呈现权威资质展示，科学家实验画面为主体：研究员在明亮真实实验室中操作显微镜、滴管、试管或样本瓶。",
@@ -797,14 +1049,25 @@ def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | 
             "核心功效：" + _numbered_lines(_string_items(info.get("functions")), "补水保湿"),
             "左栏展示「普通同类产品」的常见痛点或不足，右栏展示本产品的差异化优势和卖点。",
         ],
+        "product_showcase": [
+            "画面只呈现产品大图强化，核心结构是产品大图 + 功效 + 质地 + 0添加。",
+            "产品瓶身作为最大主视觉，使用商业护肤品棚拍光、强轮廓光、微倒影和高级陈列台，包装细节清楚。",
+            "围绕产品展示质地液体，例如清透精华水、乳液延展、啫喱质感、水润液滴或流动质地，不做实验室报告。",
+            "必须参考以下卖点和资料亮点：",
+            "核心卖点：" + _numbered_lines(_string_items(info.get("core_selling_points")), "温和护理"),
+            "核心功效：" + _numbered_lines(_string_items(info.get("functions")), "补水保湿"),
+            "资料亮点：" + _numbered_lines(_string_items(info.get("material_highlights")), "质地清透，配方温和"),
+            "可见图标可使用 0 酒精、0 色素、0 香精、0 添加图标等温和安全感表达；只有资料没有明确 0 添加时，用泛化温和配方图标，不编造绝对承诺。",
+            "禁止品牌门店、研发实验室、痛点人脸、竞品表格、完整成分表和使用步骤。",
+        ],
         "ingredient_overview": [
-            "画面只呈现成分体系总览，先说明产品用了什么核心配方思路，再引出后续 3 张单成分讲解图。",
+            "画面只呈现成分体系总览，先说明产品用了什么核心配方思路，不再拆成后续单成分讲解图。",
             "镜头语言：使用极浅景深超微距摄影，原料边缘清晰、背景柔化，形成昂贵的商业成分大片感。",
             "材质质感：原料与液滴要晶莹剔透，带晨露质感、发光精华液滴和清透高调色彩，避免脏、浑、暗的植物堆叠。",
             "本图最多展示以下 3 个核心成分，不展示完整成分表，也不要把其他成分挤进画面：",
             selected_ingredients_report,
             "可见文案应总结为多重成分复配体系，例如：核心成分协同护理、多重成分复配体系、层层水润舒缓。",
-            "每个成分只做极短标签，不在总览图展开长篇作用解释，具体作用留给后续单成分图。",
+            "每个成分只做极短标签，不在总览图展开长篇作用解释。",
             "成分作用表达要谨慎，不能写成药品疗效或治疗承诺。",
         ],
         **{
@@ -830,6 +1093,15 @@ def _module_requirements(module: dict[str, Any], product_info: dict[str, Any] | 
             "必须参考以下使用步骤：",
             _numbered_lines(_string_items(info.get("usage_method")), "洁面后取适量涂抹"),
             "可以搭配手部涂抹、滴管、面部轻拍等示意画面。",
+        ],
+        "product_info": [
+            "画面只呈现产品信息，作为详情页最后一屏收口，不做功效海报。",
+            f"资料优先级：{_user_priority_note()}",
+            "版式：米色纸质背景、正式说明书质感、清晰横线、分组参数表和少量说明文字，图片元素很少。",
+            "必须整理产品名称、功效、规格、保质期、产地、成分、使用说明等信息；没有资料的字段可省略或用泛化安全表达。",
+            "必须参考以下产品参数和资料：",
+            _format_product_detail_items(info),
+            "不能编造产地、保质期、备案编号、检测编号、真实机构名、药品疗效或绝对化功效承诺。",
         ],
     }
     return "\n".join(requirements.get(str(module_id), [f"画面只呈现当前模块内容：{_text(module.get('description'))}"]))
@@ -887,6 +1159,14 @@ def _structured_style_system_lines(style: dict[str, Any], module: dict[str, Any]
     return lines
 
 
+def _premium_skincare_style_lines() -> list[str]:
+    return [
+        "- 高级护肤商业摄影基线：premium skincare commercial photography / luxury editorial product photography；克制构图、大留白、真实接触阴影、低饱和暖白/柔灰/香槟色，材质道具控制在 1-2 个。",
+        "- 图片模型优先负责产品摄影感、场景氛围、光影、材质、留白和构图；文案、价格、百分比、专利号和报告编号优先由后期图层叠加。",
+        "- 通用负向：cheap Taobao poster style, crowded layout, garbled/random Chinese text, fake logo/certification/patent/data, oversaturated/neon/fire/gold coins/explosive sale stickers, distorted packaging, watermark.",
+    ]
+
+
 def build_module_image_prompt(
     *,
     product_info: dict[str, Any] | None,
@@ -898,11 +1178,18 @@ def build_module_image_prompt(
     has_style_reference: bool = False,
     text_layer_mode: bool = False,
     target_language: str | None = None,
+    prompt_branch: str | None = None,
 ) -> str:
+    optimized_prompt_branch = _is_prompt_optimization_branch(prompt_branch)
     style_keywords = " / ".join(_string_items(style.get("keywords"))) or "高级 / 干净 / 统一"
     group = module.get("image_group")
     is_main_image = group in {"main", "campaign"}
     is_campaign_image = group == "campaign"
+    reference_product_style_rule = (
+        "- 中文电商视觉，高级干净统一；有参考图时保持产品外观。"
+        if is_main_image
+        else "- 参考图只定产品身份，出产品服从上方露出策略。"
+    )
     module_kind = "中文电商活动主图" if is_campaign_image else "中文电商商品主图" if is_main_image else "中文商品详情页单模块图片"
     readable_text_rule = (
         "- 字体层级清楚，标题短促有力，说明文字清晰可读，不出现乱码、水印、品牌侵权标识。"
@@ -973,10 +1260,11 @@ def build_module_image_prompt(
                 ]
             style_section = [
                 "【统一视觉风格】",
+                *(_premium_skincare_style_lines() if optimized_prompt_branch else []),
                 "- 上传的风格参考图优先：只参考排版、色调、光影和氛围，不改变产品外观、包装和品牌信息。",
                 *reference_style_lines,
                 "- 不要混入预设风格名称、主色或关键词；风格只以已上传的风格参考图为准。",
-                "- 中文电商视觉，高级干净统一；有产品参考图时保持外观。",
+                reference_product_style_rule,
                 rendered_text_rule,
                 "- 可见文字像店铺上架成品图文案，不写信息缺失、核验提醒、补全提醒或半成品提示。",
                 "- 效果、权威、成分表达谨慎，不使用医疗化、绝对化承诺。",
@@ -984,6 +1272,7 @@ def build_module_image_prompt(
         else:
             style_section = [
                 "【统一视觉风格】",
+                *(_premium_skincare_style_lines() if optimized_prompt_branch else []),
                 f"- 风格名称：{_text(style.get('name'), '太空修护风')}",
                 f"- 风格参考色：{_text(style.get('primary_color'), '根据风格选择参考色')}，只作为局部点缀和 UI 兼容参考，不是整套图片的强制背景色或统一主色。",
                 f"- 视觉关键词：{style_keywords}",
@@ -997,7 +1286,7 @@ def build_module_image_prompt(
                 ),
                 *_structured_style_system_lines(style, module),
                 "- 每张图可以根据模块内容使用不同主色、背景色或辅助色，但材质、光影、版式、字体层级、装饰元素和图标语言必须一致。",
-                "- 中文电商视觉，高级干净统一；有参考图时保持产品外观。",
+                reference_product_style_rule,
                 rendered_text_rule,
                 "- 可见文字像店铺上架成品图文案，不写信息缺失、核验提醒、补全提醒或半成品提示。",
                 "- 效果、权威、成分表达谨慎，不使用医疗化、绝对化承诺。",
@@ -1006,7 +1295,8 @@ def build_module_image_prompt(
     visual_constraints = _module_visual_constraints(module)
     main_image_conversion_rules = _main_image_conversion_rules(module) if is_main_image else ""
     campaign_promotion_guardrails = _campaign_promotion_guardrails(module) if is_campaign_image else ""
-    detail_conversion_rules = _detail_conversion_rules(module) if not is_main_image else ""
+    detail_product_visibility_rules = _detail_product_visibility_rules(module) if not is_main_image else ""
+    detail_conversion_rules = _detail_conversion_rules(module, prompt_branch=prompt_branch) if not is_main_image else ""
     effect_layout_guardrails = _effect_comparison_layout_guardrails(module, product_info)
     people_realism_guardrails = _people_realism_guardrails(module)
     detail_text_guardrails = _detail_text_guardrails(module) if not is_main_image else ""
@@ -1015,6 +1305,7 @@ def build_module_image_prompt(
     return "\n".join(
         [
             f"你是电商护肤{'商品主图' if is_main_image else '详情页'}视觉生成模型。请根据以下隐藏提示词生成 1 张{module_kind}。",
+            *(["", "【提示词分支】", "当前分支：提示词优化分支"] if optimized_prompt_branch else []),
             "",
             "【固定模块结构】",
             *structure_lines,
@@ -1031,7 +1322,8 @@ def build_module_image_prompt(
                 else []
             ),
             "【当前模块内容要求】",
-            _module_requirements(module, product_info),
+            _module_requirements(module, product_info, prompt_branch=prompt_branch),
+            *(["", detail_product_visibility_rules] if detail_product_visibility_rules else []),
             *(["", visual_constraints] if visual_constraints else []),
             *(["", main_image_conversion_rules] if main_image_conversion_rules else []),
             *(["", campaign_promotion_guardrails] if campaign_promotion_guardrails else []),

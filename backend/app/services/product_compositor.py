@@ -10,13 +10,13 @@ PRIMARY_PRODUCT_MODULE_IDS = {
     "main_hero_selling_point",
     "campaign_hero_selling_point",
     "hero",
+    "product_showcase",
 }
 USAGE_PRODUCT_MODULE_IDS = {
     "main_usage_scene",
     "campaign_usage_scene",
     "usage",
 }
-
 
 def _open_rgba(image_bytes: bytes) -> Image.Image:
     with Image.open(BytesIO(image_bytes)) as image:
@@ -131,7 +131,12 @@ def _drop_shadow(product: Image.Image, background_size: tuple[int, int]) -> Imag
     return shadow
 
 
-def compose_fixed_product_image(background_bytes: bytes, product_bytes: bytes, *, module_id: str | None = None) -> bytes:
+def compose_fixed_product_image(
+    background_bytes: bytes,
+    product_bytes: bytes,
+    *,
+    module_id: str | None = None,
+) -> bytes:
     """Composite the uploaded product pixels onto a generated background.
 
     The image model may create the background and atmosphere, but this keeps
