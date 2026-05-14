@@ -11,6 +11,7 @@ import { StyleStep } from "@/components/StyleStep";
 import { UploadStep } from "@/components/UploadStep";
 import { COMMERCE_PLATFORMS, DEMO_MODEL_CONFIG, DETAIL_IMAGE_GENERATION_SIZE, OFFICIAL_PROJECT_TEMPLATES } from "@/lib/constants";
 import {
+  analyzeStyleReference,
   analyzeUploadedMaterials,
   checkImageCompliance,
   checkTextCompliance,
@@ -152,6 +153,7 @@ function readPersistedProjectState(): PersistedProjectState | null {
       productInfo: parsed.productInfo ?? null,
       hasAiProductInfo: Boolean(parsed.hasAiProductInfo && parsed.productInfo),
       uploadedFiles: Array.isArray(parsed.uploadedFiles) ? parsed.uploadedFiles : [],
+      styleReferenceFiles: Array.isArray(parsed.styleReferenceFiles) ? parsed.styleReferenceFiles : [],
       selectedStyleId: parsed.selectedStyleId || DEFAULT_STYLE_ID,
       customStyle: parsed.customStyle && typeof parsed.customStyle === "object" ? (parsed.customStyle as StyleOption) : null,
       styleSource,
@@ -194,6 +196,7 @@ function createProjectStateSnapshot(input: {
   productInfo: ProductInfo | null;
   hasAiProductInfo: boolean;
   uploadedFiles: UploadedFileInfo[];
+  styleReferenceFiles: UploadedFileInfo[];
   selectedStyleId: string;
   customStyle: StyleOption | null;
   styleSource: StyleSource;
@@ -213,6 +216,7 @@ function createProjectStateSnapshot(input: {
     productInfo: input.productInfo,
     hasAiProductInfo: input.hasAiProductInfo,
     uploadedFiles: input.uploadedFiles,
+    styleReferenceFiles: input.styleReferenceFiles,
     selectedStyleId: input.selectedStyleId,
     customStyle: input.customStyle,
     styleSource: input.styleSource,
@@ -280,8 +284,10 @@ export default function Home() {
   const [languageGeneration, setLanguageGeneration] = useState<LanguageGenerationState>(null);
   const [statusText, setStatusText] = useState("原型预览");
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFileInfo[]>([]);
+  const [styleReferenceFiles, setStyleReferenceFiles] = useState<UploadedFileInfo[]>([]);
   const [manualFieldKeys, setManualFieldKeys] = useState<ProductInfoFieldKey[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isAnalyzingStyleReference, setIsAnalyzingStyleReference] = useState(false);
   const [analysisSource, setAnalysisSource] = useState("");
   const [reviewCompliance, setReviewCompliance] = useState<ComplianceReport | null>(null);
   const [promotionCompliance, setPromotionCompliance] = useState<ComplianceReport | null>(null);
@@ -307,6 +313,7 @@ export default function Home() {
         setProductInfo(restored.productInfo);
         setHasAiProductInfo(restored.hasAiProductInfo);
         setUploadedFiles(restored.uploadedFiles ?? []);
+        setStyleReferenceFiles(restored.styleReferenceFiles ?? []);
         setSelectedStyleId(restored.selectedStyleId);
         setCustomStyle(restored.customStyle);
         setStyleSource(restored.styleSource);
@@ -339,6 +346,7 @@ export default function Home() {
       productInfo,
       hasAiProductInfo,
       uploadedFiles,
+      styleReferenceFiles,
       selectedStyleId,
       customStyle,
       styleSource,
@@ -353,7 +361,7 @@ export default function Home() {
       userTemplates,
       statusText
     }));
-  }, [activeImageGroup, customStyle, hasAiProductInfo, hasRestoredProjectState, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedGenerationMode, selectedImageModelId, selectedPlatformId, selectedStyleId, statusText, styleSource, uploadedFiles, userTemplates]);
+  }, [activeImageGroup, customStyle, hasAiProductInfo, hasRestoredProjectState, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedGenerationMode, selectedImageModelId, selectedPlatformId, selectedStyleId, statusText, styleReferenceFiles, styleSource, uploadedFiles, userTemplates]);
 
   useEffect(() => {
     if (!modules.length) return;
@@ -421,6 +429,7 @@ export default function Home() {
       productInfo,
       hasAiProductInfo,
       uploadedFiles,
+      styleReferenceFiles,
       selectedStyleId,
       customStyle,
       styleSource,
@@ -441,6 +450,7 @@ export default function Home() {
     setProductInfo(state.productInfo);
     setHasAiProductInfo(state.hasAiProductInfo);
     setUploadedFiles(state.uploadedFiles ?? []);
+    setStyleReferenceFiles(state.styleReferenceFiles ?? []);
     setSelectedStyleId(state.selectedStyleId);
     setCustomStyle(state.customStyle);
     setStyleSource(state.styleSource);
@@ -485,6 +495,32 @@ export default function Home() {
     setStatusText("资料已加入");
   }
 
+  async function addStyleReferenceFiles(files: File[]) {
+    setStatusText("读取对标图片");
+    const nextFiles = await Promise.all(files.map((file) => fileToUploadInfo("style_reference", file)));
+    setStyleReferenceFiles((current) => [...current, ...nextFiles].slice(-4));
+    setStatusText("对标图片已加入");
+  }
+
+  function buildStyleReferencePayload(): MaterialPayload[] {
+    return styleReferenceFiles
+      .filter((file) => file.type.startsWith("image/") && file.dataUrl)
+      .map((file) => ({
+        id: file.id,
+        slot: file.slot,
+        filename: file.name,
+        content_type: file.type,
+        data_url: file.dataUrl
+      }))
+      .slice(0, 4);
+  }
+
+  function styleReferenceImages() {
+    return buildStyleReferencePayload()
+      .map((file) => file.data_url)
+      .filter((url): url is string => Boolean(url));
+  }
+
   function applyProjectTemplate(template: ProjectTemplate) {
     setSelectedCategory(template.category);
     setSelectedStyleId(template.styleId);
@@ -513,6 +549,7 @@ export default function Home() {
     setProductInfo(null);
     setHasAiProductInfo(false);
     setUploadedFiles([]);
+    setStyleReferenceFiles([]);
     setManualFieldKeys([]);
     setAnalysisSource("");
     setActiveImageGroup("main");
@@ -529,6 +566,7 @@ export default function Home() {
     setGenerationProgress(createIdleGenerationProgress());
     setIsAnalyzing(false);
     setIsPlanningCustomStyle(false);
+    setIsAnalyzingStyleReference(false);
     setIsGeneratingStyleSample(false);
     setIsHistoryOpen(false);
     setStatusText("已新建项目");
@@ -562,6 +600,7 @@ export default function Home() {
       return;
     }
     const activeCustomStyle = styleSource === "ai_custom" && customStyle ? customStyle : undefined;
+    const benchmarkImages = activeCustomStyle?.id === "style_reference" ? styleReferenceImages() : [];
     const group = moduleGroup(module);
     const languageRequest = { targetLanguage: language };
     setLanguageGeneration({ moduleId, versionId, language });
@@ -574,7 +613,7 @@ export default function Home() {
         referenceImages,
         group === "campaign" ? promotionInfo : "",
         generationSizeForGroup(group),
-        [],
+        benchmarkImages,
         activeCustomStyle,
         selectedImageModelId,
         selectedGenerationMode,
@@ -680,6 +719,31 @@ export default function Home() {
     }
   }
 
+
+  async function handleAnalyzeStyleReference() {
+    if (isAnalyzingStyleReference) return;
+    const referencePayload = buildStyleReferencePayload();
+    if (referencePayload.length === 0) {
+      setStatusText("请先上传图片对标素材");
+      return;
+    }
+    setIsAnalyzingStyleReference(true);
+    setStatusText("Gemini 正在分析图片对标风格");
+    try {
+      const result = await analyzeStyleReference(productInfo ?? undefined, referencePayload);
+      if (result.source === "model" && result.style) {
+        const referencePreview = referencePayload[0]?.data_url ?? "";
+        setCustomStyle({ ...result.style, asset: result.style.asset || referencePreview });
+        setStyleSource("ai_custom");
+        setStatusText(`已生成图片对标风格：${result.style.name}`);
+      } else {
+        setStatusText(`图片对标分析失败：${result.error ?? "模型未返回风格"}`);
+      }
+    } finally {
+      setIsAnalyzingStyleReference(false);
+    }
+  }
+
   async function handleGenerateAiStyleSample() {
     if (isGeneratingStyleSample) return;
     if (!customStyle) {
@@ -779,6 +843,7 @@ export default function Home() {
       .map((file) => file.dataUrl as string)
       .slice(0, 4);
     const activeCustomStyle = styleSource === "ai_custom" && customStyle ? customStyle : undefined;
+    const benchmarkImages = activeCustomStyle?.id === "style_reference" ? styleReferenceImages() : [];
     if (referenceImages.length === 0) {
       setStatusText("请先上传产品图，避免生成结果与原产品不一致");
       return;
@@ -822,7 +887,7 @@ export default function Home() {
             referenceImages,
             group === "campaign" ? promotionInfo : "",
             generationSizeForGroup(group),
-            [],
+            benchmarkImages,
             activeCustomStyle,
             selectedImageModelId,
             selectedGenerationMode,
@@ -881,6 +946,7 @@ export default function Home() {
           productInfo,
           hasAiProductInfo,
           uploadedFiles,
+          styleReferenceFiles,
           selectedStyleId,
           customStyle,
           styleSource,
@@ -906,7 +972,7 @@ export default function Home() {
     } finally {
       setIsSavingHistory(false);
     }
-  }, [activeImageGroup, currentHistoryId, customStyle, hasAiProductInfo, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedGenerationMode, selectedImageModelId, selectedPlatformId, selectedStyleId, styleSource, styles, uploadedFiles, userTemplates]);
+  }, [activeImageGroup, currentHistoryId, customStyle, hasAiProductInfo, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedGenerationMode, selectedImageModelId, selectedPlatformId, selectedStyleId, styleReferenceFiles, styleSource, styles, uploadedFiles, userTemplates]);
 
   // Mark dirty when new images are generated
   useEffect(() => {
@@ -1032,12 +1098,17 @@ export default function Home() {
             styleSource={styleSource}
             selectedStyleId={selectedStyleId}
             customStyle={customStyle}
+            styleReferenceFiles={styleReferenceFiles}
             isPlanningCustomStyle={isPlanningCustomStyle}
+            isAnalyzingStyleReference={isAnalyzingStyleReference}
             isGeneratingStyleSample={isGeneratingStyleSample}
             recommendedStyleId=""
             onSelect={selectPresetStyle}
             onAiCustomStyleSelect={selectAiCustomStyle}
             onPlanAiCustomStyle={handlePlanAiCustomStyle}
+            onStyleReferenceFilesAdded={(files) => void addStyleReferenceFiles(files)}
+            onStyleReferenceFileRemove={(id) => setStyleReferenceFiles((current) => current.filter((file) => file.id !== id))}
+            onAnalyzeStyleReference={handleAnalyzeStyleReference}
             onGenerateAiStyleSample={handleGenerateAiStyleSample}
             onBack={() => go(previousStep(activeStep))}
             onNext={() => go(nextStep(activeStep))}

@@ -1,19 +1,24 @@
 "use client";
 
-import { Check, Sparkles } from "lucide-react";
-import type { StyleOption, StyleSource } from "@/lib/types";
+import { Check, ImagePlus, Sparkles, Wand2, X } from "lucide-react";
+import type { StyleOption, StyleSource, UploadedFileInfo } from "@/lib/types";
 
 export function StyleStep({
   styles,
   styleSource,
   selectedStyleId,
   customStyle,
+  styleReferenceFiles,
   isPlanningCustomStyle,
+  isAnalyzingStyleReference,
   isGeneratingStyleSample,
   recommendedStyleId,
   onSelect,
   onAiCustomStyleSelect,
   onPlanAiCustomStyle,
+  onStyleReferenceFilesAdded,
+  onStyleReferenceFileRemove,
+  onAnalyzeStyleReference,
   onGenerateAiStyleSample,
   onBack,
   onNext
@@ -22,12 +27,17 @@ export function StyleStep({
   styleSource: StyleSource;
   selectedStyleId: string;
   customStyle: StyleOption | null;
+  styleReferenceFiles: UploadedFileInfo[];
   isPlanningCustomStyle: boolean;
+  isAnalyzingStyleReference: boolean;
   isGeneratingStyleSample: boolean;
   recommendedStyleId: string;
   onSelect: (id: string) => void;
   onAiCustomStyleSelect: () => void;
   onPlanAiCustomStyle: () => void;
+  onStyleReferenceFilesAdded: (files: File[]) => void;
+  onStyleReferenceFileRemove: (id: string) => void;
+  onAnalyzeStyleReference: () => void;
   onGenerateAiStyleSample: () => void;
   onBack: () => void;
   onNext: () => void;
@@ -53,6 +63,44 @@ export function StyleStep({
             ) : null}
             <h3 style={{ color: customStyle?.primary_color ?? "#1F8C43" }}>AI 自定义风格</h3>
             <p>{customStyle ? customStyle.name : "让 AI 根据产品定位、卖点和质感规划统一视觉元素，每张图可按模块变化颜色。"}</p>
+            <div className="styleReferencePanel">
+              <div className="styleReferenceHeader">
+                <b>图片对标</b>
+                <label className="smallButton" htmlFor="style-reference-upload">
+                  <ImagePlus size={16} />
+                  上传
+                </label>
+                <input
+                  accept="image/*"
+                  id="style-reference-upload"
+                  multiple
+                  type="file"
+                  onChange={(event) => {
+                    const files = Array.from(event.currentTarget.files ?? []);
+                    if (files.length) onStyleReferenceFilesAdded(files);
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </div>
+              {styleReferenceFiles.length ? (
+                <div className="styleReferenceThumbs">
+                  {styleReferenceFiles.map((file) => (
+                    <figure key={file.id}>
+                      {file.dataUrl ? <img src={file.dataUrl} alt={file.name} /> : <span>{file.name}</span>}
+                      <button type="button" onClick={() => onStyleReferenceFileRemove(file.id)} aria-label={`移除 ${file.name}`}>
+                        <X size={15} />
+                      </button>
+                    </figure>
+                  ))}
+                </div>
+              ) : (
+                <p className="styleReferenceEmpty">上传竞品或目标视觉图，Gemini 会提取色彩、光影、构图、材质和字体层级。</p>
+              )}
+              <button className="outlineButton fullWidth" type="button" onClick={onAnalyzeStyleReference} disabled={isAnalyzingStyleReference || styleReferenceFiles.length === 0}>
+                <Wand2 size={16} />
+                {isAnalyzingStyleReference ? "对标分析中..." : customStyle?.id === "style_reference" ? "重新分析对标图" : "分析对标图风格"}
+              </button>
+            </div>
             {customStyle?.asset ? (
               <img src={customStyle.asset} alt={`${customStyle.name} 样例图`} />
             ) : (

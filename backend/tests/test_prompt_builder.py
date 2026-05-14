@@ -227,6 +227,33 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertNotIn("预设风格只作为兜底", prompt)
         self.assertNotIn("绿色修护风", prompt)
 
+    def test_style_reference_prompt_injects_gemini_benchmark_brief(self):
+        build_module_image_prompt = load_prompt_builder()
+        hero_module = next(module for module in DEFAULT_MODULES if module["id"] == "hero")
+
+        prompt = build_module_image_prompt(
+            product_info={"product_name": "积雪草修护精华"},
+            style={
+                "id": "style_reference",
+                "name": "冷萃晶透风",
+                "primary_color": "#A8DDE8",
+                "keywords": ["冷感", "晶透", "高级"],
+                "visual_direction": "清透蓝绿色、柔光、玻璃材质",
+                "layout_guidance": "中心产品、大留白、标题层级克制",
+                "visual_elements": ["玻璃水波纹", "极细描边图标"],
+            },
+            module=hero_module,
+            module_index=1,
+            total_modules=7,
+            has_style_reference=True,
+        )
+
+        self.assertIn("Gemini 对标风格名称：冷萃晶透风", prompt)
+        self.assertIn("Gemini 对标参考色：#A8DDE8", prompt)
+        self.assertIn("Gemini 对标视觉方向：清透蓝绿色、柔光、玻璃材质", prompt)
+        self.assertIn("玻璃水波纹", prompt)
+        self.assertIn("不要混入预设风格", prompt)
+
     def test_custom_style_prompt_keeps_style_elements_consistent_without_forcing_one_color(self):
         build_module_image_prompt = load_prompt_builder()
         hero_module = next(module for module in DEFAULT_MODULES if module["id"] == "hero")

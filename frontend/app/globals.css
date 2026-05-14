@@ -781,6 +781,85 @@ a {
   line-height: 1.6;
 }
 
+.styleReferencePanel {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0;
+  padding: 14px;
+  border: 1px solid rgba(52, 127, 185, 0.24);
+  border-radius: 8px;
+  background: #f7fbfc;
+}
+
+.styleReferenceHeader {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.styleReferenceHeader b {
+  color: #153746;
+}
+
+.styleReferenceHeader input {
+  display: none;
+}
+
+.styleReferenceThumbs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.styleReferenceThumbs figure {
+  position: relative;
+  margin: 0;
+  min-width: 0;
+}
+
+.styleReferenceThumbs img,
+.styleReferenceThumbs span {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.styleReferenceThumbs img {
+  object-fit: cover;
+}
+
+.styleReferenceThumbs span {
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.styleReferenceThumbs button {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .92);
+  color: #1b5a70;
+  display: grid;
+  place-items: center;
+}
+
+.styleReferenceEmpty {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
 .aiPlanButton {
   margin-top: 22px;
 }

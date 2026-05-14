@@ -13,7 +13,7 @@ from app.core.config import ImageGenerationSettings
 from app.demo_data import DEFAULT_MODULES, DEFAULT_PRODUCT_INFO, DEMO_IMAGE_URLS, STYLE_OPTIONS
 from app.dependencies.auth import require_app_user
 from app.routers.models import build_public_model_config
-from app.routers.projects import COMPOSE_JOBS, EDIT_JOBS, FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR, build_layered_generated_image, compose_long_jpeg, edit_generated_image, generate_detail_images, render_layered_language_version, router as projects_router
+from app.routers.projects import COMPOSE_JOBS, EDIT_JOBS, FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR, UploadedMaterial, build_layered_generated_image, build_style_reference_analysis_messages, compose_long_jpeg, edit_generated_image, generate_detail_images, normalize_style_reference_plan_from_model, render_layered_language_version, router as projects_router
 from app.services.language_renderer import build_text_layers, render_text_layers_to_data_url
 from app.services.app_session import AppSessionUserSnapshot
 
@@ -142,6 +142,50 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(config["imageGeneration"]["options"][1]["id"], "fallback")
         self.assertEqual(config["imageGeneration"]["options"][1]["label"], "gpt image2(2)")
 
+    def test_style_reference_analysis_prompt_covers_benchmark_dimensions(self):
+        messages = build_style_reference_analysis_messages(
+            {"product_name": "积雪草修护精华", "category": "修护精华"},
+            [
+                UploadedMaterial(
+                    filename="benchmark.png",
+                    content_type="image/png",
+                    data=b"",
+                    data_url="data:image/png;base64,abc123",
+                    slot="style_reference",
+                )
+            ],
+        )
+
+        prompt = messages[0]["content"][0]["text"]
+        for expected in [
+            "主色、辅色、点缀色",
+            "光影",
+            "构图",
+            "背景与材质",
+            "字体层级",
+            "信息密度",
+            "不要复刻",
+        ]:
+            self.assertIn(expected, prompt)
+        self.assertEqual(messages[0]["content"][1]["image_url"]["url"], "data:image/png;base64,abc123")
+
+    def test_style_reference_normalization_marks_style_as_benchmark_driven(self):
+        style = normalize_style_reference_plan_from_model(
+            """
+            {
+              "name": "冷萃晶透风",
+              "primary_color": "#A8DDE8",
+              "keywords": ["冷感", "晶透", "高级"],
+              "visual_direction": "清透蓝绿色、柔光、玻璃材质",
+              "layout_guidance": "中心产品、大留白、标题层级克制"
+            }
+            """
+        )
+
+        self.assertEqual(style["id"], "style_reference")
+        self.assertEqual(style["seed_id"], "benchmark_image")
+        self.assertEqual(style["name"], "冷萃晶透风")
+        self.assertIn("不要复刻参考图中的品牌", style["forbidden"])
 
 class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
     async def test_generation_returns_one_image_per_requested_module(self):

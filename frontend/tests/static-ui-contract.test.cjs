@@ -28,8 +28,10 @@ assertIncludes("components/UploadStep.tsx", "onManualFieldChange", "upload sideb
 assertIncludes("components/UploadStep.tsx", "manualFieldKeys", "upload sidebar must show which fields are manually prioritized");
 assertNotIncludes("components/StyleStep.tsx", 'id="category"', "style step must not expose a manual category selector");
 assertNotIncludes("components/StyleStep.tsx", "onCategoryChange", "style step must not wire manual category changes");
-assertNotIncludes("components/StyleStep.tsx", "风格参考图", "style reference image section should be removed from style selection");
-assertNotIncludes("components/StyleStep.tsx", "style-reference-upload", "style step should not expose style reference uploads");
+assertIncludes("components/StyleStep.tsx", "图片对标", "style step must expose image benchmarking inside style selection");
+assertIncludes("components/StyleStep.tsx", "style-reference-upload", "style step must expose a style reference upload input");
+assertIncludes("components/StyleStep.tsx", "onStyleReferenceFilesAdded", "style step must pass uploaded benchmark images to the page");
+assertIncludes("components/StyleStep.tsx", "onAnalyzeStyleReference", "style step must trigger Gemini benchmark image style analysis");
 assertNotIncludes("components/UploadStep.tsx", "风格参考", "upload summary should not show the removed style reference count");
 assertNotIncludes("app/page.tsx", "onStyleReferenceSelect", "page should not wire the removed style reference selector");
 assertNotIncludes("app/page.tsx", "onStyleFilesAdded", "page should not wire style reference uploads into the style step");
@@ -180,6 +182,8 @@ assertNotIncludes("components/StyleStep.tsx", "styleSource === \"reference\"", "
 assertNotIncludes("components/StyleStep.tsx", "onStyleReferenceSelect", "style step should not expose removed reference style handler");
 assertIncludes("lib/api.ts", "planAiCustomStyle", "frontend API must expose Gemini custom style planning");
 assertIncludes("lib/api.ts", "/api/projects/plan-style", "frontend API must call the backend style planning endpoint");
+assertIncludes("lib/api.ts", "analyzeStyleReference", "frontend API must expose Gemini benchmark image style analysis");
+assertIncludes("lib/api.ts", "/api/projects/analyze-style-reference", "frontend API must call the backend benchmark style analysis endpoint");
 assertIncludes("lib/constants.ts", 'id: "space_repair"', "frontend preset styles must include space repair as a normal style option");
 assertIncludes("lib/constants.ts", 'id: "black_gold_luxury"', "frontend preset styles must include black gold luxury as a normal style option");
 assertNotIncludes("lib/constants.ts", 'id: "green_repair"', "frontend preset styles must remove the old green repair preset");
@@ -214,6 +218,9 @@ assertNotIncludes("app/page.tsx", "setProductVisualSuggestion", "page must not s
 assertIncludes("app/page.tsx", "const productImages = uploadedFiles", "page must collect uploaded product images for Gemini style planning");
 assertIncludes("app/page.tsx", "customStyle", "page must store the Gemini-planned custom style");
 assertIncludes("app/page.tsx", "planAiCustomStyle", "page must call Gemini only from the AI custom style action");
+assertIncludes("app/page.tsx", "styleReferenceFiles", "page must store uploaded benchmark reference images separately from product files");
+assertIncludes("app/page.tsx", "handleAnalyzeStyleReference", "page must analyze benchmark reference images through Gemini");
+assertIncludes("app/page.tsx", "styleReferenceImages", "generation must collect benchmark reference image URLs");
 assertIncludes("app/page.tsx", "generateAiCustomStyleSample", "page must generate AI style samples only from the separate sample action");
 assertIncludes("app/page.tsx", "styleSource === \"ai_custom\" ? customStyle", "generation must send the selected AI custom style brief");
 assertIncludes("components/StyleStep.tsx", "customStyle.asset", "AI custom style card must render the generated GPT image sample when available");

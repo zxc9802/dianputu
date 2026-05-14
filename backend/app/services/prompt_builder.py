@@ -961,9 +961,20 @@ def build_module_image_prompt(
         ]
     else:
         if has_style_reference:
+            reference_style_lines: list[str] = []
+            if style.get("id") == "style_reference":
+                reference_style_lines = [
+                    f"- Gemini 对标风格名称：{_text(style.get('name'), '图片对标风格')}",
+                    f"- Gemini 对标参考色：{_text(style.get('primary_color'), '根据对标图提取')}，只作为局部点缀和色彩关系参考。",
+                    f"- Gemini 对标关键词：{style_keywords}",
+                    f"- Gemini 对标视觉方向：{_text(style.get('visual_direction'), '')}",
+                    f"- Gemini 对标版式方向：{_text(style.get('layout_guidance'), '')}",
+                    *_structured_style_system_lines(style, module),
+                ]
             style_section = [
                 "【统一视觉风格】",
                 "- 上传的风格参考图优先：只参考排版、色调、光影和氛围，不改变产品外观、包装和品牌信息。",
+                *reference_style_lines,
                 "- 不要混入预设风格名称、主色或关键词；风格只以已上传的风格参考图为准。",
                 "- 中文电商视觉，高级干净统一；有产品参考图时保持外观。",
                 rendered_text_rule,

@@ -405,6 +405,23 @@ def normalize_style_plan_from_model(raw: str) -> dict[str, Any]:
     }
 
 
+def normalize_style_reference_plan_from_model(raw: str) -> dict[str, Any]:
+    style = normalize_style_plan_from_model(raw)
+    forbidden = _string_list(style.get("forbidden"), [])
+    reference_forbidden = [
+        "不要复刻参考图中的品牌",
+        "不要复刻参考图中的 Logo、商标、具体产品包装或可读小字",
+        "不要照搬参考图里的具体文案、人物肖像、机构背书或水印",
+    ]
+    return {
+        **style,
+        "id": "style_reference",
+        "seed_id": style.get("seed_id") or "benchmark_image",
+        "forbidden": [*forbidden, *[item for item in reference_forbidden if item not in forbidden]][:10],
+        "reasoning": style.get("reasoning") or "基于用户上传的对标图片提取可复用风格指纹",
+    }
+
+
 def build_style_planning_messages(
     product_info: dict[str, Any] | None,
     category: str | None,
@@ -433,6 +450,30 @@ def build_style_planning_messages(
     prompt = "\n".join(lines)
     content: list[dict[str, Any]] = [{"type": "text", "text": prompt}]
     for material in (product_images or [])[:3]:
+        if material.content_type.startswith("image/") and (material.data or material.data_url):
+            content.append({"type": "image_url", "image_url": {"url": _material_image_url(material)}})
+    return [{"role": "user", "content": content}]
+
+
+def build_style_reference_analysis_messages(
+    product_info: dict[str, Any] | None,
+    style_reference_images: list[UploadedMaterial] | None = None,
+) -> list[dict[str, Any]]:
+    info = product_info or {}
+    lines = [
+        "你是资深电商美术指导和视觉风格分析师。请分析用户上传的对标图片，提取可复用到商品图生成中的风格指纹。",
+        "不要描述成单张图片赏析，要转成一套可跨主图、活动图、详情模块复用的视觉系统。",
+        "必须分析这些维度：主色、辅色、点缀色；光影；构图；背景与材质；产品摆放和主体占比；字体层级；信息密度；装饰元素；摄影或渲染质感；电商转化氛围。",
+        "必须明确不要复刻哪些内容：品牌名、Logo、商标、具体产品包装、人物肖像、具体文案、小字、机构背书、水印和其他可能侵权元素。",
+        "只输出 JSON，不要解释文字。",
+        "JSON 字段：seed_id, name, theme, primary_color, keywords, best_for, visual_elements, materials, lighting, module_usage, forbidden, visual_direction, layout_guidance, reasoning。",
+        "要求：name 是 6-12 个中文字符的风格名；primary_color 是十六进制参考色；keywords 是 3-6 个短词。",
+        "visual_elements 写可迁移的元素，不写原图品牌/产品专属元素；materials 写背景、道具和表面质感；lighting 写明确光线方向与强弱；module_usage 至少包含首图、成分图、效果图、使用场景、活动图。",
+        "layout_guidance 要说明如何在后续生成中参考对标图的构图与排版，但避免过度复刻原图。",
+        f"当前产品信息 JSON：{json.dumps(info, ensure_ascii=False)}",
+    ]
+    content: list[dict[str, Any]] = [{"type": "text", "text": "\n".join(lines)}]
+    for material in (style_reference_images or [])[:4]:
         if material.content_type.startswith("image/") and (material.data or material.data_url):
             content.append({"type": "image_url", "image_url": {"url": _material_image_url(material)}})
     return [{"role": "user", "content": content}]
@@ -582,6 +623,55 @@ async def plan_custom_style(
 
     style = normalize_style_plan_from_model(content)
     return {"source": "model", "style": style, "raw": content, "warnings": []}
+
+
+async def analyze_style_reference(
+    product_info: dict[str, Any] | None,
+    style_reference_images: list[UploadedMaterial] | None = None,
+) -> dict[str, Any]:
+    settings = get_model_settings()
+    if not style_reference_images:
+        return {"source": "error", "error": "no style reference images were uploaded"}
+    if not settings.text.api_key:
+        return {"source": "error", "error": "text model is not configured"}
+
+    try:
+        model_images: list[UploadedMaterial] = []
+        uploaded_references: list[dict[str, str]] = []
+        for material in style_reference_images[:4]:
+            if material.content_type.startswith("image/") and (material.data or material.data_url):
+                image_url = material.data_url if _is_remote_url(material.data_url) else await upload_material_image_if_configured(material)
+                model_images.append(
+                    UploadedMaterial(
+                        filename=material.filename,
+                        content_type=material.content_type,
+                        data=material.data,
+                        slot=material.slot,
+                        text=material.text,
+                        data_url=image_url,
+                        material_id=material.material_id,
+                    )
+                )
+                if _is_remote_url(image_url):
+                    uploaded_references.append(
+                        {
+                            "id": material.material_id,
+                            "slot": material.slot,
+                            "filename": material.filename,
+                            "content_type": material.content_type,
+                            "url": image_url,
+                        }
+                    )
+        if not model_images:
+            return {"source": "error", "error": "no valid style reference images were uploaded"}
+        content = await call_text_model_with_retry(settings, build_style_reference_analysis_messages(product_info, model_images))
+    except Exception as exc:
+        return {"source": "error", "error": str(exc)}
+    if not content:
+        return {"source": "error", "error": "text model returned empty content"}
+
+    style = normalize_style_reference_plan_from_model(content)
+    return {"source": "model", "style": style, "raw": content, "uploaded_style_references": uploaded_references, "warnings": []}
 
 
 async def generate_custom_style_sample(style: dict[str, Any], product_info: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -1335,6 +1425,10 @@ try:
         product_info: dict[str, Any] | None = None
         product_images: list[MaterialPayload] = Field(default_factory=list)
 
+    class AnalyzeStyleReferenceRequest(BaseModel):
+        product_info: dict[str, Any] | None = None
+        style_reference_images: list[MaterialPayload] = Field(default_factory=list)
+
     class PlanStyleSampleRequest(BaseModel):
         style: dict[str, Any]
         product_info: dict[str, Any] | None = None
@@ -1404,6 +1498,11 @@ try:
     async def plan_project_style(request: PlanStyleRequest) -> dict[str, Any]:
         product_images = [uploaded_material_from_payload(payload) for payload in request.product_images[:3]]
         return await plan_custom_style(request.product_info, product_images=product_images)
+
+    @router.post("/analyze-style-reference")
+    async def analyze_project_style_reference(request: AnalyzeStyleReferenceRequest) -> dict[str, Any]:
+        style_reference_images = [uploaded_material_from_payload(payload) for payload in request.style_reference_images[:4]]
+        return await analyze_style_reference(request.product_info, style_reference_images)
 
     @router.post("/plan-style-sample")
     async def plan_project_style_sample(request: PlanStyleSampleRequest) -> dict[str, Any]:

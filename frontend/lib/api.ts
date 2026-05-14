@@ -259,6 +259,25 @@ export async function planAiCustomStyle(productInfo?: ProductInfo, productImages
   }
 }
 
+export async function analyzeStyleReference(productInfo?: ProductInfo, styleReferenceImages: MaterialPayload[] = []) {
+  try {
+    return await requestJson<{ source: string; style?: StyleOption; error?: string; uploaded_style_references?: Array<{ id: string; slot: string; filename: string; content_type: string; url: string }> }>("/api/projects/analyze-style-reference", {
+      method: "POST",
+      body: JSON.stringify({
+        product_info: productInfo,
+        style_reference_images: styleReferenceImages
+      }),
+      timeoutMs: 180000
+    });
+  } catch (error) {
+    rethrowMainAppRedirect(error);
+    return {
+      source: "error",
+      error: error instanceof Error ? error.message : "Gemini 图片对标分析请求失败"
+    };
+  }
+}
+
 export async function generateAiCustomStyleSample(style: StyleOption, productInfo?: ProductInfo) {
   try {
     return await requestJson<{ source: string; style?: StyleOption; error?: string }>("/api/projects/plan-style-sample", {

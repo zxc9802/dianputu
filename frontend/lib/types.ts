@@ -1,6 +1,6 @@
 export type StepId = "upload" | "style" | "review" | "modules" | "preview";
 
-export type UploadSlot = "product_image" | "reports" | "documents";
+export type UploadSlot = "product_image" | "style_reference" | "reports" | "documents";
 
 export type StyleSource = "preset" | "ai_custom";
 
@@ -241,6 +241,7 @@ export type PersistedProjectState = {
   productInfo: ProductInfo | null;
   hasAiProductInfo: boolean;
   uploadedFiles: UploadedFileInfo[];
+  styleReferenceFiles?: UploadedFileInfo[];
   selectedStyleId: string;
   customStyle: StyleOption | null;
   styleSource: StyleSource;
