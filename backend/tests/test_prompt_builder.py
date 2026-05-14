@@ -889,6 +889,71 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("正式说明书", info_prompt)
         self.assertIn("产品名称、功效、规格、保质期、产地、成分", info_prompt)
 
+    def test_detail_visual_reduction_rules_are_appended_without_replacing_module_strategy(self):
+        build_module_image_prompt = load_prompt_builder()
+        product_info = {
+            "product_name": "水润保湿面霜",
+            "category": "面霜",
+            "core_selling_points": ["干皮急救", "妆前服帖"],
+            "functions": ["补水保湿", "改善干燥"],
+            "ingredients": [
+                {"name": "透明质酸钠", "benefit": "帮助提升水润肤感"},
+                {"name": "神经酰胺", "benefit": "帮助维持屏障舒适"},
+                {"name": "积雪草提取物", "benefit": "帮助舒缓干燥不适"},
+            ],
+            "usage_method": ["洁面后取适量涂抹"],
+        }
+
+        hero_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[2],
+            module=next(module for module in DEFAULT_MODULES if module["id"] == "hero"),
+            module_index=1,
+            total_modules=10,
+        )
+        ingredient_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[2],
+            module={
+                "id": "ingredient_1",
+                "name": "成分 1 讲解",
+                "description": "第 1 个核心成分作用讲解",
+                "image_group": "detail",
+            },
+            module_index=7,
+            total_modules=10,
+        )
+        product_info_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[2],
+            module={
+                "id": "product_info",
+                "name": "产品信息",
+                "description": "产品基础信息 / 参数 / 成分说明",
+                "image_group": "detail",
+            },
+            module_index=10,
+            total_modules=10,
+        )
+
+        for prompt in (hero_prompt, ingredient_prompt, product_info_prompt):
+            self.assertIn("视觉减法补充规则", prompt)
+            self.assertIn("不改变当前模块的页面任务", prompt)
+            self.assertIn("留白必须保持干净", prompt)
+            self.assertIn("不要为了让画面更丰富而添加任何无关装饰", prompt)
+
+        self.assertIn("详情首图减法约束", hero_prompt)
+        self.assertIn("不要添加与核心卖点无关的植物", hero_prompt)
+        self.assertIn("产品作为主视觉，占画面 35%-50%", hero_prompt)
+
+        self.assertIn("单成分页减法约束", ingredient_prompt)
+        self.assertIn("只允许透明质酸钠相关的主视觉原料或机制视觉", ingredient_prompt)
+        self.assertIn("只讲 1 个核心成分", ingredient_prompt)
+
+        self.assertIn("产品信息页减法约束", product_info_prompt)
+        self.assertIn("不要添加任何装饰背景", product_info_prompt)
+        self.assertIn("产品基础信息 / 参数 / 成分说明", product_info_prompt)
+
     def test_campaign_prompts_keep_promotion_elements_secondary_and_user_provided(self):
         build_module_image_prompt = load_prompt_builder()
         prompt = build_module_image_prompt(
@@ -941,8 +1006,8 @@ class PromptBuilderTests(unittest.TestCase):
             for index, module in enumerate(DEFAULT_MODULES, start=1)
         ]
 
-        self.assertLessEqual(max(len(prompt) for prompt in prompts), 2500)
-        self.assertLessEqual(sum(len(prompt) for prompt in prompts), 39000)
+        self.assertLessEqual(max(len(prompt) for prompt in prompts), 2650)
+        self.assertLessEqual(sum(len(prompt) for prompt in prompts), 41500)
         self.assertTrue(any("产品大 + 卖点狠 + 证据短 + 视觉亮 + 信息少" in prompt for prompt in prompts))
         self.assertTrue(any("每张图必须有一个视觉矛盾" in prompt for prompt in prompts))
         self.assertTrue(any("品牌与资质背书" in prompt for prompt in prompts))

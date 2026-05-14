@@ -868,6 +868,94 @@ def _detail_conversion_rules(module: dict[str, Any], prompt_branch: str | None =
     return "\n".join(lines)
 
 
+def _global_visual_reduction_rules() -> str:
+    return "\n".join(
+        [
+            "【视觉减法补充规则】",
+            "- 不改变当前模块的页面任务、主视觉和必要元素；只留服务当前页的信息元素。",
+            "- 禁止装饰植物、角落/悬挂叶、虚焦前景、背景叶影、投影、无关水滴、花草线稿、枝条纹理、光束、漂浮图形、边角点缀、无意义图标、填空纹理/阴影。",
+            "- 留白必须保持干净；不要为了让画面更丰富而添加任何无关装饰。",
+        ]
+    )
+
+
+def _module_visual_reduction_rules(module: dict[str, Any], product_info: dict[str, Any] | None) -> str:
+    module_id = str(module.get("id"))
+    if module_id == "hero":
+        return "\n".join(
+            [
+                "【详情首图减法约束】",
+                "- 可用台面/柔光/产品质感；不要添加与核心卖点无关的植物、叶影、花草、虚焦前景、角落装饰、光斑或花纹。",
+            ]
+        )
+    if module_id in {"brand_qualification", "research_strength", "authority"}:
+        return "\n".join(
+            [
+                "【权威页减法约束】",
+                "- 只留品牌/研发/检测/品控元素；报告局部辅助，禁植物、花草、光斑、纹理、悬浮 UI 和无关图标。",
+            ]
+        )
+    if module_id == "pain_scene":
+        return "\n".join(
+            [
+                "【痛点页减法约束】",
+                "- 只留人物困扰、镜前动作、局部肌肤问题和痛点标签；背景可用镜前/梳妆台/干净浴室，禁无关植物、摆件、花草纹理、窗影、墙面光斑或氛围光束。",
+            ]
+        )
+    if module_id == "effect_comparison":
+        return "\n".join(
+            [
+                "【效果页减法约束】",
+                "- 可用肌肤质感、局部前后对比、产品辅助图和少量体验标签；禁与效果证明无关的植物、水滴、光斑、阴影、纹理、前景虚化或漂浮图形。",
+            ]
+        )
+    if module_id == "competitor_comparison":
+        return "\n".join(
+            [
+                "【竞品对比页减法约束】",
+                "- 只留左右对比、3-4 个维度、必要产品辅助图和清晰标签；禁植物、花草、背景叶影、复杂纹理、无关图标、装饰箭头或过多卡片。",
+            ]
+        )
+    if module_id == "product_showcase":
+        return "\n".join(
+            [
+                "【产品大图强化减法约束】",
+                "- 产品是唯一主视觉，可用极简台面、真实阴影和克制光影；禁植物、叶影、装饰道具、花草、虚焦前景、复杂光斑、边角纹理或填空图案。",
+            ]
+        )
+    if module_id == "ingredient_overview":
+        return "\n".join(
+            [
+                "【成分总览减法约束】",
+                "- 可用 2-3 个核心成分对应的原料/胶囊卡/分子线/精华流动/成分浮岛；禁额外植物装饰、角落叶、背景叶影、前景虚焦叶片、花草枝条或无关水滴。",
+            ]
+        )
+    single_index = _single_ingredient_index(module_id)
+    if single_index is not None:
+        ingredient = _selected_ingredients((product_info or {}).get("ingredients"))[single_index]
+        return "\n".join(
+            [
+                "【单成分页减法约束】",
+                f"- 本页只讲一个核心成分，只允许{ingredient['name']}相关的主视觉原料或机制视觉；禁顶部/角落叶、背景叶影、前景虚焦植物、花草枝条、无关水滴和装饰纹理。",
+            ]
+        )
+    if module_id == "usage":
+        return "\n".join(
+            [
+                "【使用方法页减法约束】",
+                "- 只留真实手部动作、产品、步骤编号、短步骤文字和干净场景；可用浴室/梳妆台/自然窗光，禁无关道具、植物摆件、花草纹理、装饰阴影、复杂背景或氛围光斑。",
+            ]
+        )
+    if module_id == "product_info":
+        return "\n".join(
+            [
+                "【产品信息页减法约束】",
+                "- 只留标题、参数表、分隔线、必要图标和基础信息；背景干净平整，不要添加任何装饰背景、植物影、花草线稿、窗影、墙面投影、边角纹理、光斑、水印、图案或装饰阴影。",
+            ]
+        )
+    return ""
+
+
 LANGUAGE_LABELS = {
     "zh-CN": "中文",
     "en": "English",
@@ -1378,6 +1466,18 @@ def build_module_image_prompt(
     people_realism_guardrails = _people_realism_guardrails(module)
     detail_text_guardrails = _detail_text_guardrails(module) if not is_main_image else ""
     language_rules = _language_rules(target_language)
+    visual_reduction_rules = (
+        "\n".join(
+            part
+            for part in (
+                _global_visual_reduction_rules(),
+                _module_visual_reduction_rules(module, product_info),
+            )
+            if part
+        )
+        if not is_main_image
+        else ""
+    )
 
     return "\n".join(
         [
@@ -1413,5 +1513,6 @@ def build_module_image_prompt(
             *(["", text_layer_rules] if text_layer_rules else []),
             "",
             *style_section,
+            *(["", visual_reduction_rules] if visual_reduction_rules else []),
         ]
     )
