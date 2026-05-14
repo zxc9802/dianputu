@@ -885,10 +885,10 @@ def _png_data_url(image_bytes: bytes) -> str:
     return f"data:image/png;base64,{encoded}"
 
 
-async def _compose_fixed_product_image_url(*, module_id: str, background_url: str, product_url: str) -> str:
+async def _compose_fixed_product_image_url(*, module_id: str, background_url: str, product_url: str, platform_id: str | None = None) -> str:
     background_bytes = await _read_image_bytes(background_url)
     product_bytes = await _read_image_bytes(product_url)
-    composed_bytes = compose_fixed_product_image(background_bytes, product_bytes, module_id=module_id)
+    composed_bytes = compose_fixed_product_image(background_bytes, product_bytes, module_id=module_id, platform_id=platform_id)
     data_url = _png_data_url(composed_bytes)
     return await upload_image_url_if_configured(data_url, f"generated/{module_id}")
 
@@ -930,6 +930,7 @@ async def _generate_module_image(
         has_style_reference=bool(style_reference_images),
         text_layer_mode=layered_text,
         target_language=target_language,
+        platform_id=platform_id,
         prompt_branch=prompt_branch,
     )
     generation_prompt = build_fixed_product_background_prompt(prompt, module) if fixed_product_mode else prompt
@@ -957,6 +958,7 @@ async def _generate_module_image(
                     module_id=module_id,
                     background_url=urls[0],
                     product_url=reference_images[0],
+                    platform_id=platform_id,
                 )
             except Exception as composite_exc:
                 logger.warning("fixed product composite failed %s/%s module=%s error=%s", module_index, total_modules, module["id"], composite_exc)

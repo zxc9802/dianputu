@@ -28,6 +28,7 @@ import {
 import { buildProductInfoComplianceItems } from "@/lib/compliance";
 import { useAppViewer } from "@/lib/client/app-session";
 import { saveHistory } from "@/lib/historyApi";
+import { resolveInitialImageModelId } from "@/lib/modelSelection";
 import {
   applyProductInfoDraft,
   createEmptyProductInfo,
@@ -76,7 +77,7 @@ import type {
 
 const order: StepId[] = ["upload", "review", "style", "modules", "preview"];
 const PROJECT_STATE_STORAGE_KEY = "detail-image-agent-project-state-v1";
-const PROJECT_STATE_SCHEMA_VERSION = 2;
+const PROJECT_STATE_SCHEMA_VERSION = 3;
 const DEFAULT_CATEGORY = "";
 const DEFAULT_STYLE_ID = "space_repair";
 const DEFAULT_PLATFORM_ID: CommercePlatformId = "tmall";
@@ -166,7 +167,7 @@ function readPersistedProjectState(): PersistedProjectState | null {
     const activeImageGroup = ["main", "campaign", "detail"].includes(parsed.activeImageGroup ?? "") ? (parsed.activeImageGroup as ImageGroup) : "main";
     const styleSource: StyleSource = parsed.styleSource === "ai_custom" ? parsed.styleSource : "preset";
     return {
-      projectStateSchemaVersion: PROJECT_STATE_SCHEMA_VERSION,
+      projectStateSchemaVersion: schemaVersion,
       productInfo: parsed.productInfo ?? null,
       hasAiProductInfo: Boolean(parsed.hasAiProductInfo && parsed.productInfo),
       uploadedFiles: Array.isArray(parsed.uploadedFiles) ? parsed.uploadedFiles : [],
@@ -177,7 +178,7 @@ function readPersistedProjectState(): PersistedProjectState | null {
       selectedCategory: parsed.selectedCategory || DEFAULT_CATEGORY,
       activeImageGroup,
       selectedPlatformId: COMMERCE_PLATFORMS.some((platform) => platform.id === parsed.selectedPlatformId) ? (parsed.selectedPlatformId as CommercePlatformId) : DEFAULT_PLATFORM_ID,
-      selectedImageModelId: parsed.selectedImageModelId || DEFAULT_IMAGE_MODEL_ID,
+      selectedImageModelId: parsed.selectedImageModelId || "",
       generationMode: normalizeGenerationMode(parsed.generationMode, schemaVersion),
       generationLanguage: normalizeLanguageCode(parsed.generationLanguage),
       promptBranch: normalizePromptBranch(parsed.promptBranch),
@@ -350,7 +351,13 @@ export default function Home() {
         setStyleSource(restored.styleSource);
         setSelectedCategory(restored.selectedCategory);
         setSelectedPlatformId(restored.selectedPlatformId);
-        setSelectedImageModelId(restored.selectedImageModelId || models.imageGeneration.defaultOptionId || DEFAULT_IMAGE_MODEL_ID);
+        setSelectedImageModelId(resolveInitialImageModelId({
+          restoredImageModelId: restored.selectedImageModelId,
+          modelConfig: models,
+          fallbackImageModelId: DEFAULT_IMAGE_MODEL_ID,
+          persistedSchemaVersion: restored.projectStateSchemaVersion,
+          currentSchemaVersion: PROJECT_STATE_SCHEMA_VERSION
+        }));
         setSelectedGenerationMode(normalizeGenerationMode(restored.generationMode, restored.projectStateSchemaVersion));
         setSelectedGenerationLanguage(normalizeLanguageCode(restored.generationLanguage));
         setSelectedPromptBranch(normalizePromptBranch(restored.promptBranch));
@@ -366,7 +373,11 @@ export default function Home() {
         setStatusText(restored.generatedImages.length || Object.keys(restored.generatedImageVersions).length ? "已恢复生成结果" : restored.statusText);
       } else {
         setModules(normalizedDefaultModules);
-        setSelectedImageModelId(models.imageGeneration.defaultOptionId || DEFAULT_IMAGE_MODEL_ID);
+        setSelectedImageModelId(resolveInitialImageModelId({
+          modelConfig: models,
+          fallbackImageModelId: DEFAULT_IMAGE_MODEL_ID,
+          currentSchemaVersion: PROJECT_STATE_SCHEMA_VERSION
+        }));
       }
       setIsLoadingSavedStyles(false);
       setHasRestoredProjectState(true);

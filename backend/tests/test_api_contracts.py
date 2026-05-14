@@ -321,7 +321,7 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
         generate_mock.assert_called_once()
         self.assertIn("背景层", generate_mock.call_args.args[1])
         self.assertNotIn("data:image/png;base64,original", generate_mock.call_args.kwargs.get("image") or [])
-        compose_mock.assert_called_once_with(b"background-bytes", b"product-bytes", module_id="hero")
+        compose_mock.assert_called_once_with(b"background-bytes", b"product-bytes", module_id="hero", platform_id=None)
         upload_mock.assert_called_once()
         edit_mock.assert_not_called()
 
@@ -440,6 +440,40 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["source"], "model")
         self.assertEqual(calls, ["1152x2048"])
+
+    async def test_generation_uses_pdd_platform_strategy_in_image_prompt(self):
+        previous_key = environ.get("IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        prompts = []
+
+        async def fake_call_image_model(settings, prompt, image=None, size=None):
+            prompts.append(prompt)
+            return ["https://example.com/pdd-main.png"]
+
+        try:
+            with patch("app.routers.projects.call_image_model", new=fake_call_image_model):
+                result = await generate_detail_images(
+                    ["main_hero_selling_point"],
+                    "deep_sea_hydration",
+                    product_info={
+                        "product_name": "水润保湿精华",
+                        "category": "护肤精华",
+                        "core_selling_points": ["干皮急救", "妆前服帖"],
+                        "functions": ["补水保湿"],
+                    },
+                    platform_id="pdd",
+                )
+        finally:
+            if previous_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_key
+
+        self.assertEqual(result["source"], "model")
+        self.assertIn("拼多多主图强转化策略", prompts[0])
+        self.assertIn("产品占画面 60%-70%", prompts[0])
+        self.assertIn("低认知成本、高识别度、高点击转化", prompts[0])
+        self.assertNotIn("像天猫", prompts[0])
 
     async def test_generation_can_select_prompt_optimization_branch(self):
         previous_key = environ.get("IMAGE_GENERATION_API_KEY")

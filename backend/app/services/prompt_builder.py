@@ -184,28 +184,36 @@ def _format_product_detail_items(info: dict[str, Any]) -> str:
     return "\n".join(f"{index}. {item}" for index, item in enumerate(lines, start=1))
 
 
+DEFAULT_EFFECT_PERCENT_VALUES = ("89%", "86%", "83%", "80%", "78%")
+
+
+def _fallback_effect_percent(index: int) -> str:
+    return DEFAULT_EFFECT_PERCENT_VALUES[(index - 1) % len(DEFAULT_EFFECT_PERCENT_VALUES)]
+
+
 def _format_effect_claims(value: Any) -> str:
     if not isinstance(value, list) or not value:
         return (
-            "1. 指标：水润感；数值：示意型百分比占位；呈现：进度条或对比卡片视觉；表达：体验感导向，避免绝对化医疗表达"
+            "1. 指标：水润感；数值：89%；呈现：进度条或对比卡片视觉；表达：体验感导向，避免绝对化医疗表达"
         )
 
     lines: list[str] = []
     for index, item in enumerate(value, start=1):
         if isinstance(item, dict):
             claim = _text(item.get("claim"), "")
-            value_text = _text(item.get("value"), "示意型百分比占位")
+            raw_value_text = _text(item.get("value"), "")
+            value_text = raw_value_text or _fallback_effect_percent(index)
             source_type = str(item.get("source_type", "")).strip()
             if claim:
-                source_label = f"；依据：{source_type}" if source_type and source_type != "ai_generated" else ""
+                source_label = f"；依据：{source_type}" if raw_value_text and source_type and source_type != "ai_generated" else ""
                 lines.append(f"{index}. 指标：{claim}；数值：{value_text}{source_label}")
         else:
             claim = str(item).strip()
             if claim:
-                lines.append(f"{index}. 指标：{claim}；数值：示意型百分比占位")
+                lines.append(f"{index}. 指标：{claim}；数值：{_fallback_effect_percent(index)}")
     if not lines:
         return (
-            "1. 指标：水润感；数值：示意型百分比占位；呈现：进度条或对比卡片视觉；表达：体验感导向，避免绝对化医疗表达"
+            "1. 指标：水润感；数值：89%；呈现：进度条或对比卡片视觉；表达：体验感导向，避免绝对化医疗表达"
         )
     return "\n".join(lines)
 
@@ -512,6 +520,12 @@ def build_module_specific_brief(product_info: dict[str, Any] | None, module: dic
     )
 
 
+PDD_PLATFORM_IDS = {"pdd", "pinduoduo", "拼多多"}
+
+
+def _is_pdd_platform(platform_id: str | None) -> bool:
+    return str(platform_id or "").strip().lower() in PDD_PLATFORM_IDS
+
 
 PROMPT_OPTIMIZATION_BRANCH = "prompt_optimization"
 
@@ -520,13 +534,30 @@ def _is_prompt_optimization_branch(prompt_branch: str | None) -> bool:
     return str(prompt_branch or "").strip() == PROMPT_OPTIMIZATION_BRANCH
 
 
-def _module_visual_recipe(module_id: str) -> dict[str, str] | None:
-    return MODULE_VISUAL_RECIPES.get(module_id)
+def _module_visual_recipe(module_id: str, platform_id: str | None) -> dict[str, str] | None:
+    recipe = MODULE_VISUAL_RECIPES.get(module_id)
+    if not recipe:
+        return None
+    if not _is_pdd_platform(platform_id):
+        return recipe
+    if module_id in {"main_hero_selling_point", "campaign_hero_selling_point"}:
+        return {
+            **recipe,
+            "layout": "产品占画面约 60%-70%，居中或居中偏左，用近景压迫感建立第一视觉焦点；标题和标签围绕产品服务，不抢产品主体；背景饱满但不能把商品淹没",
+            "primary_visual": f"拼多多高点击货架图 + 产品超大近景（带光影和微倒影）+ 大号核心卖点 + 少量高对比利益标签 + {recipe['primary_visual']}",
+            "product_role": "绝对最大视觉主体，商品识别优先级高于背景氛围、装饰和标签；产品包装关键信息完整可见，不能被促销贴纸或光效压住",
+        }
+    if module_id in {"main_white_bg", "campaign_white_bg"}:
+        return {
+            **recipe,
+            "product_role": "唯一主体，占画面 70%-85%；产品标签、文字、Logo、图案和包装细节必须保持原样",
+        }
+    return recipe
 
 
-def _module_visual_constraints(module: dict[str, Any]) -> str:
+def _module_visual_constraints(module: dict[str, Any], platform_id: str | None = None) -> str:
     module_id = str(module.get("id"))
-    recipe = _module_visual_recipe(module_id)
+    recipe = _module_visual_recipe(module_id, platform_id)
     if not recipe:
         return ""
 
@@ -608,17 +639,20 @@ def _effect_comparison_layout_guardrails(module: dict[str, Any], product_info: d
     metric_area_label = "水润数据指标区" if _is_hydration_effect_context(product_info) else "效果数据指标区"
     lines.extend(
         [
-            f"- {metric_area_label}必须显示百分比数字，字号和进度条视觉权重接近即可，不需要超大；不要只画无数字进度条、无数值圆环或抽象仪表盘。",
-            "- 优先使用已有百分比数据和对应指标名；没有具体数值时必须使用示意型百分比占位，并保持体验型、非绝对承诺表达。",
+            f"- {metric_area_label}必须显示百分比数字，字号和进度条视觉权重接近，不需要超大；不要只画无数字进度条/圆环/仪表盘。",
+            "- 优先使用已有百分比数据；没有具体数值时必须使用具体示意百分比数字；禁止写 XX%、X%、--%、占位、待补充。",
         ]
     )
     return "\n".join(lines)
 
 
-def _main_image_conversion_rules(module: dict[str, Any]) -> str:
+def _main_image_conversion_rules(module: dict[str, Any], platform_id: str | None = None) -> str:
     module_id = str(module.get("id"))
     if module_id in {"main_white_bg", "campaign_white_bg"}:
         return ""
+    is_pdd = _is_pdd_platform(platform_id)
+    hero_product_ratio = "60%-70%" if is_pdd else "45%-55%"
+    hero_label_count = "2-3 个" if is_pdd else "2-4 个"
 
     lines = [
         "【店铺主图点击率策略】",
@@ -632,8 +666,8 @@ def _main_image_conversion_rules(module: dict[str, Any]) -> str:
         lines.extend(
             [
                 "- 首图必须让用户 0.3 秒内知道核心卖点，画面目标不是文艺氛围，而是货架点击力。",
-                "- 产品占画面 45%-55%，作为最抢眼主体；包装反光、轮廓光、体积感要清晰。",
-                "- 一个大标题打核心卖点，标题短、狠、直接；搭配 2-4 个小标签补充利益点。",
+                f"- 产品占画面 {hero_product_ratio}，作为最抢眼主体；包装反光、轮廓光、体积感要清晰。",
+                f"- 一个大标题打核心卖点，标题短、狠、直接；搭配 {hero_label_count}小标签补充利益点。",
                 "- 背景要饱满，有商业摄影光影，不要大面积空白；只追求好看但看不出卖什么属于失败。",
             ]
         )
@@ -664,6 +698,41 @@ def _main_image_conversion_rules(module: dict[str, Any]) -> str:
             ]
         )
 
+    return "\n".join(lines)
+
+
+def _platform_main_image_rules(module: dict[str, Any], platform_id: str | None) -> str:
+    if not _is_pdd_platform(platform_id):
+        return ""
+
+    module_id = str(module.get("id"))
+    lines = [
+        "【拼多多主图强转化策略】",
+        "- 当前目标平台：拼多多；画面按拼多多高点击货架图处理，低认知成本、高识别度、高点击转化。",
+        "- 信息顺序：先看清产品和最大卖点，再看证据、优惠或利益标签，最后才是背景氛围。",
+        "- 视觉要更直接、更饱满、更近景；避免高级氛围压过商品识别或卖点识别。",
+    ]
+    if module_id in {"main_white_bg", "campaign_white_bg"}:
+        lines.extend(
+            [
+                "- 白底图产品尽量放大到画面 70%-85%，完整清晰、不裁切、不改包装。",
+                "- 除产品本体和极克制角标外，不加入任何降低审核通过率的装饰。",
+            ]
+        )
+    elif module_id in {"main_hero_selling_point", "campaign_hero_selling_point"}:
+        lines.extend(
+            [
+                "- 首图产品占画面 60%-70%，商品主体要比通用平台更大，允许近景压迫感和轻微越界感，但不能裁掉包装关键信息。",
+                "- 核心卖点使用大字块或高对比标签，文案短、硬、第一眼能懂；辅助标签控制在 2-3 个。",
+                "- 背景、道具和光效只服务产品放大与卖点强化，不能做成只好看但不转化的氛围图。",
+            ]
+        )
+    elif module_id in {"main_ingredient", "campaign_ingredient"}:
+        lines.append("- 成分图保持原料微距为主，但产品角落必须清晰可识别，成分标签短促直给，不做长科普。")
+    elif module_id in {"main_effect", "campaign_effect"}:
+        lines.append("- 效果图突出变化证据和数字标签，产品必须同时出现；数字、标题和产品三者都要一眼可读。")
+    elif module_id in {"main_usage_scene", "campaign_usage_scene"}:
+        lines.append("- 使用场景图必须让产品清楚露出，场景服务购买代入，不让人物或道具压过商品。")
     return "\n".join(lines)
 
 
@@ -757,7 +826,7 @@ def _detail_conversion_rules(module: dict[str, Any], prompt_branch: str | None =
         "effect_comparison": [
             "- 效果页任务是让用户看到变化，并相信产品有使用收益。",
             "- 必须出现使用前/使用后局部对比，画面同时包含产品、标题、局部对比卡片和功效说明或数据标签。",
-            "- 有真实数据时放大数字；没有真实数据时使用体验型表达，不编造百分比。",
+            "- 真实数据放大数字；无真实数据用具体示意百分比数字，不冒充测试。",
         ],
         "competitor_comparison": [
             "- 竞品对比页任务是让用户知道为什么选择本产品，而不是普通同类产品。",
@@ -826,10 +895,12 @@ def _language_rules(target_language: str | None) -> str:
 def _module_requirements(
     module: dict[str, Any],
     product_info: dict[str, Any] | None,
+    platform_id: str | None = None,
     prompt_branch: str | None = None,
 ) -> str:
     module_id = module.get("id")
     info = product_info or {}
+    is_pdd = _is_pdd_platform(platform_id)
     optimized = _is_prompt_optimization_branch(prompt_branch)
     authority_report = _format_authority_assets(info.get("authority_assets"))
     effect_report = _format_effect_claims(info.get("effect_claims"))
@@ -851,9 +922,13 @@ def _module_requirements(
         "main_hero_selling_point": [
             "画面呈现店铺首图，这是用户在电商货架上看到的第一张图，必须在 0.3 秒内抓住注意力。",
             (
-                "背景：暖白、象牙白、浅米色、柔灰或浅石材色，可加入一个低饱和品牌强调色；保留自然的大留白或低纹理文案区。"
-                if optimized
-                else "背景：使用品牌主色系的渐变铺满整个画面，避免大面积空白或纯白；可用径向渐变、光晕、深→浅过渡、体积感环境光、流动丝绸质感或水波纹焦散营造高级氛围。"
+                "背景：按拼多多高点击货架图处理，品牌色背景更饱满，但仍保持低饱和和清晰商品识别。"
+                if is_pdd
+                else (
+                    "背景：暖白、象牙白、浅米色、柔灰或浅石材色，可加入一个低饱和品牌强调色；保留自然的大留白或低纹理文案区。"
+                    if optimized
+                    else "背景：使用品牌主色系的渐变铺满整个画面，避免大面积空白或纯白；可用径向渐变、光晕、深→浅过渡、体积感环境光、流动丝绸质感或水波纹焦散营造高级氛围。"
+                )
             ),
             (
                 "产品：作为最大视觉主体放在石材、磨砂亚克力、水面或镜面陈列台上，用空间透视、微投影和克制倒影增强立体感；包装细节必须清楚。"
@@ -1039,7 +1114,7 @@ def _module_requirements(
             "肌肤区域：如出现肌肤，使用顶级美妆摄影光影，肌肤可以无暇但必须保留真实毛孔、自然纹理和可信明暗变化，让效果看起来是变美体验而不是医疗治疗。",
             "必须完整带入以下效果数据：",
             effect_report,
-            "如果数据不完整，画面用体验型视觉和进度条表达；避免绝对化医疗表达，不写治愈、根治、永久有效。",
+            "数据不完整也用具体示意百分比数字+体验型视觉；避免绝对化医疗表达，不写治愈、根治、永久有效。",
         ],
         "competitor_comparison": [
             "画面只呈现竞品对比模块，展示本产品与普通同类产品的差异化优势，不能指名真实竞品品牌。",
@@ -1178,6 +1253,7 @@ def build_module_image_prompt(
     has_style_reference: bool = False,
     text_layer_mode: bool = False,
     target_language: str | None = None,
+    platform_id: str | None = None,
     prompt_branch: str | None = None,
 ) -> str:
     optimized_prompt_branch = _is_prompt_optimization_branch(prompt_branch)
@@ -1292,8 +1368,9 @@ def build_module_image_prompt(
                 "- 效果、权威、成分表达谨慎，不使用医疗化、绝对化承诺。",
             ]
 
-    visual_constraints = _module_visual_constraints(module)
-    main_image_conversion_rules = _main_image_conversion_rules(module) if is_main_image else ""
+    visual_constraints = _module_visual_constraints(module, platform_id=platform_id)
+    main_image_conversion_rules = _main_image_conversion_rules(module, platform_id=platform_id) if is_main_image else ""
+    platform_main_image_rules = _platform_main_image_rules(module, platform_id) if is_main_image else ""
     campaign_promotion_guardrails = _campaign_promotion_guardrails(module) if is_campaign_image else ""
     detail_product_visibility_rules = _detail_product_visibility_rules(module) if not is_main_image else ""
     detail_conversion_rules = _detail_conversion_rules(module, prompt_branch=prompt_branch) if not is_main_image else ""
@@ -1322,10 +1399,11 @@ def build_module_image_prompt(
                 else []
             ),
             "【当前模块内容要求】",
-            _module_requirements(module, product_info, prompt_branch=prompt_branch),
+            _module_requirements(module, product_info, platform_id=platform_id, prompt_branch=prompt_branch),
             *(["", detail_product_visibility_rules] if detail_product_visibility_rules else []),
             *(["", visual_constraints] if visual_constraints else []),
             *(["", main_image_conversion_rules] if main_image_conversion_rules else []),
+            *(["", platform_main_image_rules] if platform_main_image_rules else []),
             *(["", campaign_promotion_guardrails] if campaign_promotion_guardrails else []),
             *(["", detail_conversion_rules] if detail_conversion_rules else []),
             *(["", effect_layout_guardrails] if effect_layout_guardrails else []),

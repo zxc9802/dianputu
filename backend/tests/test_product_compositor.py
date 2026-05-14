@@ -68,3 +68,38 @@ def test_fixed_product_compositor_places_auxiliary_modules_smaller_than_hero_mod
     ingredient_green_pixels = [pixel for pixel in _rgba_pixels(ingredient) if pixel[1] > 100 and pixel[0] < 80 and pixel[2] < 110]
 
     assert len(hero_green_pixels) > len(ingredient_green_pixels) * 2
+
+
+def test_fixed_product_compositor_enlarges_primary_product_for_pdd():
+    from app.services.product_compositor import compose_fixed_product_image
+
+    background = Image.new("RGB", (300, 300), (230, 242, 238))
+    product = Image.new("RGB", (120, 160), "white")
+    for x in range(25, 95):
+        for y in range(20, 145):
+            product.putpixel((x, y), (36, 130, 72))
+
+    generic = Image.open(
+        BytesIO(
+            compose_fixed_product_image(
+                _png_bytes(background),
+                _png_bytes(product),
+                module_id="main_hero_selling_point",
+            )
+        )
+    ).convert("RGBA")
+    pdd = Image.open(
+        BytesIO(
+            compose_fixed_product_image(
+                _png_bytes(background),
+                _png_bytes(product),
+                module_id="main_hero_selling_point",
+                platform_id="pdd",
+            )
+        )
+    ).convert("RGBA")
+
+    generic_green_pixels = [pixel for pixel in _rgba_pixels(generic) if pixel[1] > 100 and pixel[0] < 80 and pixel[2] < 110]
+    pdd_green_pixels = [pixel for pixel in _rgba_pixels(pdd) if pixel[1] > 100 and pixel[0] < 80 and pixel[2] < 110]
+
+    assert len(pdd_green_pixels) > len(generic_green_pixels) * 1.25

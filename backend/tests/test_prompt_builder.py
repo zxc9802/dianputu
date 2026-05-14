@@ -205,7 +205,7 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("不需要超大", prompt)
         self.assertIn("优先使用已有百分比数据", prompt)
 
-    def test_effect_prompt_uses_percent_placeholders_when_metrics_have_no_values(self):
+    def test_effect_prompt_uses_specific_percent_values_when_metrics_have_no_values(self):
         build_module_image_prompt = load_prompt_builder()
         effect_module = next(module for module in DEFAULT_MODULES if module["id"] == "effect_comparison")
 
@@ -224,9 +224,12 @@ class PromptBuilderTests(unittest.TestCase):
             total_modules=10,
         )
 
-        self.assertIn("指标：肌肤水润度提升；数值：示意型百分比占位", prompt)
-        self.assertIn("指标：肤感舒适度提升；数值：示意型百分比占位", prompt)
-        self.assertIn("没有具体数值时必须使用示意型百分比占位", prompt)
+        self.assertIn("指标：肌肤水润度提升；数值：89%", prompt)
+        self.assertIn("指标：肤感舒适度提升；数值：86%", prompt)
+        self.assertIn("没有具体数值时必须使用具体示意百分比数字", prompt)
+        self.assertIn("禁止写 XX%、X%、--%、占位、待补充", prompt)
+        self.assertNotIn("示意型百分比占位", prompt)
+        self.assertNotIn("数值：XX%", prompt)
         self.assertIn("不要只画无数字进度条", prompt)
 
     def test_prompt_optimization_branch_adds_premium_skincare_scheme_without_changing_default_branch(self):

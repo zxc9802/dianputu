@@ -17,6 +17,12 @@ USAGE_PRODUCT_MODULE_IDS = {
     "campaign_usage_scene",
     "usage",
 }
+PDD_PLATFORM_IDS = {"pdd", "pinduoduo", "拼多多"}
+
+
+def _is_pdd_platform(platform_id: str | None) -> bool:
+    return str(platform_id or "").strip().lower() in PDD_PLATFORM_IDS
+
 
 def _open_rgba(image_bytes: bytes) -> Image.Image:
     with Image.open(BytesIO(image_bytes)) as image:
@@ -87,7 +93,9 @@ def _trim_to_visible_content(image: Image.Image) -> Image.Image:
     return image.crop(bbox) if bbox else image
 
 
-def _placement_for_module(module_id: str | None) -> tuple[float, float, float, float]:
+def _placement_for_module(module_id: str | None, platform_id: str | None = None) -> tuple[float, float, float, float]:
+    if _is_pdd_platform(platform_id) and module_id in PRIMARY_PRODUCT_MODULE_IDS:
+        return 0.62, 0.84, 0.50, 0.55
     if module_id in PRIMARY_PRODUCT_MODULE_IDS:
         return 0.46, 0.72, 0.50, 0.56
     if module_id in USAGE_PRODUCT_MODULE_IDS:
@@ -95,9 +103,9 @@ def _placement_for_module(module_id: str | None) -> tuple[float, float, float, f
     return 0.26, 0.38, 0.78, 0.72
 
 
-def _resize_product(product: Image.Image, background_size: tuple[int, int], module_id: str | None) -> Image.Image:
+def _resize_product(product: Image.Image, background_size: tuple[int, int], module_id: str | None, platform_id: str | None) -> Image.Image:
     bg_width, bg_height = background_size
-    max_width_ratio, max_height_ratio, _, _ = _placement_for_module(module_id)
+    max_width_ratio, max_height_ratio, _, _ = _placement_for_module(module_id, platform_id)
     max_width = max(1, int(bg_width * max_width_ratio))
     max_height = max(1, int(bg_height * max_height_ratio))
     scale = min(max_width / product.width, max_height / product.height)
@@ -108,10 +116,10 @@ def _resize_product(product: Image.Image, background_size: tuple[int, int], modu
     return product.resize(next_size, Image.Resampling.LANCZOS)
 
 
-def _product_position(product_size: tuple[int, int], background_size: tuple[int, int], module_id: str | None) -> tuple[int, int]:
+def _product_position(product_size: tuple[int, int], background_size: tuple[int, int], module_id: str | None, platform_id: str | None) -> tuple[int, int]:
     product_width, product_height = product_size
     bg_width, bg_height = background_size
-    _, _, center_x_ratio, center_y_ratio = _placement_for_module(module_id)
+    _, _, center_x_ratio, center_y_ratio = _placement_for_module(module_id, platform_id)
     margin_x = max(8, round(bg_width * 0.035))
     margin_y = max(8, round(bg_height * 0.035))
     x = round(bg_width * center_x_ratio - product_width / 2)
@@ -136,6 +144,7 @@ def compose_fixed_product_image(
     product_bytes: bytes,
     *,
     module_id: str | None = None,
+    platform_id: str | None = None,
 ) -> bytes:
     """Composite the uploaded product pixels onto a generated background.
 
@@ -144,8 +153,8 @@ def compose_fixed_product_image(
     """
     background = _open_rgba(background_bytes)
     product = _trim_to_visible_content(_remove_edge_connected_background(_open_rgba(product_bytes)))
-    product = _resize_product(product, background.size, module_id)
-    x, y = _product_position(product.size, background.size, module_id)
+    product = _resize_product(product, background.size, module_id, platform_id)
+    x, y = _product_position(product.size, background.size, module_id, platform_id)
     shadow = _drop_shadow(product, background.size)
     shadow_offset = (
         max(2, round(background.width * 0.012)),
