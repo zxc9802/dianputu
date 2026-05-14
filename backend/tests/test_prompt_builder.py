@@ -289,6 +289,13 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("网红脸", prompt)
         self.assertIn("AI感强", prompt)
         self.assertIn("磨皮严重", prompt)
+        self.assertIn("真实用户在镜前检查皮肤问题", prompt)
+        self.assertIn("轻微不对称", prompt)
+        self.assertIn("眼下暗沉", prompt)
+        self.assertIn("鼻翼泛红", prompt)
+        self.assertIn("镜中倒影与真人", prompt)
+        self.assertIn("假手指", prompt)
+        self.assertIn("镜像错位", prompt)
 
     def test_style_reference_prompt_overrides_preset_style_for_non_white_background_images(self):
         build_module_image_prompt = load_prompt_builder()
