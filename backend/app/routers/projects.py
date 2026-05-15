@@ -266,6 +266,7 @@ def build_material_analysis_messages(materials: list[UploadedMaterial]) -> list[
         "4) 需要谨慎表达或不能直接宣传的内容。"
         "必须只输出 JSON，不要输出解释文字。字段包括：product_name, category, spec, "
         "core_selling_points, functions, ingredients, target_users, usage_method, authority_assets, effect_claims, material_highlights。"
+        "All JSON string values must be written in Simplified Chinese. Translate Korean, Japanese, English, or any other source language into natural zh-CN e-commerce copy before returning JSON."
         "ingredients 必须是按详情页展示优先级排序的数组，每项形如 {\"name\":\"成分名\",\"benefit\":\"一句消费者能理解的温和作用\"}；"
         "优先选择最值得单独上图讲解的 3 个核心成分，benefit 不能写成药品疗效或治疗承诺。"
         "material_highlights 是 3-6 条面向消费者的资料亮点摘要，每条应短、可信、有转化力，并可直接辅助电商图片文案。"

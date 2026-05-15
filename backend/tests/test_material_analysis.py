@@ -49,6 +49,7 @@ class MaterialAnalysisTests(unittest.TestCase):
         self.assertEqual(content[0]["type"], "text")
         self.assertIn("main-product.png", content[0]["text"])
         self.assertIn("material_highlights", content[0]["text"])
+        self.assertIn("All JSON string values must be written in Simplified Chinese", content[0]["text"])
         self.assertIn("最适合打动消费者", content[0]["text"])
         self.assertIn("资料亮点摘要", content[0]["text"])
         self.assertEqual(content[1]["type"], "image_url")
