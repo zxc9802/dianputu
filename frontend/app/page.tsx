@@ -9,7 +9,7 @@ import { ReviewStep } from "@/components/ReviewStep";
 import { Stepper } from "@/components/Stepper";
 import { StyleStep } from "@/components/StyleStep";
 import { UploadStep } from "@/components/UploadStep";
-import { COMMERCE_PLATFORMS, DEMO_MODEL_CONFIG, DETAIL_IMAGE_GENERATION_SIZE, OFFICIAL_PROJECT_TEMPLATES } from "@/lib/constants";
+import { COMMERCE_PLATFORMS, DEFAULT_DETAIL_LAYOUT_ID, DEMO_MODEL_CONFIG, DETAIL_IMAGE_GENERATION_SIZE, DETAIL_LAYOUTS, OFFICIAL_PROJECT_TEMPLATES } from "@/lib/constants";
 import {
   analyzeStyleReference,
   analyzeUploadedMaterials,
@@ -34,17 +34,21 @@ import {
   createEmptyProductInfo,
   mergeProductInfoWithManualPriority,
   productInfoDraftHasValue,
+  productInfoWithDetailLayoutFields,
   type ProductInfoFieldKey
 } from "@/lib/productInfo";
 import {
   appendImageVersions,
   addLanguageVersion,
+  applyDetailLayoutToModules,
   applyTemplateToModules,
   createTemplateFromProject,
   enableModuleForSingleGeneration,
   formatImageGenerationSummaryStatus,
   getSelectedGeneratedImages,
+  inferDetailLayoutIdFromModules,
   normalizeDetailIngredientModuleOrder,
+  normalizeDetailModuleOrder,
   replaceUploadedFileDataUrlsWithMaterialUrls,
   resolveHistoryIdAfterSave,
   resolveReusableHistoryId,
@@ -55,6 +59,7 @@ import {
 import type {
   CommercePlatformId,
   ComplianceReport,
+  DetailLayoutId,
   GenerationMode,
   GeneratedImage,
   GeneratedImageVersionState,
@@ -85,6 +90,7 @@ const DEFAULT_IMAGE_MODEL_ID = DEMO_MODEL_CONFIG.imageGeneration.defaultOptionId
 const DEFAULT_GENERATION_MODE: GenerationMode = "reference_generate";
 const DEFAULT_GENERATION_LANGUAGE: LanguageCode = "zh-CN";
 const DEFAULT_PROMPT_BRANCH: PromptBranch = "current";
+const DEFAULT_SELECTED_DETAIL_LAYOUT_ID: DetailLayoutId = DEFAULT_DETAIL_LAYOUT_ID;
 const LANGUAGE_LABELS: Record<LanguageCode, string> = {
   "zh-CN": "中文",
   en: "English",
@@ -153,6 +159,11 @@ function normalizePromptBranch(rawBranch: unknown): PromptBranch {
   return rawBranch === "prompt_optimization" ? "prompt_optimization" : DEFAULT_PROMPT_BRANCH;
 }
 
+function normalizeDetailLayoutId(rawLayoutId: unknown, modules: ModuleConfig[] = []): DetailLayoutId {
+  if (DETAIL_LAYOUTS.some((layout) => layout.id === rawLayoutId)) return rawLayoutId as DetailLayoutId;
+  return modules.length ? inferDetailLayoutIdFromModules(modules) : DEFAULT_SELECTED_DETAIL_LAYOUT_ID;
+}
+
 function normalizeLanguageCode(rawLanguage: unknown): LanguageCode {
   return LANGUAGE_CODES.includes(rawLanguage as LanguageCode) ? rawLanguage as LanguageCode : DEFAULT_GENERATION_LANGUAGE;
 }
@@ -182,6 +193,7 @@ function readPersistedProjectState(): PersistedProjectState | null {
       generationMode: normalizeGenerationMode(parsed.generationMode, schemaVersion),
       generationLanguage: normalizeLanguageCode(parsed.generationLanguage),
       promptBranch: normalizePromptBranch(parsed.promptBranch),
+      selectedDetailLayoutId: normalizeDetailLayoutId(parsed.selectedDetailLayoutId, Array.isArray(parsed.modules) ? parsed.modules : []),
       promotionInfo: parsed.promotionInfo || "",
       modules: Array.isArray(parsed.modules) ? parsed.modules : [],
       generatedImages: Array.isArray(parsed.generatedImages) ? parsed.generatedImages : [],
@@ -195,12 +207,12 @@ function readPersistedProjectState(): PersistedProjectState | null {
   }
 }
 
-function mergeRestoredModules(defaultModules: ModuleConfig[], restoredModules: ModuleConfig[]) {
+function mergeRestoredModules(defaultModules: ModuleConfig[], restoredModules: ModuleConfig[], detailLayoutId?: DetailLayoutId) {
   const restoredById = new Map(restoredModules.map((module) => [module.id, module]));
-  return normalizeDetailIngredientModuleOrder(defaultModules.map((module) => {
+  return normalizeDetailModuleOrder(defaultModules.map((module) => {
     const restored = restoredById.get(module.id);
     return restored ? { ...module, enabled: restored.enabled, order: restored.order ?? module.order } : module;
-  }));
+  }), detailLayoutId ?? inferDetailLayoutIdFromModules(restoredModules));
 }
 
 function persistProjectState(state: PersistedProjectState) {
@@ -226,6 +238,7 @@ function createProjectStateSnapshot(input: {
   generationMode: GenerationMode;
   generationLanguage: LanguageCode;
   promptBranch: PromptBranch;
+  selectedDetailLayoutId: DetailLayoutId;
   activeImageGroup: ImageGroup;
   promotionInfo: string;
   modules: ModuleConfig[];
@@ -248,6 +261,7 @@ function createProjectStateSnapshot(input: {
     generationMode: input.generationMode,
     generationLanguage: input.generationLanguage,
     promptBranch: input.promptBranch,
+    selectedDetailLayoutId: input.selectedDetailLayoutId,
     activeImageGroup: input.activeImageGroup,
     promotionInfo: input.promotionInfo,
     modules: input.modules,
@@ -303,6 +317,7 @@ export default function Home() {
   const [selectedGenerationMode, setSelectedGenerationMode] = useState<GenerationMode>(DEFAULT_GENERATION_MODE);
   const [selectedGenerationLanguage, setSelectedGenerationLanguage] = useState<LanguageCode>(DEFAULT_GENERATION_LANGUAGE);
   const [selectedPromptBranch, setSelectedPromptBranch] = useState<PromptBranch>(DEFAULT_PROMPT_BRANCH);
+  const [selectedDetailLayoutId, setSelectedDetailLayoutId] = useState<DetailLayoutId>(DEFAULT_SELECTED_DETAIL_LAYOUT_ID);
   const [modelConfig, setModelConfig] = useState<PublicModelConfig>(DEMO_MODEL_CONFIG);
   const [imageVersionStore, setImageVersionStore] = useState<ImageVersionStore>(() => createEmptyImageVersionStore());
   const [userTemplates, setUserTemplates] = useState<ProjectTemplate[]>([]);
@@ -339,9 +354,10 @@ export default function Home() {
       setStyles(defaults.styles);
       setModelConfig(models);
       setSavedStyles(savedStyleList.items);
-      const normalizedDefaultModules = normalizeDetailIngredientModuleOrder(defaults.modules);
+      const normalizedDefaultModules = applyDetailLayoutToModules(defaults.modules, DEFAULT_SELECTED_DETAIL_LAYOUT_ID);
       setDefaultModules(normalizedDefaultModules);
       if (restored) {
+        const restoredDetailLayoutId = normalizeDetailLayoutId(restored.selectedDetailLayoutId, restored.modules);
         setProductInfo(restored.productInfo);
         setHasAiProductInfo(restored.hasAiProductInfo);
         setUploadedFiles(restored.uploadedFiles ?? []);
@@ -361,9 +377,10 @@ export default function Home() {
         setSelectedGenerationMode(normalizeGenerationMode(restored.generationMode, restored.projectStateSchemaVersion));
         setSelectedGenerationLanguage(normalizeLanguageCode(restored.generationLanguage));
         setSelectedPromptBranch(normalizePromptBranch(restored.promptBranch));
+        setSelectedDetailLayoutId(restoredDetailLayoutId);
         setActiveImageGroup(restored.activeImageGroup);
         setPromotionInfo(restored.promotionInfo);
-        setModules(mergeRestoredModules(normalizedDefaultModules, restored.modules));
+        setModules(mergeRestoredModules(applyDetailLayoutToModules(normalizedDefaultModules, restoredDetailLayoutId), restored.modules, restoredDetailLayoutId));
         if (Object.keys(restored.generatedImageVersions).length) {
           setImageVersionStore({ versions: restored.generatedImageVersions, selectedVersionIds: restored.selectedVersionIds });
         } else if (restored.generatedImages.length) {
@@ -401,6 +418,7 @@ export default function Home() {
       generationMode: selectedGenerationMode,
       generationLanguage: selectedGenerationLanguage,
       promptBranch: selectedPromptBranch,
+      selectedDetailLayoutId,
       activeImageGroup,
       promotionInfo,
       modules,
@@ -408,16 +426,16 @@ export default function Home() {
       userTemplates,
       statusText
     }));
-  }, [activeImageGroup, customStyle, hasAiProductInfo, hasRestoredProjectState, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedGenerationLanguage, selectedGenerationMode, selectedImageModelId, selectedPlatformId, selectedPromptBranch, selectedStyleId, statusText, styleReferenceFiles, styleSource, uploadedFiles, userTemplates]);
+  }, [activeImageGroup, customStyle, hasAiProductInfo, hasRestoredProjectState, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedDetailLayoutId, selectedGenerationLanguage, selectedGenerationMode, selectedImageModelId, selectedPlatformId, selectedPromptBranch, selectedStyleId, statusText, styleReferenceFiles, styleSource, uploadedFiles, userTemplates]);
 
   useEffect(() => {
     if (!modules.length) return;
-    const normalizedModules = normalizeDetailIngredientModuleOrder(modules);
+    const normalizedModules = normalizeDetailModuleOrder(modules, selectedDetailLayoutId);
     const hasOrderChange = normalizedModules.some((module, index) => module.order !== modules[index]?.order);
     if (hasOrderChange) {
       setModules(normalizedModules);
     }
-  }, [modules]);
+  }, [modules, selectedDetailLayoutId]);
 
   useEffect(() => {
     if (!hasAiProductInfo || !productInfo) {
@@ -486,6 +504,7 @@ export default function Home() {
       generationMode: selectedGenerationMode,
       generationLanguage: selectedGenerationLanguage,
       promptBranch: selectedPromptBranch,
+      selectedDetailLayoutId,
       activeImageGroup,
       promotionInfo,
       modules,
@@ -509,10 +528,12 @@ export default function Home() {
     setSelectedGenerationMode(normalizeGenerationMode(state.generationMode, state.projectStateSchemaVersion));
     setSelectedGenerationLanguage(normalizeLanguageCode(state.generationLanguage));
     setSelectedPromptBranch(normalizePromptBranch(state.promptBranch));
+    const stateDetailLayoutId = normalizeDetailLayoutId(state.selectedDetailLayoutId, state.modules);
+    setSelectedDetailLayoutId(stateDetailLayoutId);
     setActiveImageGroup(state.activeImageGroup);
     setPromotionInfo(state.promotionInfo);
     if (state.modules?.length) {
-      setModules((current) => (options?.exactModules ? normalizeDetailIngredientModuleOrder(state.modules) : mergeRestoredModules(current, state.modules)));
+      setModules((current) => (options?.exactModules ? normalizeDetailModuleOrder(state.modules, stateDetailLayoutId) : mergeRestoredModules(applyDetailLayoutToModules(current, stateDetailLayoutId), state.modules, stateDetailLayoutId)));
     }
     if (Object.keys(state.generatedImageVersions || {}).length) {
       setImageVersionStore({ versions: state.generatedImageVersions, selectedVersionIds: state.selectedVersionIds || {} });
@@ -573,10 +594,12 @@ export default function Home() {
   }
 
   function applyProjectTemplate(template: ProjectTemplate) {
+    const templateDetailLayoutId = normalizeDetailLayoutId(template.detailLayoutId, template.modules as ModuleConfig[]);
     setSelectedCategory(template.category);
     setSelectedStyleId(template.styleId);
     setStyleSource("preset");
     setSelectedPlatformId(template.platformId);
+    setSelectedDetailLayoutId(templateDetailLayoutId);
     setModules((current) => applyTemplateToModules(current, template));
     setStatusText(`已套用模板：${template.name}`);
   }
@@ -588,6 +611,7 @@ export default function Home() {
       category: selectedCategory,
       styleId: selectedStyleId,
       platformId: selectedPlatformId,
+      detailLayoutId: selectedDetailLayoutId,
       modules
     });
     setUserTemplates((current) => [template, ...current].slice(0, 8));
@@ -614,7 +638,8 @@ export default function Home() {
     setSelectedGenerationMode(DEFAULT_GENERATION_MODE);
     setSelectedGenerationLanguage(DEFAULT_GENERATION_LANGUAGE);
     setSelectedPromptBranch(DEFAULT_PROMPT_BRANCH);
-    setModules(normalizeDetailIngredientModuleOrder(defaultModules.map((module) => ({ ...module }))));
+    setSelectedDetailLayoutId(DEFAULT_SELECTED_DETAIL_LAYOUT_ID);
+    setModules(applyDetailLayoutToModules(defaultModules.map((module) => ({ ...module })), DEFAULT_SELECTED_DETAIL_LAYOUT_ID));
     setImageVersionStore(createEmptyImageVersionStore());
     setGenerationProgress(createIdleGenerationProgress());
     setIsAnalyzing(false);
@@ -624,6 +649,25 @@ export default function Home() {
     setIsHistoryOpen(false);
     setStatusText("已新建项目");
     go("upload");
+  }
+
+  function changeDetailLayout(layoutId: DetailLayoutId) {
+    if (layoutId === selectedDetailLayoutId) return;
+    setSelectedDetailLayoutId(layoutId);
+    setModules((current) => applyDetailLayoutToModules(current, layoutId));
+    setActiveImageGroup("detail");
+    if (productInfo) {
+      setHasAiProductInfo(false);
+      setProductInfo({
+        ...productInfo,
+        detail_layout_brief: undefined,
+        cross_image_brief: undefined
+      });
+      setAnalysisSource("详情结构已切换，请重新拆解资料后再生成。");
+      setStatusText("详情结构已切换，需要重新拆解资料");
+    } else {
+      setStatusText("已切换详情图结构");
+    }
   }
 
   function selectVersion(moduleId: string, versionId: string) {
@@ -673,7 +717,8 @@ export default function Home() {
         selectedPlatformId,
         false,
         languageRequest.targetLanguage,
-        selectedPromptBranch
+        selectedPromptBranch,
+        selectedDetailLayoutId
       );
       const generated = result.images[0];
       if (result.source !== "error" && generated?.url) {
@@ -884,7 +929,7 @@ export default function Home() {
     setIsAnalyzing(true);
     setStatusText("AI 解析中");
     try {
-      const result = await analyzeUploadedMaterials(materials);
+      const result = await analyzeUploadedMaterials(materials, { detailLayoutId: selectedDetailLayoutId });
       setAnalysisSource(
         result.source === "model" && result.product_info
           ? "AI 已根据上传资料更新商品信息。"
@@ -897,9 +942,10 @@ export default function Home() {
         const mergedProductInfo = productInfo
           ? mergeProductInfoWithManualPriority(productInfo, result.product_info, manualFieldKeys)
           : result.product_info;
-        setProductInfo(mergedProductInfo);
+        const expandedProductInfo = productInfoWithDetailLayoutFields(mergedProductInfo, selectedDetailLayoutId);
+        setProductInfo(expandedProductInfo);
         setHasAiProductInfo(true);
-        setSelectedCategory(mergedProductInfo.category || selectedCategory);
+        setSelectedCategory(expandedProductInfo.category || selectedCategory);
         setStatusText("AI 已解析资料");
         go("review");
       } else {
@@ -946,11 +992,15 @@ export default function Home() {
     if (targetModule) {
       setModules((current) => enableModuleForSingleGeneration(current, targetModule.id));
     }
+    const productInfoForGeneration = productInfoWithDetailLayoutFields(productInfo, selectedDetailLayoutId);
+    if (group === "detail") {
+      setProductInfo(productInfoForGeneration);
+    }
     if (group === "campaign") {
       const report = await checkTextCompliance(
         [{ text: promotionInfo, location: { source_type: "promotion", field: "promotion_info" } }],
         selectedPlatformId,
-        productInfo
+        productInfoForGeneration
       );
       setPromotionCompliance(report);
     }
@@ -975,7 +1025,7 @@ export default function Home() {
           generateImages(
             [module.id],
             selectedStyleId,
-            productInfo,
+            productInfoForGeneration,
             referenceImages,
             group === "campaign" ? promotionInfo : "",
             generationSizeForGroup(group),
@@ -986,7 +1036,8 @@ export default function Home() {
             selectedPlatformId,
             false,
             languageRequest.targetLanguage,
-            selectedPromptBranch
+            selectedPromptBranch,
+            selectedDetailLayoutId
           ),
         (module, result, progress) => {
           if (result.images.length) {
@@ -1018,6 +1069,14 @@ export default function Home() {
             }
           }));
           setStatusText(`${groupLabel[group]}并行生成中 ${progress.completed}/${progress.total}`);
+        },
+        {
+          onRetry: (module, attempt, retryAttempts, delayMs, errors) => {
+            const waitSeconds = Math.max(1, Math.ceil(delayMs / 1000));
+            setStatusText(
+              `${groupLabel[group]}生成遇到服务断连，${module.name} ${waitSeconds} 秒后自动重试 ${attempt}/${retryAttempts}：${errors[0] ?? "上游服务暂无响应"}`
+            );
+          }
         }
       );
       setStatusText(formatImageGenerationSummaryStatus(groupLabel[group], summary));
@@ -1066,6 +1125,7 @@ export default function Home() {
           generationMode: selectedGenerationMode,
           generationLanguage: selectedGenerationLanguage,
           promptBranch: selectedPromptBranch,
+          selectedDetailLayoutId,
           activeImageGroup,
           promotionInfo,
           modules,
@@ -1084,7 +1144,7 @@ export default function Home() {
     } finally {
       setIsSavingHistory(false);
     }
-  }, [activeImageGroup, currentHistoryId, customStyle, hasAiProductInfo, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedGenerationLanguage, selectedGenerationMode, selectedImageModelId, selectedPlatformId, selectedPromptBranch, selectedStyleId, styleReferenceFiles, styleSource, styles, uploadedFiles, userTemplates]);
+  }, [activeImageGroup, currentHistoryId, customStyle, hasAiProductInfo, imageVersionStore, modules, productInfo, promotionInfo, selectedCategory, selectedDetailLayoutId, selectedGenerationLanguage, selectedGenerationMode, selectedImageModelId, selectedPlatformId, selectedPromptBranch, selectedStyleId, styleReferenceFiles, styleSource, styles, uploadedFiles, userTemplates]);
 
   // Mark dirty when new images are generated
   useEffect(() => {
@@ -1192,12 +1252,15 @@ export default function Home() {
             productInfo={productInfo}
             productName={productInfo?.product_name ?? "待 AI 解析"}
             selectedStyleName={styleSource === "ai_custom" ? customStyle?.name ?? "AI 自定义风格" : selectedStyle.name}
+            detailLayouts={DETAIL_LAYOUTS}
+            selectedDetailLayoutId={selectedDetailLayoutId}
             moduleCount={modules.filter((module) => module.enabled).length}
             manualFieldKeys={manualFieldKeys}
             isAnalyzing={isAnalyzing}
             analysisSource={analysisSource}
             onFilesAdded={addUploadedFiles}
             onFileRemove={(id) => setUploadedFiles((current) => current.filter((file) => file.id !== id))}
+            onDetailLayoutChange={changeDetailLayout}
             onManualFieldChange={updateManualField}
             onAnalyze={handleAnalyzeMaterials}
             onNext={() => go(nextStep(activeStep))}
@@ -1237,6 +1300,7 @@ export default function Home() {
         {activeStep === "review" ? (
           <ReviewStep
             productInfo={hasAiProductInfo ? productInfo : null}
+            selectedDetailLayoutId={selectedDetailLayoutId}
             complianceReport={reviewCompliance}
             onUpdateProductInfo={setProductInfo}
             onBack={() => go(previousStep(activeStep))}

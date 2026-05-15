@@ -5,30 +5,6 @@ const vm = require("node:vm");
 const ts = require("typescript");
 
 const root = path.resolve(__dirname, "..");
-const sourcePath = path.join(root, "lib", "projectEnhancements.ts");
-const source = fs.readFileSync(sourcePath, "utf8");
-const compiled = ts.transpileModule(source, {
-  compilerOptions: {
-    module: ts.ModuleKind.CommonJS,
-    target: ts.ScriptTarget.ES2019,
-    esModuleInterop: true
-  }
-}).outputText;
-
-const sandbox = {
-  exports: {},
-  module: { exports: {} },
-  process: { env: {} },
-  require(request) {
-    if (request === "@/lib/types") return {};
-    throw new Error(`Unexpected require: ${request}`);
-  },
-  Date,
-  Math
-};
-sandbox.exports = sandbox.module.exports;
-vm.runInNewContext(compiled, sandbox, { filename: sourcePath });
-
 const constantsPath = path.join(root, "lib", "constants.ts");
 const constantsSource = fs.readFileSync(constantsPath, "utf8");
 const compiledConstants = ts.transpileModule(constantsSource, {
@@ -49,16 +25,46 @@ const constantsSandbox = {
 constantsSandbox.exports = constantsSandbox.module.exports;
 vm.runInNewContext(compiledConstants, constantsSandbox, { filename: constantsPath });
 
+const sourcePath = path.join(root, "lib", "projectEnhancements.ts");
+const source = fs.readFileSync(sourcePath, "utf8");
+const compiled = ts.transpileModule(source, {
+  compilerOptions: {
+    module: ts.ModuleKind.CommonJS,
+    target: ts.ScriptTarget.ES2019,
+    esModuleInterop: true
+  }
+}).outputText;
+
+const sandbox = {
+  exports: {},
+  module: { exports: {} },
+  process: { env: {} },
+  require(request) {
+    if (request === "@/lib/types") return {};
+    if (request === "@/lib/constants") return constantsSandbox.module.exports;
+    throw new Error(`Unexpected require: ${request}`);
+  },
+  Date,
+  Math
+};
+sandbox.exports = sandbox.module.exports;
+vm.runInNewContext(compiled, sandbox, { filename: sourcePath });
+
 const {
   appendImageVersions,
   applyTemplateToModules,
+  applyDetailLayoutToModules,
+  detailLayoutModules,
+  inferDetailLayoutIdFromModules,
   enableModuleForSingleGeneration,
   resolveReusableHistoryId,
   resolveHistoryIdAfterSave,
   getSelectedGeneratedImages,
   buildDetailDownloadState,
   formatImageGenerationSummaryStatus,
+  isRetryableImageGenerationError,
   normalizeDetailIngredientModuleOrder,
+  normalizeDetailModuleOrder,
   resolveImageGenerationConcurrencyLimit,
   runParallelImageGeneration
   ,
@@ -66,7 +72,45 @@ const {
   selectLanguageVersion,
   replaceUploadedFileDataUrlsWithMaterialUrls
 } = sandbox.module.exports;
-const { DEFAULT_MODULES, OFFICIAL_PROJECT_TEMPLATES } = constantsSandbox.module.exports;
+const { DEFAULT_DETAIL_LAYOUT_ID, DEFAULT_MODULES, DETAIL_LAYOUTS, OFFICIAL_PROJECT_TEMPLATES } = constantsSandbox.module.exports;
+
+const evidenceChainDetailIds = [
+  "detail_ec_hero",
+  "detail_ec_pain_matrix",
+  "detail_ec_solution",
+  "detail_ec_competitor_comparison",
+  "detail_ec_real_trial",
+  "detail_ec_effect_validation",
+  "detail_ec_research_system",
+  "detail_ec_ingredient_1_mechanism",
+  "detail_ec_ingredient_1_proof",
+  "detail_ec_ingredient_2_mechanism",
+  "detail_ec_auxiliary_mechanism",
+  "detail_ec_auxiliary_validation",
+  "detail_ec_real_feedback",
+  "detail_ec_texture",
+  "detail_ec_brand_sensory",
+  "detail_ec_usage"
+];
+const standardDetailIds = [
+  "hero",
+  "brand_qualification",
+  "research_strength",
+  "pain_scene",
+  "effect_comparison",
+  "competitor_comparison",
+  "product_showcase",
+  "ingredient_overview",
+  "usage",
+  "product_info"
+];
+
+assert.equal(DEFAULT_DETAIL_LAYOUT_ID, "detail_evidence_chain_16");
+assert.equal(DETAIL_LAYOUTS.find((layout) => layout.id === "detail_evidence_chain_16").modules.length, 16);
+assert.deepEqual(JSON.parse(JSON.stringify(detailLayoutModules("detail_evidence_chain_16").map((module) => module.id))), evidenceChainDetailIds);
+assert.deepEqual(JSON.parse(JSON.stringify(detailLayoutModules("detail_standard_conversion_10").map((module) => module.id))), standardDetailIds);
+assert.equal(inferDetailLayoutIdFromModules(DEFAULT_MODULES), "detail_evidence_chain_16");
+assert.equal(inferDetailLayoutIdFromModules([{ id: "hero", image_group: "detail" }]), "detail_standard_conversion_10");
 
 const versionState = { versions: {}, selectedVersionIds: {} };
 const first = appendImageVersions(versionState, [{ module_id: "hero", url: "v1.png" }], "model", 1000);
@@ -89,18 +133,18 @@ const generatedDetailImages = DEFAULT_MODULES
 const detailDownloadState = buildDetailDownloadState(DEFAULT_MODULES, generatedDetailImages);
 assert.deepEqual(
   JSON.parse(JSON.stringify(detailDownloadState.manifest.map((item) => item.module_id))),
-  ["hero", "brand_qualification", "research_strength", "pain_scene", "effect_comparison", "competitor_comparison", "product_showcase", "ingredient_overview", "usage", "product_info"]
+  evidenceChainDetailIds
 );
 assert.deepEqual(
   JSON.parse(JSON.stringify(detailDownloadState.items.map((item) => item.module.id))),
-  ["hero", "brand_qualification", "research_strength", "pain_scene", "effect_comparison", "competitor_comparison", "product_showcase", "ingredient_overview", "usage", "product_info"]
+  evidenceChainDetailIds
 );
 assert.equal(detailDownloadState.missingModules.length, 0);
 const missingProductInfoDownloadState = buildDetailDownloadState(
   DEFAULT_MODULES,
-  generatedDetailImages.filter((image) => image.module_id !== "product_info")
+  generatedDetailImages.filter((image) => image.module_id !== "detail_ec_usage")
 );
-assert.deepEqual(JSON.parse(JSON.stringify(missingProductInfoDownloadState.missingModules.map((module) => module.id))), ["product_info"]);
+assert.deepEqual(JSON.parse(JSON.stringify(missingProductInfoDownloadState.missingModules.map((module) => module.id))), ["detail_ec_usage"]);
 
 const layered = appendImageVersions(
   { versions: {}, selectedVersionIds: {} },
@@ -230,6 +274,8 @@ assert.equal(
   "详情图部分生成失败：1/3，usage: timeout"
 );
 assert.equal(resolveImageGenerationConcurrencyLimit(), 2);
+assert.equal(isRetryableImageGenerationError("Server disconnected without sending a response."), true);
+assert.equal(isRetryableImageGenerationError("missing product reference image"), false);
 sandbox.process.env.NEXT_PUBLIC_IMAGE_GENERATION_CONCURRENCY = "7";
 assert.equal(resolveImageGenerationConcurrencyLimit(), 7);
 sandbox.process.env.NEXT_PUBLIC_IMAGE_GENERATION_CONCURRENCY = "invalid";
@@ -254,20 +300,22 @@ const templated = applyTemplateToModules(modules, {
 });
 
 assert.deepEqual(
-  JSON.parse(JSON.stringify(templated.map((module) => ({ id: module.id, enabled: module.enabled, order: module.order })))),
+  JSON.parse(JSON.stringify(templated.filter((module) => ["hero", "usage"].includes(module.id)).map((module) => ({ id: module.id, enabled: module.enabled, order: module.order })))),
   [
     { id: "hero", enabled: true, order: 1 },
     { id: "usage", enabled: false, order: 9 }
   ]
 );
+assert.equal(templated.filter((module) => module.image_group === "detail").length, 10);
 
 for (const template of OFFICIAL_PROJECT_TEMPLATES) {
   const moduleIds = template.modules.map((module) => module.id);
-  assert.ok(moduleIds.includes("brand_qualification"), `${template.id} must keep the brand qualification page`);
-  assert.ok(moduleIds.includes("research_strength") || moduleIds.includes("pain_scene"), `${template.id} must keep trust or pain-building detail pages`);
-  assert.ok(moduleIds.includes("product_showcase"), `${template.id} must keep the product showcase page`);
-  assert.ok(moduleIds.includes("ingredient_overview"), `${template.id} must keep the ingredient overview page`);
-  assert.ok(moduleIds.includes("product_info"), `${template.id} must keep the product information page`);
+  assert.equal(template.detailLayoutId, "detail_evidence_chain_16", `${template.id} must use the evidence-chain layout by default`);
+  assert.ok(moduleIds.includes("detail_ec_competitor_comparison"), `${template.id} must keep the competitor comparison page`);
+  assert.ok(moduleIds.includes("detail_ec_research_system"), `${template.id} must keep the research system page`);
+  assert.ok(moduleIds.includes("detail_ec_auxiliary_mechanism"), `${template.id} must keep the generic auxiliary mechanism page`);
+  assert.ok(moduleIds.includes("detail_ec_auxiliary_validation"), `${template.id} must keep the generic auxiliary validation page`);
+  assert.ok(moduleIds.includes("detail_ec_usage"), `${template.id} must keep the usage page`);
   assert.ok(!moduleIds.includes("ingredient_1"), `${template.id} must not keep old ingredient explanation page 1`);
   assert.ok(!moduleIds.includes("ingredient_2"), `${template.id} must not keep old ingredient explanation page 2`);
   assert.ok(!moduleIds.includes("ingredient_3"), `${template.id} must not keep old ingredient explanation page 3`);
@@ -286,11 +334,38 @@ const restoredBadDetailOrder = normalizeDetailIngredientModuleOrder([
   { id: "brand_qualification", name: "品牌与资质背书", description: "", enabled: true, order: 10, image_group: "detail" }
 ]);
 assert.deepEqual(
-  restoredBadDetailOrder
+  JSON.parse(JSON.stringify(restoredBadDetailOrder
     .filter((module) => module.image_group === "detail")
     .sort((a, b) => a.order - b.order)
-    .map((module) => module.id),
-  ["hero", "brand_qualification", "research_strength", "pain_scene", "effect_comparison", "competitor_comparison", "product_showcase", "ingredient_overview", "usage", "product_info"]
+    .map((module) => module.id))),
+  standardDetailIds
+);
+
+const evidenceLayoutModules = applyDetailLayoutToModules(DEFAULT_MODULES, "detail_evidence_chain_16");
+assert.equal(evidenceLayoutModules.filter((module) => module.image_group === "detail").length, 16);
+assert.equal(evidenceLayoutModules.find((module) => module.id === "detail_ec_competitor_comparison").order, 4);
+assert.equal(evidenceLayoutModules.find((module) => module.id === "detail_ec_auxiliary_mechanism").order, 11);
+
+const standardLayoutModules = applyDetailLayoutToModules(DEFAULT_MODULES, "detail_standard_conversion_10");
+assert.deepEqual(
+  JSON.parse(JSON.stringify(standardLayoutModules
+    .filter((module) => module.image_group === "detail")
+    .sort((a, b) => a.order - b.order)
+    .map((module) => module.id))),
+  standardDetailIds
+);
+
+const staleEvidenceOrder = normalizeDetailModuleOrder([
+  { id: "detail_ec_usage", name: "使用方法", description: "", enabled: true, order: 1, image_group: "detail" },
+  { id: "detail_ec_hero", name: "首屏爆点", description: "", enabled: true, order: 16, image_group: "detail" },
+  { id: "detail_ec_auxiliary_validation", name: "辅助功效验证", description: "", enabled: true, order: 2, image_group: "detail" }
+], "detail_evidence_chain_16");
+assert.deepEqual(
+  JSON.parse(JSON.stringify(staleEvidenceOrder
+    .filter((module) => module.image_group === "detail")
+    .sort((a, b) => a.order - b.order)
+    .map((module) => module.id))),
+  ["detail_ec_hero", "detail_ec_auxiliary_validation", "detail_ec_usage"]
 );
 
 const singleGenerateModules = [
@@ -365,7 +440,84 @@ async function runAsyncChecks() {
   assert.equal(completed.length, 4);
 }
 
+async function runRetryChecks() {
+  const attempts = [];
+  const retries = [];
+  const completed = [];
+  const summary = await runParallelImageGeneration(
+    [
+      { id: "detail_ec_hero" },
+      { id: "detail_ec_usage" }
+    ],
+    async (module) => {
+      attempts.push(module.id);
+      const moduleAttempts = attempts.filter((id) => id === module.id).length;
+      if (module.id === "detail_ec_hero" && moduleAttempts === 1) {
+        return {
+          source: "error",
+          images: [],
+          errors: ["primary gpt image failed: Server disconnected without sending a response."]
+        };
+      }
+      return {
+        source: "model",
+        images: [{ module_id: module.id, url: `${module.id}.png` }],
+        errors: []
+      };
+    },
+    (module, result, progress) => {
+      completed.push({
+        id: module.id,
+        completed: progress.completed,
+        errorCount: progress.errorCount,
+        imageCount: result.images.length
+      });
+    },
+    {
+      concurrencyLimit: 2,
+      retryAttempts: 2,
+      retryDelaysMs: [0, 0],
+      retryJitterMs: 0,
+      wait: async () => {},
+      onRetry: (module, attempt, retryAttempts, delayMs, errors) => {
+        retries.push({ id: module.id, attempt, retryAttempts, delayMs, error: errors[0] });
+      }
+    }
+  );
+
+  assert.deepEqual(JSON.parse(JSON.stringify(retries)), [
+    {
+      id: "detail_ec_hero",
+      attempt: 1,
+      retryAttempts: 2,
+      delayMs: 0,
+      error: "primary gpt image failed: Server disconnected without sending a response."
+    }
+  ]);
+  assert.equal(attempts.filter((id) => id === "detail_ec_hero").length, 2);
+  assert.equal(summary.completed, 2);
+  assert.equal(summary.errorCount, 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(summary.errors)), []);
+  assert.equal(completed.length, 2);
+  assert.ok(completed.some((item) => item.id === "detail_ec_hero" && item.imageCount === 1));
+
+  const nonRetryAttempts = [];
+  const nonRetrySummary = await runParallelImageGeneration(
+    [{ id: "detail_ec_solution" }],
+    async (module) => {
+      nonRetryAttempts.push(module.id);
+      return { source: "error", images: [], errors: ["missing product reference image"] };
+    },
+    () => {},
+    { concurrencyLimit: 1, retryAttempts: 2, retryDelaysMs: [0, 0], retryJitterMs: 0, wait: async () => {} }
+  );
+  assert.equal(nonRetryAttempts.length, 1);
+  assert.equal(nonRetrySummary.errorCount, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(nonRetrySummary.errors)), ["detail_ec_solution: missing product reference image"]);
+}
+
 runAsyncChecks()
+  .then(runRetryChecks)
   .then(() => {
     console.log("Project enhancement checks passed.");
   })

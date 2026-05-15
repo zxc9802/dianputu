@@ -89,6 +89,11 @@ function buildPreviewItems(modules: ModuleConfig[], generatedByModule: Map<strin
     .filter((item): item is PreviewItem => Boolean(item));
 }
 
+function downloadFilenameForModule(module: ModuleConfig, fallbackIndex: number, prefix: string) {
+  const screenIndex = Number.isFinite(module.order) && module.order > 0 ? module.order : fallbackIndex + 1;
+  return `${prefix}-${String(screenIndex).padStart(2, "0")}-${module.id}.png`;
+}
+
 function selectedVersionForModule(imageVersions: GeneratedImageVersionState, selectedVersionIds: Record<string, string>, moduleId: string) {
   const versions = imageVersions[moduleId] ?? [];
   return versions.find((version) => version.id === selectedVersionIds[moduleId]) ?? versions[versions.length - 1] ?? null;
@@ -364,7 +369,11 @@ export function PreviewStep({
                             >
                               {isCurrent ? "生成中" : url ? "重新生成" : "生成"}
                             </button>
-                            {url ? <button className="inlineActionButton" onClick={() => fetchAndDownload(url, `${String(index + 1).padStart(2, "0")}-${module.id}.png`)} type="button">下载</button> : null}
+                            {url ? (
+                              <button className="inlineActionButton" onClick={() => fetchAndDownload(url, downloadFilenameForModule(module, index, activeImageGroup))} type="button">
+                                下载
+                              </button>
+                            ) : null}
                           </span>
                         </footer>
                         {versions.length > 0 ? (
@@ -446,6 +455,9 @@ export function PreviewStep({
                             <button className="inlineActionButton" onClick={() => onGenerateModule(activeImageGroup, item.module.id)} type="button">
                               再生成一版
                             </button>
+                            <button className="inlineActionButton" onClick={() => fetchAndDownload(itemUrl, downloadFilenameForModule(item.module, index, "detail"))} type="button">
+                              下载
+                            </button>
                           </span>
                           <LanguageVersionControls
                             moduleId={item.module.id}
@@ -503,7 +515,7 @@ export function PreviewStep({
                   <b>{module.name}</b>
                   <span className="directoryDownloadSlot">
                     {moduleUrl ? (
-                      <button className="inlineActionButton" onClick={() => fetchAndDownload(moduleUrl, `${String(index + 1).padStart(2, "0")}-${module.id}.png`)} type="button">
+                      <button className="inlineActionButton" onClick={() => fetchAndDownload(moduleUrl, downloadFilenameForModule(module, index, activeImageGroup))} type="button">
                         下载
                       </button>
                     ) : null}

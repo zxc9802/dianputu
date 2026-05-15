@@ -1,6 +1,6 @@
 import { DEFAULT_MODULES, DEMO_MODEL_CONFIG, STYLE_OPTIONS } from "./constants";
 import { MainAppRedirectError, extractApiErrorMessage, readJsonSafely, redirectToMainAppIfNeeded } from "./client/api-response";
-import type { CommercePlatformId, ComplianceReport, ComplianceTextItem, GenerationMode, LanguageCode, LanguageVersion, MaterialPayload, ModuleConfig, ProductInfo, PromptBranch, PublicModelConfig, SavedStyleRecord, StyleOption, TextLayer } from "./types";
+import type { CommercePlatformId, ComplianceReport, ComplianceTextItem, DetailLayoutId, GenerationMode, LanguageCode, LanguageVersion, MaterialPayload, ModuleConfig, ProductInfo, PromptBranch, PublicModelConfig, SavedStyleRecord, StyleOption, TextLayer } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 const LOCAL_SAVED_STYLES_STORAGE_KEY = "detail-image-agent-saved-styles";
@@ -187,7 +187,8 @@ export async function generateImages(
   platformId: CommercePlatformId = "tmall",
   layeredText = false,
   targetLanguage = "",
-  promptBranch: PromptBranch = "current"
+  promptBranch: PromptBranch = "current",
+  detailLayoutId?: DetailLayoutId
 ) {
   try {
     const { job_id: jobId } = await createGenerateImageJob(
@@ -204,7 +205,8 @@ export async function generateImages(
       platformId,
       layeredText,
       targetLanguage,
-      promptBranch
+      promptBranch,
+      detailLayoutId
     );
     return await pollGenerateImageJob(jobId);
   } catch (error) {
@@ -269,7 +271,8 @@ export async function createGenerateImageJob(
   platformId: CommercePlatformId = "tmall",
   layeredText = false,
   targetLanguage = "",
-  promptBranch: PromptBranch = "current"
+  promptBranch: PromptBranch = "current",
+  detailLayoutId?: DetailLayoutId
 ) {
   return requestJson<{ job_id: string }>("/api/projects/generate/jobs", {
     method: "POST",
@@ -287,7 +290,8 @@ export async function createGenerateImageJob(
       generation_mode: generationMode,
       layered_text: layeredText,
       target_language: targetLanguage,
-      prompt_branch: promptBranch
+      prompt_branch: promptBranch,
+      detail_layout_id: detailLayoutId
     }),
     timeoutMs: 15000
   });
@@ -592,7 +596,8 @@ export async function checkImageCompliance(imageUrls: string[], platformId: Comm
   }
 }
 
-export async function analyzeUploadedMaterials(materials: MaterialPayload[]) {
+export async function analyzeUploadedMaterials(materials: MaterialPayload[], options: { detailLayoutId?: DetailLayoutId } = {}) {
+  const detailLayoutId = options.detailLayoutId;
   try {
     return await requestJson<{
       source: string;
@@ -604,7 +609,7 @@ export async function analyzeUploadedMaterials(materials: MaterialPayload[]) {
       "/api/projects/analyze-materials",
       {
         method: "POST",
-        body: JSON.stringify({ materials }),
+        body: JSON.stringify({ materials, detail_layout_id: detailLayoutId }),
         timeoutMs: 180000
       }
     );

@@ -1,5 +1,6 @@
 import type {
   ComplianceReport,
+  DetailLayoutId,
   GeneratedImageVersion,
   GeneratedImageVersionState,
   LanguageCode,
@@ -8,22 +9,15 @@ import type {
   ProjectTemplate,
   UploadedFileInfo
 } from "@/lib/types";
+import { DEFAULT_DETAIL_LAYOUT_ID, DETAIL_LAYOUTS } from "@/lib/constants";
 
 const MAX_IMAGE_VERSIONS = 3;
 const DEFAULT_IMAGE_GENERATION_CONCURRENCY_LIMIT = 2;
 const MAX_IMAGE_GENERATION_CONCURRENCY_LIMIT = 20;
-const DETAIL_MODULE_ORDER = [
-  "hero",
-  "brand_qualification",
-  "research_strength",
-  "pain_scene",
-  "effect_comparison",
-  "competitor_comparison",
-  "product_showcase",
-  "ingredient_overview",
-  "usage",
-  "product_info"
-];
+const DEFAULT_IMAGE_GENERATION_RETRY_ATTEMPTS = 2;
+const DEFAULT_IMAGE_GENERATION_RETRY_DELAYS_MS = [3000, 8000];
+const DEFAULT_IMAGE_GENERATION_RETRY_JITTER_MS = 1000;
+const STANDARD_DETAIL_LAYOUT_ID: DetailLayoutId = "detail_standard_conversion_10";
 
 type GeneratedImageInput = { module_id: string; url: string; compliance?: ComplianceReport };
 type DetailDownloadItem = { module: ModuleConfig; url: string };
@@ -34,6 +28,21 @@ type LayeredGeneratedImageInput = GeneratedImageInput & {
 };
 type ImageGenerationResult = { source: string; images: LayeredGeneratedImageInput[]; errors?: string[] };
 type ParallelGenerationProgress = { completed: number; total: number; errorCount: number; errors: string[] };
+type ParallelGenerationRetryCallback<TModule> = (
+  module: TModule,
+  attempt: number,
+  retryAttempts: number,
+  delayMs: number,
+  errors: string[]
+) => void;
+type ParallelGenerationOptions<TModule> = {
+  concurrencyLimit?: number;
+  retryAttempts?: number;
+  retryDelaysMs?: number[];
+  retryJitterMs?: number;
+  wait?: (delayMs: number) => Promise<void>;
+  onRetry?: ParallelGenerationRetryCallback<TModule>;
+};
 type ImageVersionSelection = Record<string, string>;
 type UploadedMaterialUrl = { id?: string; slot?: string; filename?: string; content_type?: string; url?: string };
 
@@ -43,6 +52,57 @@ function isRemoteImageUrl(value: string | undefined) {
 
 function errorWithModuleId(moduleId: string, error: string) {
   return error.startsWith(`${moduleId}:`) ? error : `${moduleId}: ${error}`;
+}
+
+export function isRetryableImageGenerationError(error: string) {
+  const normalized = error.toLowerCase();
+  return [
+    "server disconnected",
+    "disconnected without sending a response",
+    "timeout",
+    "timed out",
+    "network error",
+    "networkerror",
+    "fetch failed",
+    "socket hang up",
+    "econnreset",
+    "rate limit",
+    "too many requests",
+    "429",
+    "502",
+    "503",
+    "504"
+  ].some((keyword) => normalized.includes(keyword));
+}
+
+function isRetryableImageGenerationFailure(result: ImageGenerationResult) {
+  const resultErrors = result.errors ?? [];
+  return result.images.length === 0 && resultErrors.some(isRetryableImageGenerationError);
+}
+
+function defaultRetryWait(delayMs: number) {
+  if (delayMs <= 0) return Promise.resolve();
+  return new Promise<void>((resolve) => globalThis.setTimeout(resolve, delayMs));
+}
+
+function resolveParallelGenerationOptions<TModule>(
+  optionsOrConcurrencyLimit?: number | ParallelGenerationOptions<TModule>
+): Required<ParallelGenerationOptions<TModule>> {
+  const options = typeof optionsOrConcurrencyLimit === "number" ? { concurrencyLimit: optionsOrConcurrencyLimit } : optionsOrConcurrencyLimit ?? {};
+  return {
+    concurrencyLimit: options.concurrencyLimit ?? resolveImageGenerationConcurrencyLimit(),
+    retryAttempts: Math.max(0, options.retryAttempts ?? DEFAULT_IMAGE_GENERATION_RETRY_ATTEMPTS),
+    retryDelaysMs: options.retryDelaysMs?.length ? options.retryDelaysMs : DEFAULT_IMAGE_GENERATION_RETRY_DELAYS_MS,
+    retryJitterMs: Math.max(0, options.retryJitterMs ?? DEFAULT_IMAGE_GENERATION_RETRY_JITTER_MS),
+    wait: options.wait ?? defaultRetryWait,
+    onRetry: options.onRetry ?? (() => {})
+  };
+}
+
+function retryDelayForAttempt(attempt: number, retryDelaysMs: number[], retryJitterMs: number) {
+  const baseDelay = retryDelaysMs[Math.min(attempt - 1, retryDelaysMs.length - 1)] ?? 0;
+  const jitter = retryJitterMs > 0 ? Math.floor(Math.random() * retryJitterMs) : 0;
+  return baseDelay + jitter;
 }
 
 export function formatImageGenerationSummaryStatus(
@@ -201,29 +261,51 @@ export async function runParallelImageGeneration<TModule extends { id: string }>
   modules: TModule[],
   generateOne: (module: TModule) => Promise<ImageGenerationResult>,
   onComplete: (module: TModule, result: ImageGenerationResult, progress: ParallelGenerationProgress) => void,
-  concurrencyLimit = resolveImageGenerationConcurrencyLimit()
+  optionsOrConcurrencyLimit?: number | ParallelGenerationOptions<TModule>
 ) {
+  const options = resolveParallelGenerationOptions(optionsOrConcurrencyLimit);
   let completed = 0;
   let errorCount = 0;
   const errors: string[] = [];
+  const retryQueue: Array<{ module: TModule; result: ImageGenerationResult }> = [];
   const total = modules.length;
-  const limit = Math.max(1, Math.min(concurrencyLimit, total || 1));
+  const limit = Math.max(1, Math.min(options.concurrencyLimit, total || 1));
   let nextIndex = 0;
+
+  function complete(module: TModule, result: ImageGenerationResult) {
+    completed += 1;
+    const resultErrors = result.errors ?? [];
+    errorCount += resultErrors.length;
+    errors.push(...resultErrors.map((error) => errorWithModuleId(module.id, error)));
+    onComplete(module, result, { completed, total, errorCount, errors: [...errors] });
+  }
 
   async function worker() {
     while (nextIndex < modules.length) {
       const module = modules[nextIndex];
       nextIndex += 1;
       const result = await generateOne(module);
-      completed += 1;
-      const resultErrors = result.errors ?? [];
-      errorCount += resultErrors.length;
-      errors.push(...resultErrors.map((error) => errorWithModuleId(module.id, error)));
-      onComplete(module, result, { completed, total, errorCount, errors: [...errors] });
+      if (options.retryAttempts > 0 && isRetryableImageGenerationFailure(result)) {
+        retryQueue.push({ module, result });
+      } else {
+        complete(module, result);
+      }
     }
   }
 
   await Promise.all(Array.from({ length: limit }, () => worker()));
+
+  for (const retryItem of retryQueue) {
+    let result = retryItem.result;
+    for (let attempt = 1; attempt <= options.retryAttempts; attempt += 1) {
+      const delayMs = retryDelayForAttempt(attempt, options.retryDelaysMs, options.retryJitterMs);
+      options.onRetry(retryItem.module, attempt, options.retryAttempts, delayMs, result.errors ?? []);
+      await options.wait(delayMs);
+      result = await generateOne(retryItem.module);
+      if (!isRetryableImageGenerationFailure(result)) break;
+    }
+    complete(retryItem.module, result);
+  }
 
   return { completed, total, errorCount, errors };
 }
@@ -232,22 +314,60 @@ function moduleGroup(module: ModuleConfig) {
   return module.image_group ?? "detail";
 }
 
-export function normalizeDetailIngredientModuleOrder(modules: ModuleConfig[]) {
-  const indexed = modules.map((module, index) => ({ module, index }));
-  const detailEntries = indexed
+function resolveDetailLayoutId(layoutId?: string | null): DetailLayoutId {
+  return DETAIL_LAYOUTS.some((layout) => layout.id === layoutId) ? layoutId as DetailLayoutId : DEFAULT_DETAIL_LAYOUT_ID;
+}
+
+function detailLayoutById(layoutId?: string | null) {
+  const resolvedId = resolveDetailLayoutId(layoutId);
+  return DETAIL_LAYOUTS.find((layout) => layout.id === resolvedId) ?? DETAIL_LAYOUTS[0];
+}
+
+export function detailLayoutModules(layoutId?: string | null) {
+  return detailLayoutById(layoutId).modules.map((module) => ({ ...module }));
+}
+
+export function inferDetailLayoutIdFromModules(modules: Array<Pick<ModuleConfig, "id"> & Partial<ModuleConfig>> = []): DetailLayoutId {
+  const detailIds = new Set(modules.filter((module) => moduleGroup(module as ModuleConfig) === "detail").map((module) => module.id));
+  const standardIds = new Set(detailLayoutModules(STANDARD_DETAIL_LAYOUT_ID).map((module) => module.id));
+  const evidenceIds = new Set(detailLayoutModules(DEFAULT_DETAIL_LAYOUT_ID).map((module) => module.id));
+  if ([...standardIds].some((id) => detailIds.has(id))) return STANDARD_DETAIL_LAYOUT_ID;
+  if ([...evidenceIds].some((id) => detailIds.has(id))) return DEFAULT_DETAIL_LAYOUT_ID;
+  return DEFAULT_DETAIL_LAYOUT_ID;
+}
+
+export function normalizeDetailModuleOrder(modules: ModuleConfig[], layoutId?: string | null) {
+  const resolvedLayoutId = resolveDetailLayoutId(layoutId ?? inferDetailLayoutIdFromModules(modules));
+  const detailOrder = new Map(detailLayoutModules(resolvedLayoutId).map((module, index) => [module.id, index + 1]));
+  const detailEntries = modules
+    .map((module, index) => ({ module, index }))
     .filter((entry) => moduleGroup(entry.module) === "detail")
     .sort((a, b) => a.module.order - b.module.order || a.index - b.index);
-  const detailOrder = new Map(DETAIL_MODULE_ORDER.map((moduleId, index) => [moduleId, index + 1]));
-  const knownEntries = detailEntries.filter((entry) => detailOrder.has(entry.module.id));
-  if (!knownEntries.length) return modules;
-
+  if (!detailEntries.some((entry) => detailOrder.has(entry.module.id))) return modules;
+  const fallbackStart = detailOrder.size + 1;
   const orderById = new Map(
-    detailEntries.map((entry, index) => [entry.module.id, detailOrder.get(entry.module.id) ?? DETAIL_MODULE_ORDER.length + index + 1])
+    detailEntries.map((entry, index) => [entry.module.id, detailOrder.get(entry.module.id) ?? fallbackStart + index])
   );
   return modules.map((module) => {
     const normalizedOrder = orderById.get(module.id);
     return normalizedOrder && moduleGroup(module) === "detail" ? { ...module, order: normalizedOrder } : module;
   });
+}
+
+export function normalizeDetailIngredientModuleOrder(modules: ModuleConfig[]) {
+  return normalizeDetailModuleOrder(modules, STANDARD_DETAIL_LAYOUT_ID);
+}
+
+export function applyDetailLayoutToModules(modules: ModuleConfig[], layoutId?: string | null) {
+  const detailModules = detailLayoutModules(layoutId);
+  const currentById = new Map(modules.filter((module) => moduleGroup(module) === "detail").map((module) => [module.id, module]));
+  return [
+    ...modules.filter((module) => moduleGroup(module) !== "detail").map((module) => ({ ...module })),
+    ...detailModules.map((module) => {
+      const current = currentById.get(module.id);
+      return { ...module, enabled: current?.enabled ?? module.enabled };
+    })
+  ];
 }
 
 export function buildDetailDownloadState(modules: ModuleConfig[], generatedImages: GeneratedImageInput[]) {
@@ -256,7 +376,7 @@ export function buildDetailDownloadState(modules: ModuleConfig[], generatedImage
       .filter((image) => Boolean(image.url))
       .map((image) => [image.module_id, image.url])
   );
-  const detailModules = normalizeDetailIngredientModuleOrder(modules)
+  const detailModules = normalizeDetailModuleOrder(modules)
     .filter((module) => moduleGroup(module) === "detail" && module.enabled)
     .sort((a, b) => a.order - b.order);
   const items = detailModules
@@ -277,11 +397,13 @@ export function buildDetailDownloadState(modules: ModuleConfig[], generatedImage
 
 export function applyTemplateToModules(modules: ModuleConfig[], template: ProjectTemplate) {
   const templateById = new Map(template.modules.map((module) => [module.id, module]));
-  return normalizeDetailIngredientModuleOrder(modules.map((module) => {
+  const layoutId = template.detailLayoutId ?? inferDetailLayoutIdFromModules(template.modules as ModuleConfig[]);
+  const layoutModules = applyDetailLayoutToModules(modules, layoutId);
+  return normalizeDetailModuleOrder(layoutModules.map((module) => {
     const templateModule = templateById.get(module.id);
     if (!templateModule) return { ...module, enabled: false };
     return { ...module, enabled: templateModule.enabled, order: templateModule.order };
-  }));
+  }), layoutId);
 }
 
 export function enableModuleForSingleGeneration(modules: ModuleConfig[], moduleId: string) {
@@ -301,15 +423,18 @@ export function createTemplateFromProject(input: {
   category: string;
   styleId: string;
   platformId: ProjectTemplate["platformId"];
+  detailLayoutId?: DetailLayoutId;
   modules: ModuleConfig[];
 }): ProjectTemplate {
+  const detailLayoutId = input.detailLayoutId ?? inferDetailLayoutIdFromModules(input.modules);
   return {
     id: input.id,
     name: input.name,
     category: input.category,
     styleId: input.styleId,
     platformId: input.platformId,
+    detailLayoutId,
     source: "user",
-    modules: normalizeDetailIngredientModuleOrder(input.modules).map((module) => ({ id: module.id, enabled: module.enabled, order: module.order }))
+    modules: normalizeDetailModuleOrder(input.modules, detailLayoutId).map((module) => ({ id: module.id, enabled: module.enabled, order: module.order }))
   };
 }

@@ -55,6 +55,28 @@ class MaterialAnalysisTests(unittest.TestCase):
         self.assertEqual(content[1]["type"], "image_url")
         self.assertTrue(content[1]["image_url"]["url"].startswith("data:image/png;base64,"))
 
+    def test_evidence_chain_analysis_prompt_requires_screen_modules_and_ai_fill(self):
+        messages = build_material_analysis_messages(
+            [
+                UploadedMaterial(
+                    filename="main-product.png",
+                    content_type="image/png",
+                    data=b"\x89PNG\r\n",
+                    slot="product_image",
+                )
+            ],
+            detail_layout_id="detail_evidence_chain_16",
+        )
+
+        text = messages[0]["content"][0]["text"]
+        self.assertIn("modules", text)
+        self.assertIn("module_id", text)
+        self.assertIn("required_content", text)
+        self.assertIn("detail_ec_hero", text)
+        self.assertIn("detail_ec_auxiliary_validation", text)
+        self.assertIn("没有上传检测报告、说明书或真人反馈时", text)
+        self.assertIn("基于产品主图和已识别信息做谨慎 AI 补全", text)
+
     def test_multimodal_message_accepts_uploaded_image_remote_url_without_bytes(self):
         messages = build_material_analysis_messages(
             [
@@ -139,6 +161,41 @@ class MaterialAnalysisTests(unittest.TestCase):
         self.assertEqual(product_info["ingredients"], [])
         self.assertEqual(product_info["effect_claims"], [])
         self.assertEqual(product_info["material_highlights"], [])
+
+    def test_evidence_chain_normalization_expands_module_focus_to_sixteen_screen_modules(self):
+        product_info = normalize_product_info_from_model(
+            """
+            {
+              "product_name": "AQUALUXE 水漾舒缓精华水",
+              "category": "护肤精华水",
+              "core_selling_points": ["清爽补水", "舒缓泛红", "不黏腻"],
+              "functions": ["补水", "舒缓", "调节水油平衡"],
+              "ingredients": [
+                {"name": "透明质酸钠", "benefit": ""},
+                {"name": "积雪草提取物", "benefit": "帮助舒缓干燥不适"}
+              ],
+              "target_users": ["外油内干人群", "干燥缺水肌"],
+              "usage_method": ["洁面后取适量轻拍"],
+              "detail_layout_brief": {
+                "layout_id": "detail_evidence_chain_16",
+                "selected_auxiliary_effect": "妆前服帖",
+                "competitor_comparison": "普通同类产品容易厚重黏腻，本品强调清爽水润。",
+                "module_focus": {
+                  "detail_ec_competitor_comparison": ["普通竞品厚重黏腻", "本品清爽不黏腻"]
+                }
+              }
+            }
+            """,
+            detail_layout_id="detail_evidence_chain_16",
+        )
+
+        modules = product_info["detail_layout_brief"]["modules"]
+        self.assertEqual(len(modules), 16)
+        self.assertTrue(all(module["required_content"] for module in modules))
+        competitor = next(module for module in modules if module["module_id"] == "detail_ec_competitor_comparison")
+        self.assertIn("普通竞品厚重黏腻", competitor["required_content"])
+        hero = next(module for module in modules if module["module_id"] == "detail_ec_hero")
+        self.assertTrue(any("清爽补水" in item or "AQUALUXE" in item for item in hero["required_content"]))
 
     def test_model_json_is_normalized_to_custom_style_plan(self):
         style = normalize_style_plan_from_model(
@@ -795,6 +852,7 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
                 layered_text=False,
                 target_language=None,
                 prompt_branch=None,
+                detail_layout_id=None,
             )
         finally:
             projects.GENERATION_JOBS.pop("generate_test", None)

@@ -8,6 +8,8 @@ export type GenerationMode = "reference_generate" | "fixed_product_composite";
 
 export type PromptBranch = "current" | "prompt_optimization";
 
+export type DetailLayoutId = "detail_evidence_chain_16" | "detail_standard_conversion_10";
+
 export type StyleOption = {
   id: string;
   seed_id?: string;
@@ -28,6 +30,13 @@ export type StyleOption = {
 };
 
 export type ImageGroup = "main" | "campaign" | "detail";
+
+export type DetailLayoutConfig = {
+  id: DetailLayoutId;
+  name: string;
+  description: string;
+  modules: ModuleConfig[];
+};
 
 export type CommercePlatformId = "tmall" | "jd" | "douyin" | "pdd" | "xiaohongshu_square" | "xiaohongshu_portrait";
 
@@ -112,6 +121,35 @@ export type ProductInfo = {
   authority_assets: string[];
   effect_claims: Array<{ claim: string; value: string; source_type: string }>;
   material_highlights?: string[];
+  cross_image_brief?: {
+    hero_claim?: string;
+    primary_pain?: string;
+    primary_function?: string;
+    auxiliary_function?: string;
+    ingredient_priority?: string[];
+    proof_points?: string[];
+    usage_scene?: string;
+    texture_keywords?: string[];
+    compliance_warnings?: string[];
+  };
+  detail_layout_brief?: {
+    layout_id?: DetailLayoutId | string;
+    selected_auxiliary_effect?: string;
+    competitor_comparison?: string;
+    manual_layout_notes?: string[];
+    modules?: Array<{
+      module_id: string;
+      module_name?: string;
+      page_task?: string;
+      headline_direction?: string;
+      primary_visual?: string;
+      required_content?: string[];
+      manual_notes?: string[];
+      forbidden_content?: string[];
+      data_source_note?: string;
+      compliance_boundary?: string;
+    }>;
+  };
   confirmation_status: "pending" | "confirmed";
 };
 
@@ -149,6 +187,7 @@ export type ProjectTemplate = {
   category: string;
   styleId: string;
   platformId: CommercePlatformId;
+  detailLayoutId?: DetailLayoutId;
   modules: Array<{ id: string; enabled: boolean; order: number }>;
   source: "official" | "user";
 };
@@ -261,6 +300,7 @@ export type PersistedProjectState = {
   generationMode: GenerationMode;
   generationLanguage?: LanguageCode;
   promptBranch?: PromptBranch;
+  selectedDetailLayoutId?: DetailLayoutId;
   activeImageGroup: ImageGroup;
   promotionInfo: string;
   modules: ModuleConfig[];

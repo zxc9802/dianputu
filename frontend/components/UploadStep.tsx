@@ -20,8 +20,8 @@ import {
   Tags,
   Trash2
 } from "lucide-react";
-import { productInfoValueFor, type ProductInfoFieldKey } from "@/lib/productInfo";
-import type { ProductInfo, UploadedFileInfo, UploadSlot } from "@/lib/types";
+import { productInfoFieldsForDetailLayout, productInfoValueFor, type ProductInfoFieldKey } from "@/lib/productInfo";
+import type { DetailLayoutConfig, DetailLayoutId, ProductInfo, UploadedFileInfo, UploadSlot } from "@/lib/types";
 
 const uploadSlots: Array<{
   id: string;
@@ -62,15 +62,22 @@ const uploadSlots: Array<{
   }
 ];
 
-const manualRows = [
-  { key: "product_name", label: "产品名称", icon: Tags, placeholder: "例如：修护精华 / 面霜 / 洁面乳" },
-  { key: "core_selling_points", label: "核心卖点", icon: Sparkles, placeholder: "每行一个，或用 / 分隔" },
-  { key: "ingredients", label: "核心成分", icon: Beaker, placeholder: "例如：透明质酸钠：帮助提升水润肤感 / 烟酰胺：帮助提亮肤色观感" },
-  { key: "functions", label: "功效", icon: Shield, placeholder: "例如：主要功效 / 辅助功效" },
-  { key: "usage_method", label: "使用方法", icon: Droplet, placeholder: "例如：洁面后使用 / 轻拍至吸收" },
-  { key: "effect_claims", label: "效果数据", icon: LineChart, placeholder: "例如：保湿力提升 92%" },
-  { key: "authority_assets", label: "权威资质", icon: Medal, placeholder: "例如：实验报告 / 专研配方理念" }
-] as const satisfies Array<{ key: ProductInfoFieldKey; label: string; icon: typeof Tags; placeholder: string }>;
+const fieldIcons: Record<string, typeof Tags> = {
+  product_name: Tags,
+  core_selling_points: Sparkles,
+  ingredients: Beaker,
+  functions: Shield,
+  target_users: Package,
+  material_highlights: Sparkles,
+  usage_method: Droplet,
+  effect_claims: LineChart,
+  authority_assets: Medal,
+  detail_layout_brief: Grid2X2
+};
+
+function iconForField(key: ProductInfoFieldKey) {
+  return key.startsWith("detail_module:") ? Grid2X2 : fieldIcons[key];
+}
 
 function formatFileSize(size: number) {
   if (size < 1024) return `${size} B`;
@@ -87,12 +94,15 @@ export function UploadStep({
   productInfo,
   productName,
   selectedStyleName,
+  detailLayouts,
+  selectedDetailLayoutId,
   moduleCount,
   manualFieldKeys,
   isAnalyzing,
   analysisSource,
   onFilesAdded,
   onFileRemove,
+  onDetailLayoutChange,
   onManualFieldChange,
   onAnalyze,
   onNext
@@ -101,18 +111,22 @@ export function UploadStep({
   productInfo: ProductInfo | null;
   productName: string;
   selectedStyleName: string;
+  detailLayouts: DetailLayoutConfig[];
+  selectedDetailLayoutId: DetailLayoutId;
   moduleCount: number;
   manualFieldKeys: ProductInfoFieldKey[];
   isAnalyzing: boolean;
   analysisSource: string;
   onFilesAdded: (slot: UploadSlot, files: File[]) => void;
   onFileRemove: (id: string) => void;
+  onDetailLayoutChange: (id: DetailLayoutId) => void;
   onManualFieldChange: (key: ProductInfoFieldKey, draft: string) => void;
   onAnalyze: () => void;
   onNext: () => void;
 }) {
   const [draggingSlot, setDraggingSlot] = useState<UploadSlot | null>(null);
   const hasFiles = uploadedFiles.length > 0;
+  const manualRows = productInfoFieldsForDetailLayout(selectedDetailLayoutId);
 
   function handleFiles(slot: UploadSlot, files: FileList | File[]) {
     const nextFiles = Array.from(files);
@@ -128,6 +142,26 @@ export function UploadStep({
             <div>
               <h2>上传产品资料</h2>
               <p>先把产品图、报告和资料分开上传，AI 会按类型解析并用于后续生图。</p>
+            </div>
+          </div>
+
+          <div className="detailLayoutPanel">
+            <div>
+              <h3>详情图排版结构</h3>
+              <p>AI 会按选中的结构拆解资料，并用于后续详情图生成。</p>
+            </div>
+            <div className="detailLayoutOptions">
+              {detailLayouts.map((layout) => (
+                <button
+                  className={selectedDetailLayoutId === layout.id ? "detailLayoutOption active" : "detailLayoutOption"}
+                  key={layout.id}
+                  onClick={() => onDetailLayoutChange(layout.id)}
+                  type="button"
+                >
+                  <b>{layout.name}</b>
+                  <span>{layout.modules.length} 屏 · {layout.description}</span>
+                </button>
+              ))}
             </div>
           </div>
 
@@ -200,7 +234,7 @@ export function UploadStep({
               <Sparkles size={24} />
               <p>
                 <b>AI 资料解析</b>
-                <span>{analysisSource || "上传后点击解析，产品信息会更新到第 3 步确认页。"}</span>
+                <span>{analysisSource || "上传后点击解析，产品信息会更新到第 2 步确认页。"}</span>
               </p>
             </div>
             <button className="primaryButton" onClick={onAnalyze} disabled={!hasFiles || isAnalyzing}>
@@ -252,7 +286,7 @@ export function UploadStep({
             </header>
             <div className="manualFieldStack">
               {manualRows.map((row) => {
-                const Icon = row.icon;
+                const Icon = iconForField(row.key);
                 const isManual = manualFieldKeys.includes(row.key);
                 const value = productInfo ? productInfoValueFor(productInfo, row.key) : "";
                 return (
@@ -294,7 +328,7 @@ export function UploadStep({
           {isAnalyzing ? "解析中..." : "先用 AI 解析资料"}
         </button>
         <button className="primaryButton" onClick={onNext}>
-          下一步：选择品类和风格
+          下一步：确认信息
         </button>
       </footer>
     </>

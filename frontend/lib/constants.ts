@@ -1,4 +1,4 @@
-import type { CommercePlatform, ModuleConfig, ProjectTemplate, StyleOption } from "./types";
+import type { CommercePlatform, DetailLayoutConfig, ModuleConfig, ProjectTemplate, StyleOption } from "./types";
 
 export const STYLE_OPTIONS: StyleOption[] = [
   {
@@ -143,17 +143,23 @@ export const STYLE_OPTIONS: StyleOption[] = [
   }
 ];
 
-export const DEFAULT_MODULES: ModuleConfig[] = [
+const MAIN_MODULES: ModuleConfig[] = [
   { id: "main_white_bg", name: "白底图", description: "纯白背景 + 产品居中", enabled: true, order: 1, image_group: "main" },
   { id: "main_hero_selling_point", name: "首图", description: "产品图 + 一句话核心卖点", enabled: true, order: 2, image_group: "main" },
   { id: "main_ingredient", name: "次图-成分", description: "核心成分 + 原料质感", enabled: true, order: 3, image_group: "main" },
   { id: "main_effect", name: "次图-效果", description: "核心功效 + 使用收益", enabled: true, order: 4, image_group: "main" },
-  { id: "main_usage_scene", name: "次图-使用场景", description: "目标人群 + 生活场景", enabled: true, order: 5, image_group: "main" },
+  { id: "main_usage_scene", name: "次图-使用场景", description: "目标人群 + 生活场景", enabled: true, order: 5, image_group: "main" }
+];
+
+const CAMPAIGN_MODULES: ModuleConfig[] = [
   { id: "campaign_white_bg", name: "活动白底图", description: "白底商品 + 促销角标", enabled: true, order: 1, image_group: "campaign" },
   { id: "campaign_hero_selling_point", name: "活动首图", description: "产品图 + 核心卖点 + 促销利益点", enabled: true, order: 2, image_group: "campaign" },
   { id: "campaign_ingredient", name: "活动次图-成分", description: "核心成分 + 活动氛围", enabled: true, order: 3, image_group: "campaign" },
   { id: "campaign_effect", name: "活动次图-效果", description: "核心功效 + 促销转化", enabled: true, order: 4, image_group: "campaign" },
-  { id: "campaign_usage_scene", name: "活动次图-使用场景", description: "使用场景 + 活动元素", enabled: true, order: 5, image_group: "campaign" },
+  { id: "campaign_usage_scene", name: "活动次图-使用场景", description: "使用场景 + 活动元素", enabled: true, order: 5, image_group: "campaign" }
+];
+
+export const STANDARD_DETAIL_MODULES: ModuleConfig[] = [
   { id: "hero", name: "详情首图", description: "产品大图 + 核心卖点", enabled: true, order: 1, image_group: "detail" },
   { id: "brand_qualification", name: "品牌与资质背书", description: "品牌背景与权威认证", enabled: true, order: 2, image_group: "detail" },
   { id: "research_strength", name: "研发实力", description: "研发流程 / 真人测试 / 科学配方", enabled: true, order: 3, image_group: "detail" },
@@ -164,6 +170,48 @@ export const DEFAULT_MODULES: ModuleConfig[] = [
   { id: "ingredient_overview", name: "成分总览", description: "整体成分体系 + 配方逻辑", enabled: true, order: 8, image_group: "detail" },
   { id: "usage", name: "使用方法", description: "商品怎么用", enabled: true, order: 9, image_group: "detail" },
   { id: "product_info", name: "产品信息", description: "产品基础信息 / 参数 / 成分说明", enabled: true, order: 10, image_group: "detail" }
+];
+
+export const EVIDENCE_CHAIN_DETAIL_MODULES: ModuleConfig[] = [
+  { id: "detail_ec_hero", name: "首屏爆点", description: "产品大图 + 核心功效 + 可信卖点标签", enabled: true, order: 1, image_group: "detail" },
+  { id: "detail_ec_pain_matrix", name: "痛点放大", description: "用户痛点 / 局部问题 / 代入感", enabled: true, order: 2, image_group: "detail" },
+  { id: "detail_ec_solution", name: "产品解决方案", description: "产品方案 + 核心成分 / 质地展开", enabled: true, order: 3, image_group: "detail" },
+  { id: "detail_ec_competitor_comparison", name: "差评与竞品对比", description: "普通同类产品不足 + 本品差异化方案", enabled: true, order: 4, image_group: "detail" },
+  { id: "detail_ec_real_trial", name: "真人实测引入", description: "真人使用场景 + 状态变化期待", enabled: true, order: 5, image_group: "detail" },
+  { id: "detail_ec_effect_validation", name: "效果对比验证", description: "局部前后对比 + 数据 / 趋势证明", enabled: true, order: 6, image_group: "detail" },
+  { id: "detail_ec_research_system", name: "研发体系背书", description: "研发流程 / 检测体系 / 配方可信度", enabled: true, order: 7, image_group: "detail" },
+  { id: "detail_ec_ingredient_1_mechanism", name: "核心成分一机制", description: "第 1 核心成分 + 消费者可理解作用", enabled: true, order: 8, image_group: "detail" },
+  { id: "detail_ec_ingredient_1_proof", name: "核心成分一证明", description: "成分配比 / 稳定性 / 肤感或测试依据", enabled: true, order: 9, image_group: "detail" },
+  { id: "detail_ec_ingredient_2_mechanism", name: "核心成分二机制", description: "第 2 核心成分 + 辅助护理逻辑", enabled: true, order: 10, image_group: "detail" },
+  { id: "detail_ec_auxiliary_mechanism", name: "辅助功效机制", description: "从资料中选择第二层购买理由，不固定功效", enabled: true, order: 11, image_group: "detail" },
+  { id: "detail_ec_auxiliary_validation", name: "辅助功效验证", description: "辅助功效测试 / 对比 / 用户感受证明", enabled: true, order: 12, image_group: "detail" },
+  { id: "detail_ec_real_feedback", name: "真人反馈合集", description: "真人反馈 / 局部对比 / 使用感合集", enabled: true, order: 13, image_group: "detail" },
+  { id: "detail_ec_texture", name: "质地与肤感展示", description: "质地特写 + 延展 / 吸收 / 清爽度", enabled: true, order: 14, image_group: "detail" },
+  { id: "detail_ec_brand_sensory", name: "品牌感与情绪价值", description: "品牌理念 / 香氛 / 原料来源 / 使用仪式感", enabled: true, order: 15, image_group: "detail" },
+  { id: "detail_ec_usage", name: "使用方法", description: "3-4 步正确使用流程", enabled: true, order: 16, image_group: "detail" }
+];
+
+export const DEFAULT_DETAIL_LAYOUT_ID = "detail_evidence_chain_16";
+
+export const DETAIL_LAYOUTS: DetailLayoutConfig[] = [
+  {
+    id: "detail_evidence_chain_16",
+    name: "证据链长图结构",
+    description: "16 屏长图，先痛点和方案，再用成分、实验、真人反馈和使用方法完成说服。",
+    modules: EVIDENCE_CHAIN_DETAIL_MODULES
+  },
+  {
+    id: "detail_standard_conversion_10",
+    name: "标准转化结构",
+    description: "当前 10 屏结构，适合更短的常规详情页。",
+    modules: STANDARD_DETAIL_MODULES
+  }
+];
+
+export const DEFAULT_MODULES: ModuleConfig[] = [
+  ...MAIN_MODULES,
+  ...CAMPAIGN_MODULES,
+  ...EVIDENCE_CHAIN_DETAIL_MODULES
 ];
 
 export const DETAIL_IMAGE_GENERATION_SIZE = "1152x2048";
@@ -177,6 +225,12 @@ export const COMMERCE_PLATFORMS: CommercePlatform[] = [
   { id: "xiaohongshu_portrait", name: "小红书 3:4", mainSize: "1080x1440", generationSize: "1536x2048", detailWidth: 1536, note: "按 2K 竖图生成，适合高清种草封面" }
 ];
 
+const EVIDENCE_CHAIN_TEMPLATE_MODULES = EVIDENCE_CHAIN_DETAIL_MODULES.map((module) => ({
+  id: module.id,
+  enabled: module.enabled,
+  order: module.order
+}));
+
 export const OFFICIAL_PROJECT_TEMPLATES: ProjectTemplate[] = [
   {
     id: "official-serum-green",
@@ -184,6 +238,7 @@ export const OFFICIAL_PROJECT_TEMPLATES: ProjectTemplate[] = [
     category: "护肤精华",
     styleId: "space_repair",
     platformId: "tmall",
+    detailLayoutId: DEFAULT_DETAIL_LAYOUT_ID,
     source: "official",
     modules: [
       { id: "main_white_bg", enabled: true, order: 1 },
@@ -191,16 +246,7 @@ export const OFFICIAL_PROJECT_TEMPLATES: ProjectTemplate[] = [
       { id: "main_ingredient", enabled: true, order: 3 },
       { id: "main_effect", enabled: true, order: 4 },
       { id: "main_usage_scene", enabled: true, order: 5 },
-      { id: "hero", enabled: true, order: 1 },
-      { id: "brand_qualification", enabled: true, order: 2 },
-      { id: "research_strength", enabled: true, order: 3 },
-      { id: "pain_scene", enabled: true, order: 4 },
-      { id: "effect_comparison", enabled: true, order: 5 },
-      { id: "competitor_comparison", enabled: true, order: 6 },
-      { id: "product_showcase", enabled: true, order: 7 },
-      { id: "ingredient_overview", enabled: true, order: 8 },
-      { id: "usage", enabled: true, order: 9 },
-      { id: "product_info", enabled: true, order: 10 }
+      ...EVIDENCE_CHAIN_TEMPLATE_MODULES
     ]
   },
   {
@@ -209,6 +255,7 @@ export const OFFICIAL_PROJECT_TEMPLATES: ProjectTemplate[] = [
     category: "面霜乳液",
     styleId: "black_gold_luxury",
     platformId: "jd",
+    detailLayoutId: DEFAULT_DETAIL_LAYOUT_ID,
     source: "official",
     modules: [
       { id: "main_white_bg", enabled: true, order: 1 },
@@ -216,16 +263,7 @@ export const OFFICIAL_PROJECT_TEMPLATES: ProjectTemplate[] = [
       { id: "main_effect", enabled: true, order: 3 },
       { id: "campaign_white_bg", enabled: true, order: 1 },
       { id: "campaign_hero_selling_point", enabled: true, order: 2 },
-      { id: "hero", enabled: true, order: 1 },
-      { id: "brand_qualification", enabled: true, order: 2 },
-      { id: "research_strength", enabled: true, order: 3 },
-      { id: "pain_scene", enabled: true, order: 4 },
-      { id: "effect_comparison", enabled: true, order: 5 },
-      { id: "competitor_comparison", enabled: true, order: 6 },
-      { id: "product_showcase", enabled: true, order: 7 },
-      { id: "ingredient_overview", enabled: true, order: 8 },
-      { id: "usage", enabled: true, order: 9 },
-      { id: "product_info", enabled: true, order: 10 }
+      ...EVIDENCE_CHAIN_TEMPLATE_MODULES
     ]
   },
   {
@@ -234,21 +272,13 @@ export const OFFICIAL_PROJECT_TEMPLATES: ProjectTemplate[] = [
     category: "清洁洗护",
     styleId: "deep_sea_hydration",
     platformId: "douyin",
+    detailLayoutId: DEFAULT_DETAIL_LAYOUT_ID,
     source: "official",
     modules: [
       { id: "main_white_bg", enabled: true, order: 1 },
       { id: "main_hero_selling_point", enabled: true, order: 2 },
       { id: "main_usage_scene", enabled: true, order: 3 },
-      { id: "hero", enabled: true, order: 1 },
-      { id: "brand_qualification", enabled: true, order: 2 },
-      { id: "research_strength", enabled: true, order: 3 },
-      { id: "pain_scene", enabled: true, order: 4 },
-      { id: "effect_comparison", enabled: true, order: 5 },
-      { id: "competitor_comparison", enabled: true, order: 6 },
-      { id: "product_showcase", enabled: true, order: 7 },
-      { id: "ingredient_overview", enabled: true, order: 8 },
-      { id: "usage", enabled: true, order: 9 },
-      { id: "product_info", enabled: true, order: 10 }
+      ...EVIDENCE_CHAIN_TEMPLATE_MODULES
     ]
   }
 ];

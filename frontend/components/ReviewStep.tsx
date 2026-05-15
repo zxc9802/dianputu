@@ -1,44 +1,62 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Beaker, CheckCircle2, Droplet, LineChart, Medal, Pencil, Save, Shield, Sparkles, Tag } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Beaker, CheckCircle2, Droplet, Grid2X2, LineChart, Medal, Package, Pencil, Save, Shield, Sparkles, Tag } from "lucide-react";
 import { complianceStatusClass, complianceStatusLabel } from "@/lib/compliance";
-import { applyProductInfoDraft, productInfoValueFor, type ProductInfoFieldKey } from "@/lib/productInfo";
-import type { ComplianceReport, ProductInfo } from "@/lib/types";
+import { applyProductInfoDraft, productInfoFieldsForDetailLayout, productInfoValueFor, productInfoWithDetailLayoutFields, type ProductInfoFieldKey } from "@/lib/productInfo";
+import type { ComplianceReport, DetailLayoutId, ProductInfo } from "@/lib/types";
 
-const rows = [
-  { key: "product_name", label: "产品名称", icon: Tag },
-  { key: "core_selling_points", label: "核心卖点", icon: Sparkles },
-  { key: "ingredients", label: "核心成分", icon: Beaker },
-  { key: "functions", label: "功效", icon: Shield },
-  { key: "material_highlights", label: "资料亮点摘要", icon: Sparkles },
-  { key: "usage_method", label: "使用方法", icon: Droplet },
-  { key: "effect_claims", label: "效果数据", icon: LineChart },
-  { key: "authority_assets", label: "权威资质", icon: Medal }
-] as const satisfies Array<{ key: ProductInfoFieldKey; label: string; icon: typeof Tag }>;
+const fieldIcons: Record<string, typeof Tag> = {
+  product_name: Tag,
+  core_selling_points: Sparkles,
+  ingredients: Beaker,
+  functions: Shield,
+  target_users: Package,
+  material_highlights: Sparkles,
+  usage_method: Droplet,
+  effect_claims: LineChart,
+  authority_assets: Medal,
+  detail_layout_brief: Grid2X2
+};
+
+function iconForField(key: ProductInfoFieldKey) {
+  return key.startsWith("detail_module:") ? Grid2X2 : fieldIcons[key];
+}
 
 export function ReviewStep({
   productInfo,
+  selectedDetailLayoutId,
   complianceReport,
   onUpdateProductInfo,
   onBack,
   onNext
 }: {
   productInfo: ProductInfo | null;
+  selectedDetailLayoutId: DetailLayoutId;
   complianceReport?: ComplianceReport | null;
   onUpdateProductInfo: (productInfo: ProductInfo) => void;
   onBack: () => void;
   onNext: () => void;
 }) {
+  const rows = productInfoFieldsForDetailLayout(selectedDetailLayoutId);
   const [editingKey, setEditingKey] = useState<ProductInfoFieldKey | null>(null);
   const [draft, setDraft] = useState("");
   const [confirmedFields, setConfirmedFields] = useState<Set<ProductInfoFieldKey>>(() => new Set());
-  const allConfirmed = confirmedFields.size === rows.length;
+  const allConfirmed = rows.every((row) => confirmedFields.has(row.key));
 
   const confirmedProductInfo = useMemo(
     () => (productInfo ? ({ ...productInfo, confirmation_status: allConfirmed ? "confirmed" : "pending" } as ProductInfo) : null),
     [allConfirmed, productInfo]
   );
+
+  useEffect(() => {
+    const visibleKeys = new Set(rows.map((row) => row.key));
+    setConfirmedFields((current) => new Set([...current].filter((key) => visibleKeys.has(key))));
+    if (editingKey && !visibleKeys.has(editingKey)) {
+      setEditingKey(null);
+      setDraft("");
+    }
+  }, [editingKey, rows]);
 
   function beginEdit(key: ProductInfoFieldKey) {
     if (!productInfo) return;
@@ -61,8 +79,9 @@ export function ReviewStep({
   function confirmAllAndContinue() {
     if (!confirmedProductInfo) return;
     const all = new Set(rows.map((row) => row.key));
+    const expandedProductInfo = productInfoWithDetailLayoutFields(confirmedProductInfo, selectedDetailLayoutId);
     setConfirmedFields(all);
-    onUpdateProductInfo({ ...confirmedProductInfo, confirmation_status: "confirmed" });
+    onUpdateProductInfo({ ...expandedProductInfo, confirmation_status: "confirmed" });
     onNext();
   }
 
@@ -70,7 +89,7 @@ export function ReviewStep({
     <>
       <section className="panel mainPanel fullPanel">
         <div className="sectionTitle">
-          <span>3</span>
+          <span>2</span>
           <div>
             <h2>确认 AI 提炼结果</h2>
             <p>生成前需要确认关键字段，必要时可逐项修改。</p>
@@ -81,7 +100,7 @@ export function ReviewStep({
           <>
             <div className="fieldList">
               {rows.map((row) => {
-                const Icon = row.icon;
+                const Icon = iconForField(row.key);
                 const isEditing = editingKey === row.key;
                 const isConfirmed = confirmedFields.has(row.key);
                 return (

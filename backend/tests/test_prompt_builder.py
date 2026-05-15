@@ -1,6 +1,9 @@
 ﻿import unittest
 
-from app.demo_data import DEFAULT_MODULES, STYLE_OPTIONS
+from app.demo_data import ALL_MODULES, DEFAULT_MODULES, STYLE_OPTIONS
+
+
+PROMPT_MODULES = ALL_MODULES
 
 
 def load_prompt_builder():
@@ -12,9 +15,102 @@ def load_prompt_builder():
 
 
 class PromptBuilderTests(unittest.TestCase):
+    def test_detail_generation_prompt_uses_current_screen_module_brief(self):
+        build_module_image_prompt = load_prompt_builder()
+        prompt = build_module_image_prompt(
+            product_info={
+                "product_name": "屏障修护精华",
+                "core_selling_points": ["泛用卖点"],
+                "detail_layout_brief": {
+                    "layout_id": "detail_evidence_chain_16",
+                    "modules": [
+                        {
+                            "module_id": "detail_ec_competitor_comparison",
+                            "module_name": "第 4 屏：差评与竞品对比",
+                            "page_task": "承接普通同类产品厚重闷肤差评",
+                            "headline_direction": "普通竞品厚重，本品清爽修护",
+                            "primary_visual": "左右对比，左侧灰暗厚重，右侧清爽透亮",
+                            "required_content": ["普通竞品厚重闷肤", "本品清爽不黏腻"],
+                            "manual_notes": ["用户手填：不要写真实竞品品牌"],
+                        },
+                        {
+                            "module_id": "detail_ec_auxiliary_validation",
+                            "required_content": ["辅助功效验证内容不应进入第 4 屏"],
+                        },
+                    ],
+                },
+            },
+            style=STYLE_OPTIONS[2],
+            module=next(module for module in PROMPT_MODULES if module["id"] == "detail_ec_competitor_comparison"),
+            module_index=4,
+            total_modules=16,
+        )
+
+        self.assertIn("【当前屏专属信息】", prompt)
+        self.assertIn("承接普通同类产品厚重闷肤差评", prompt)
+        self.assertIn("普通竞品厚重，本品清爽修护", prompt)
+        self.assertIn("普通竞品厚重闷肤", prompt)
+        self.assertIn("用户手填：不要写真实竞品品牌", prompt)
+        self.assertNotIn("辅助功效验证内容不应进入第 4 屏", prompt)
+
+    def test_evidence_chain_detail_prompts_cover_competitor_and_auxiliary_pages(self):
+        build_module_image_prompt = load_prompt_builder()
+        product_info = {
+            "product_name": "屏障修护精华",
+            "core_selling_points": ["卡粉起皮先稳住屏障"],
+            "functions": ["补水保湿", "屏障护理", "舒缓干燥不适"],
+            "ingredients": [
+                {"name": "神经酰胺", "benefit": "帮助维持屏障舒适"},
+                {"name": "透明质酸钠", "benefit": "帮助提升水润肤感"},
+            ],
+            "effect_claims": [{"claim": "上妆服帖度提升", "value": "88%", "source_type": "用户体验反馈"}],
+            "detail_layout_brief": {
+                "layout_id": "detail_evidence_chain_16",
+                "selected_auxiliary_effect": "上妆更服帖",
+                "competitor_comparison": "普通同类产品容易厚重闷肤，本品强调清爽修护。",
+            },
+            "cross_image_brief": {
+                "main_image_selling_points": ["卡粉起皮先稳住屏障", "清爽不闷肤"],
+                "campaign_selling_points": ["修护屏障", "上妆更服帖"],
+            },
+        }
+
+        competitor_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[2],
+            module=next(module for module in PROMPT_MODULES if module["id"] == "detail_ec_competitor_comparison"),
+            module_index=4,
+            total_modules=16,
+        )
+        auxiliary_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[2],
+            module=next(module for module in PROMPT_MODULES if module["id"] == "detail_ec_auxiliary_mechanism"),
+            module_index=11,
+            total_modules=16,
+        )
+        auxiliary_validation_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[2],
+            module=next(module for module in PROMPT_MODULES if module["id"] == "detail_ec_auxiliary_validation"),
+            module_index=12,
+            total_modules=16,
+        )
+
+        self.assertIn("差评与竞品对比", competitor_prompt)
+        self.assertIn("普通同类产品", competitor_prompt)
+        self.assertIn("清爽不闷肤", competitor_prompt)
+        self.assertIn("不指名真实竞品品牌", competitor_prompt)
+        self.assertIn("辅助功效机制", auxiliary_prompt)
+        self.assertIn("第二层购买理由", auxiliary_prompt)
+        self.assertIn("上妆更服帖", auxiliary_prompt)
+        self.assertNotIn("长效保湿", auxiliary_prompt)
+        self.assertIn("辅助功效验证", auxiliary_validation_prompt)
+        self.assertIn("测试 / 对比 / 用户感受", auxiliary_validation_prompt)
+
     def test_brand_qualification_prompt_uses_brand_assets_and_user_materials_first(self):
         build_module_image_prompt = load_prompt_builder()
-        brand_module = next(module for module in DEFAULT_MODULES if module["id"] == "brand_qualification")
+        brand_module = next(module for module in PROMPT_MODULES if module["id"] == "brand_qualification")
 
         prompt = build_module_image_prompt(
             product_info={
@@ -59,7 +155,7 @@ class PromptBuilderTests(unittest.TestCase):
 
     def test_research_strength_prompt_prefers_scientist_lab_scene_with_paper_report_support(self):
         build_module_image_prompt = load_prompt_builder()
-        research_module = next(module for module in DEFAULT_MODULES if module["id"] == "research_strength")
+        research_module = next(module for module in PROMPT_MODULES if module["id"] == "research_strength")
 
         prompt = build_module_image_prompt(
             product_info={
@@ -111,7 +207,7 @@ class PromptBuilderTests(unittest.TestCase):
 
     def test_research_strength_prompt_trims_long_authority_reports_but_keeps_guardrails(self):
         build_module_image_prompt = load_prompt_builder()
-        research_module = next(module for module in DEFAULT_MODULES if module["id"] == "research_strength")
+        research_module = next(module for module in PROMPT_MODULES if module["id"] == "research_strength")
 
         prompt = build_module_image_prompt(
             product_info={
@@ -138,7 +234,7 @@ class PromptBuilderTests(unittest.TestCase):
 
     def test_detail_prompts_keep_hidden_notes_out_of_visible_image_copy(self):
         build_module_image_prompt = load_prompt_builder()
-        research_module = next(module for module in DEFAULT_MODULES if module["id"] == "research_strength")
+        research_module = next(module for module in PROMPT_MODULES if module["id"] == "research_strength")
 
         prompt = build_module_image_prompt(
             product_info={
@@ -167,7 +263,7 @@ class PromptBuilderTests(unittest.TestCase):
 
     def test_effect_prompt_contains_complete_metrics_sources_and_compliance_limits(self):
         build_module_image_prompt = load_prompt_builder()
-        effect_module = next(module for module in DEFAULT_MODULES if module["id"] == "effect_comparison")
+        effect_module = next(module for module in PROMPT_MODULES if module["id"] == "effect_comparison")
 
         prompt = build_module_image_prompt(
             product_info={
@@ -210,7 +306,7 @@ class PromptBuilderTests(unittest.TestCase):
 
     def test_hydration_effect_prompt_uses_progress_sized_percent_metric(self):
         build_module_image_prompt = load_prompt_builder()
-        effect_module = next(module for module in DEFAULT_MODULES if module["id"] == "effect_comparison")
+        effect_module = next(module for module in PROMPT_MODULES if module["id"] == "effect_comparison")
 
         prompt = build_module_image_prompt(
             product_info={
@@ -234,7 +330,7 @@ class PromptBuilderTests(unittest.TestCase):
 
     def test_effect_prompt_uses_specific_percent_values_when_metrics_have_no_values(self):
         build_module_image_prompt = load_prompt_builder()
-        effect_module = next(module for module in DEFAULT_MODULES if module["id"] == "effect_comparison")
+        effect_module = next(module for module in PROMPT_MODULES if module["id"] == "effect_comparison")
 
         prompt = build_module_image_prompt(
             product_info={
@@ -261,7 +357,7 @@ class PromptBuilderTests(unittest.TestCase):
 
     def test_prompt_optimization_branch_adds_premium_skincare_scheme_without_changing_default_branch(self):
         build_module_image_prompt = load_prompt_builder()
-        module = next(module for module in DEFAULT_MODULES if module["id"] == "main_hero_selling_point")
+        module = next(module for module in PROMPT_MODULES if module["id"] == "main_hero_selling_point")
         product_info = {
             "product_name": "水润保湿精华",
             "category": "护肤精华",
@@ -295,7 +391,7 @@ class PromptBuilderTests(unittest.TestCase):
 
     def test_prompts_enforce_realistic_people_when_people_may_appear(self):
         build_module_image_prompt = load_prompt_builder()
-        usage_module = next(module for module in DEFAULT_MODULES if module["id"] == "usage")
+        usage_module = next(module for module in PROMPT_MODULES if module["id"] == "usage")
 
         prompt = build_module_image_prompt(
             product_info={
@@ -326,7 +422,7 @@ class PromptBuilderTests(unittest.TestCase):
 
     def test_style_reference_prompt_overrides_preset_style_for_non_white_background_images(self):
         build_module_image_prompt = load_prompt_builder()
-        hero_module = next(module for module in DEFAULT_MODULES if module["id"] == "hero")
+        hero_module = next(module for module in PROMPT_MODULES if module["id"] == "hero")
 
         prompt = build_module_image_prompt(
             product_info={"product_name": "积雪草修护精华"},
@@ -345,7 +441,7 @@ class PromptBuilderTests(unittest.TestCase):
 
     def test_style_reference_prompt_injects_gemini_benchmark_brief(self):
         build_module_image_prompt = load_prompt_builder()
-        hero_module = next(module for module in DEFAULT_MODULES if module["id"] == "hero")
+        hero_module = next(module for module in PROMPT_MODULES if module["id"] == "hero")
 
         prompt = build_module_image_prompt(
             product_info={"product_name": "积雪草修护精华"},
@@ -372,7 +468,7 @@ class PromptBuilderTests(unittest.TestCase):
 
     def test_custom_style_prompt_keeps_style_elements_consistent_without_forcing_one_color(self):
         build_module_image_prompt = load_prompt_builder()
-        hero_module = next(module for module in DEFAULT_MODULES if module["id"] == "hero")
+        hero_module = next(module for module in PROMPT_MODULES if module["id"] == "hero")
 
         prompt = build_module_image_prompt(
             product_info={"product_name": "积雪草修护精华"},
@@ -479,7 +575,7 @@ class PromptBuilderTests(unittest.TestCase):
 
     def test_product_showcase_prompt_reinforces_product_texture_effect_and_zero_additions(self):
         build_module_image_prompt = load_prompt_builder()
-        showcase_module = next(module for module in DEFAULT_MODULES if module["id"] == "product_showcase")
+        showcase_module = next(module for module in PROMPT_MODULES if module["id"] == "product_showcase")
 
         prompt = build_module_image_prompt(
             product_info={
@@ -511,7 +607,7 @@ class PromptBuilderTests(unittest.TestCase):
 
     def test_product_info_prompt_uses_uploaded_specs_before_ai_fallback(self):
         build_module_image_prompt = load_prompt_builder()
-        info_module = next(module for module in DEFAULT_MODULES if module["id"] == "product_info")
+        info_module = next(module for module in PROMPT_MODULES if module["id"] == "product_info")
 
         prompt = build_module_image_prompt(
             product_info={
@@ -560,7 +656,7 @@ class PromptBuilderTests(unittest.TestCase):
                 module_index=module["order"],
                 total_modules=10,
             )
-            for module in DEFAULT_MODULES
+            for module in PROMPT_MODULES
             if module.get("image_group") == "detail"
         }
 
@@ -643,7 +739,7 @@ class PromptBuilderTests(unittest.TestCase):
 
     def test_target_language_prompt_asks_model_to_render_visible_text_directly(self):
         build_module_image_prompt = load_prompt_builder()
-        hero_module = next(module for module in DEFAULT_MODULES if module["id"] == "hero")
+        hero_module = next(module for module in PROMPT_MODULES if module["id"] == "hero")
 
         prompt = build_module_image_prompt(
             product_info={"product_name": "水润保湿精华", "core_selling_points": ["深层补水"]},
@@ -662,7 +758,7 @@ class PromptBuilderTests(unittest.TestCase):
 
     def test_target_language_prompt_supports_vietnamese(self):
         build_module_image_prompt = load_prompt_builder()
-        hero_module = next(module for module in DEFAULT_MODULES if module["id"] == "hero")
+        hero_module = next(module for module in PROMPT_MODULES if module["id"] == "hero")
 
         prompt = build_module_image_prompt(
             product_info={"product_name": "水润保湿精华", "core_selling_points": ["深层补水"]},
@@ -691,28 +787,28 @@ class PromptBuilderTests(unittest.TestCase):
         hero_prompt = build_module_image_prompt(
             product_info=product_info,
             style=STYLE_OPTIONS[1],
-            module=next(module for module in DEFAULT_MODULES if module["id"] == "main_hero_selling_point"),
+            module=next(module for module in PROMPT_MODULES if module["id"] == "main_hero_selling_point"),
             module_index=2,
             total_modules=5,
         )
         ingredient_prompt = build_module_image_prompt(
             product_info=product_info,
             style=STYLE_OPTIONS[1],
-            module=next(module for module in DEFAULT_MODULES if module["id"] == "main_ingredient"),
+            module=next(module for module in PROMPT_MODULES if module["id"] == "main_ingredient"),
             module_index=3,
             total_modules=5,
         )
         effect_prompt = build_module_image_prompt(
             product_info=product_info,
             style=STYLE_OPTIONS[1],
-            module=next(module for module in DEFAULT_MODULES if module["id"] == "main_effect"),
+            module=next(module for module in PROMPT_MODULES if module["id"] == "main_effect"),
             module_index=4,
             total_modules=5,
         )
         usage_prompt = build_module_image_prompt(
             product_info=product_info,
             style=STYLE_OPTIONS[1],
-            module=next(module for module in DEFAULT_MODULES if module["id"] == "main_usage_scene"),
+            module=next(module for module in PROMPT_MODULES if module["id"] == "main_usage_scene"),
             module_index=5,
             total_modules=5,
         )
@@ -751,14 +847,14 @@ class PromptBuilderTests(unittest.TestCase):
         research_prompt = build_module_image_prompt(
             product_info=product_info,
             style=STYLE_OPTIONS[0],
-            module=next(module for module in DEFAULT_MODULES if module["id"] == "research_strength"),
+            module=next(module for module in PROMPT_MODULES if module["id"] == "research_strength"),
             module_index=3,
             total_modules=10,
         )
         pain_prompt = build_module_image_prompt(
             product_info=product_info,
             style=STYLE_OPTIONS[0],
-            module=next(module for module in DEFAULT_MODULES if module["id"] == "pain_scene"),
+            module=next(module for module in PROMPT_MODULES if module["id"] == "pain_scene"),
             module_index=4,
             total_modules=10,
         )
@@ -793,28 +889,28 @@ class PromptBuilderTests(unittest.TestCase):
         hero_prompt = build_module_image_prompt(
             product_info=product_info,
             style=STYLE_OPTIONS[1],
-            module=next(module for module in DEFAULT_MODULES if module["id"] == "main_hero_selling_point"),
+            module=next(module for module in PROMPT_MODULES if module["id"] == "main_hero_selling_point"),
             module_index=2,
             total_modules=5,
         )
         ingredient_prompt = build_module_image_prompt(
             product_info=product_info,
             style=STYLE_OPTIONS[1],
-            module=next(module for module in DEFAULT_MODULES if module["id"] == "main_ingredient"),
+            module=next(module for module in PROMPT_MODULES if module["id"] == "main_ingredient"),
             module_index=3,
             total_modules=5,
         )
         effect_prompt = build_module_image_prompt(
             product_info=product_info,
             style=STYLE_OPTIONS[1],
-            module=next(module for module in DEFAULT_MODULES if module["id"] == "main_effect"),
+            module=next(module for module in PROMPT_MODULES if module["id"] == "main_effect"),
             module_index=4,
             total_modules=5,
         )
         usage_prompt = build_module_image_prompt(
             product_info=product_info,
             style=STYLE_OPTIONS[1],
-            module=next(module for module in DEFAULT_MODULES if module["id"] == "main_usage_scene"),
+            module=next(module for module in PROMPT_MODULES if module["id"] == "main_usage_scene"),
             module_index=5,
             total_modules=5,
         )
@@ -855,42 +951,42 @@ class PromptBuilderTests(unittest.TestCase):
         hero_prompt = build_module_image_prompt(
             product_info=product_info,
             style=STYLE_OPTIONS[2],
-            module=next(module for module in DEFAULT_MODULES if module["id"] == "hero"),
+            module=next(module for module in PROMPT_MODULES if module["id"] == "hero"),
             module_index=1,
             total_modules=10,
         )
         pain_prompt = build_module_image_prompt(
             product_info=product_info,
             style=STYLE_OPTIONS[2],
-            module=next(module for module in DEFAULT_MODULES if module["id"] == "pain_scene"),
+            module=next(module for module in PROMPT_MODULES if module["id"] == "pain_scene"),
             module_index=3,
             total_modules=10,
         )
         competitor_prompt = build_module_image_prompt(
             product_info=product_info,
             style=STYLE_OPTIONS[2],
-            module=next(module for module in DEFAULT_MODULES if module["id"] == "competitor_comparison"),
+            module=next(module for module in PROMPT_MODULES if module["id"] == "competitor_comparison"),
             module_index=5,
             total_modules=10,
         )
         overview_prompt = build_module_image_prompt(
             product_info=product_info,
             style=STYLE_OPTIONS[2],
-            module=next(module for module in DEFAULT_MODULES if module["id"] == "ingredient_overview"),
+            module=next(module for module in PROMPT_MODULES if module["id"] == "ingredient_overview"),
             module_index=6,
             total_modules=10,
         )
         showcase_prompt = build_module_image_prompt(
             product_info=product_info,
             style=STYLE_OPTIONS[2],
-            module=next(module for module in DEFAULT_MODULES if module["id"] == "product_showcase"),
+            module=next(module for module in PROMPT_MODULES if module["id"] == "product_showcase"),
             module_index=7,
             total_modules=10,
         )
         info_prompt = build_module_image_prompt(
             product_info=product_info,
             style=STYLE_OPTIONS[2],
-            module=next(module for module in DEFAULT_MODULES if module["id"] == "product_info"),
+            module=next(module for module in PROMPT_MODULES if module["id"] == "product_info"),
             module_index=10,
             total_modules=10,
         )
@@ -941,7 +1037,7 @@ class PromptBuilderTests(unittest.TestCase):
         hero_prompt = build_module_image_prompt(
             product_info=product_info,
             style=STYLE_OPTIONS[2],
-            module=next(module for module in DEFAULT_MODULES if module["id"] == "hero"),
+            module=next(module for module in PROMPT_MODULES if module["id"] == "hero"),
             module_index=1,
             total_modules=10,
         )
@@ -997,7 +1093,7 @@ class PromptBuilderTests(unittest.TestCase):
                 "functions": ["补水保湿"],
             },
             style=STYLE_OPTIONS[1],
-            module=next(module for module in DEFAULT_MODULES if module["id"] == "campaign_hero_selling_point"),
+            module=next(module for module in PROMPT_MODULES if module["id"] == "campaign_hero_selling_point"),
             module_index=2,
             total_modules=5,
             promotion_info="618 限时 8 折，满 199 减 30",
@@ -1041,13 +1137,14 @@ class PromptBuilderTests(unittest.TestCase):
         ]
 
         self.assertLessEqual(max(len(prompt) for prompt in prompts), 2650)
-        self.assertLessEqual(sum(len(prompt) for prompt in prompts), 41500)
+        self.assertLessEqual(sum(len(prompt) for prompt in prompts), 50000)
         self.assertTrue(any("产品大 + 卖点狠 + 证据短 + 视觉亮 + 信息少" in prompt for prompt in prompts))
         self.assertTrue(any("每张图必须有一个视觉矛盾" in prompt for prompt in prompts))
-        self.assertTrue(any("品牌与资质背书" in prompt for prompt in prompts))
-        self.assertTrue(any("产品大图 + 功效 + 质地 + 0添加" in prompt for prompt in prompts))
-        self.assertTrue(any("产品名称、功效、规格、保质期、产地、成分" in prompt for prompt in prompts))
+        self.assertTrue(any("研发体系背书" in prompt for prompt in prompts))
+        self.assertTrue(any("辅助功效机制" in prompt for prompt in prompts))
+        self.assertTrue(any("质地与肤感展示" in prompt for prompt in prompts))
 
 
 if __name__ == "__main__":
     unittest.main()
+

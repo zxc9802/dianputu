@@ -10,10 +10,10 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from app.core.config import ImageGenerationSettings
-from app.demo_data import DEFAULT_MODULES, DEFAULT_PRODUCT_INFO, DEMO_IMAGE_URLS, STYLE_OPTIONS
+from app.demo_data import ALL_MODULES, DEFAULT_DETAIL_LAYOUT_ID, DEFAULT_MODULES, DEFAULT_PRODUCT_INFO, DEMO_IMAGE_URLS, DETAIL_LAYOUTS, STYLE_OPTIONS
 from app.dependencies.auth import require_app_user
 from app.routers.models import build_public_model_config
-from app.routers.projects import COMPOSE_JOBS, EDIT_JOBS, FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR, UploadedMaterial, build_layered_generated_image, build_style_reference_analysis_messages, compose_long_jpeg, edit_generated_image, generate_detail_images, normalize_style_reference_plan_from_model, render_layered_language_version, router as projects_router
+from app.routers.projects import COMPOSE_JOBS, EDIT_JOBS, FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR, UploadedMaterial, build_layered_generated_image, build_material_analysis_messages, build_style_reference_analysis_messages, compose_long_jpeg, edit_generated_image, generate_detail_images, normalize_style_reference_plan_from_model, render_layered_language_version, router as projects_router
 from app.services.language_renderer import build_text_layers, render_text_layers_to_data_url
 from app.services.app_session import AppSessionUserSnapshot
 
@@ -66,21 +66,36 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(
             [module["id"] for module in detail_modules],
             [
-                "hero",
-                "brand_qualification",
-                "research_strength",
-                "pain_scene",
-                "effect_comparison",
-                "competitor_comparison",
-                "product_showcase",
-                "ingredient_overview",
-                "usage",
-                "product_info",
+                "detail_ec_hero",
+                "detail_ec_pain_matrix",
+                "detail_ec_solution",
+                "detail_ec_competitor_comparison",
+                "detail_ec_real_trial",
+                "detail_ec_effect_validation",
+                "detail_ec_research_system",
+                "detail_ec_ingredient_1_mechanism",
+                "detail_ec_ingredient_1_proof",
+                "detail_ec_ingredient_2_mechanism",
+                "detail_ec_auxiliary_mechanism",
+                "detail_ec_auxiliary_validation",
+                "detail_ec_real_feedback",
+                "detail_ec_texture",
+                "detail_ec_brand_sensory",
+                "detail_ec_usage",
             ],
         )
         self.assertNotIn("ingredient", [module["id"] for module in detail_modules])
         self.assertNotIn("authority", [module["id"] for module in detail_modules])
         self.assertNotIn("ingredient_1", [module["id"] for module in detail_modules])
+
+    def test_detail_layout_registry_keeps_new_default_and_standard_option(self):
+        self.assertEqual(DEFAULT_DETAIL_LAYOUT_ID, "detail_evidence_chain_16")
+        layouts_by_id = {layout["id"]: layout for layout in DETAIL_LAYOUTS}
+
+        self.assertEqual([module["id"] for module in layouts_by_id["detail_evidence_chain_16"]["modules"][:4]], ["detail_ec_hero", "detail_ec_pain_matrix", "detail_ec_solution", "detail_ec_competitor_comparison"])
+        self.assertEqual(layouts_by_id["detail_evidence_chain_16"]["modules"][10]["id"], "detail_ec_auxiliary_mechanism")
+        self.assertEqual(layouts_by_id["detail_evidence_chain_16"]["modules"][11]["id"], "detail_ec_auxiliary_validation")
+        self.assertEqual([module["id"] for module in layouts_by_id["detail_standard_conversion_10"]["modules"][-2:]], ["usage", "product_info"])
 
     def test_product_info_contains_confirmation_fields(self):
         required = {
@@ -119,8 +134,40 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("forbidden", black_gold)
 
     def test_demo_image_urls_point_to_frontend_assets(self):
-        self.assertEqual(set(DEMO_IMAGE_URLS), {module["id"] for module in DEFAULT_MODULES})
+        self.assertEqual(set(DEMO_IMAGE_URLS), {module["id"] for module in ALL_MODULES})
         self.assertTrue(all(url.startswith("/assets/") for url in DEMO_IMAGE_URLS.values()))
+
+    def test_defaults_endpoint_returns_selectable_detail_layouts(self):
+        app = FastAPI()
+        app.dependency_overrides[require_app_user] = lambda: AppSessionUserSnapshot(user_id="test-user")
+        app.include_router(projects_router)
+        response = TestClient(app).get("/api/projects/defaults")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["default_detail_layout_id"], "detail_evidence_chain_16")
+        self.assertEqual([layout["id"] for layout in payload["detail_layouts"]], ["detail_evidence_chain_16", "detail_standard_conversion_10"])
+        self.assertIn("detail_ec_auxiliary_mechanism", [module["id"] for module in payload["modules"]])
+
+    def test_material_analysis_prompt_is_layout_aware_and_shared_with_main_images(self):
+        messages = build_material_analysis_messages(
+            [
+                UploadedMaterial(
+                    filename="long-detail.png",
+                    content_type="image/png",
+                    data=b"\x89PNG\r\n",
+                )
+            ],
+            detail_layout_id="detail_evidence_chain_16",
+        )
+        prompt = messages[0]["content"][0]["text"]
+
+        self.assertIn("cross_image_brief", prompt)
+        self.assertIn("detail_layout_brief", prompt)
+        self.assertIn("证据链长图结构", prompt)
+        self.assertIn("辅助功效机制", prompt)
+        self.assertIn("辅助功效验证", prompt)
+        self.assertIn("可同步影响主图/活动图", prompt)
 
     def test_public_model_config_never_includes_api_keys(self):
         config = build_public_model_config()
@@ -852,7 +899,7 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
                     {"name": "泛醇", "benefit": "辅助保湿维稳"},
                 ],
             },
-            next(module for module in DEFAULT_MODULES if module["id"] == "ingredient_overview"),
+            next(module for module in ALL_MODULES if module["id"] == "ingredient_overview"),
         )
 
         layer_text = " / ".join(layer["text"] for layer in layers)

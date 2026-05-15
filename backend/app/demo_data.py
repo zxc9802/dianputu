@@ -20,17 +20,25 @@ DEFAULT_PRODUCT_INFO = {
 }
 
 
-DEFAULT_MODULES = [
+MAIN_MODULES = [
     {"id": "main_white_bg", "name": "白底图", "description": "纯白背景 + 产品居中", "enabled": True, "order": 1, "image_group": "main"},
     {"id": "main_hero_selling_point", "name": "首图", "description": "产品图 + 一句话核心卖点", "enabled": True, "order": 2, "image_group": "main"},
     {"id": "main_ingredient", "name": "次图-成分", "description": "核心成分 + 原料质感", "enabled": True, "order": 3, "image_group": "main"},
     {"id": "main_effect", "name": "次图-效果", "description": "核心功效 + 使用收益", "enabled": True, "order": 4, "image_group": "main"},
     {"id": "main_usage_scene", "name": "次图-使用场景", "description": "目标人群 + 生活场景", "enabled": True, "order": 5, "image_group": "main"},
+]
+
+
+CAMPAIGN_MODULES = [
     {"id": "campaign_white_bg", "name": "活动白底图", "description": "白底商品 + 促销角标", "enabled": True, "order": 1, "image_group": "campaign"},
     {"id": "campaign_hero_selling_point", "name": "活动首图", "description": "产品图 + 核心卖点 + 促销利益点", "enabled": True, "order": 2, "image_group": "campaign"},
     {"id": "campaign_ingredient", "name": "活动次图-成分", "description": "核心成分 + 活动氛围", "enabled": True, "order": 3, "image_group": "campaign"},
     {"id": "campaign_effect", "name": "活动次图-效果", "description": "核心功效 + 促销转化", "enabled": True, "order": 4, "image_group": "campaign"},
     {"id": "campaign_usage_scene", "name": "活动次图-使用场景", "description": "使用场景 + 活动元素", "enabled": True, "order": 5, "image_group": "campaign"},
+]
+
+
+STANDARD_DETAIL_MODULES = [
     {"id": "hero", "name": "详情首图", "description": "产品大图 + 核心卖点", "enabled": True, "order": 1, "image_group": "detail"},
     {"id": "brand_qualification", "name": "品牌与资质背书", "description": "品牌背景与权威认证", "enabled": True, "order": 2, "image_group": "detail"},
     {"id": "research_strength", "name": "研发实力", "description": "研发流程 / 真人测试 / 科学配方", "enabled": True, "order": 3, "image_group": "detail"},
@@ -41,6 +49,60 @@ DEFAULT_MODULES = [
     {"id": "ingredient_overview", "name": "成分总览", "description": "整体成分体系 + 配方逻辑", "enabled": True, "order": 8, "image_group": "detail"},
     {"id": "usage", "name": "使用方法", "description": "商品怎么用", "enabled": True, "order": 9, "image_group": "detail"},
     {"id": "product_info", "name": "产品信息", "description": "产品基础信息 / 参数 / 成分说明", "enabled": True, "order": 10, "image_group": "detail"},
+]
+
+
+EVIDENCE_CHAIN_DETAIL_MODULES = [
+    {"id": "detail_ec_hero", "name": "首屏爆点", "description": "产品大图 + 核心功效 + 可信卖点标签", "enabled": True, "order": 1, "image_group": "detail"},
+    {"id": "detail_ec_pain_matrix", "name": "痛点放大", "description": "用户痛点 / 局部问题 / 代入感", "enabled": True, "order": 2, "image_group": "detail"},
+    {"id": "detail_ec_solution", "name": "产品解决方案", "description": "产品方案 + 核心成分 / 质地展开", "enabled": True, "order": 3, "image_group": "detail"},
+    {"id": "detail_ec_competitor_comparison", "name": "差评与竞品对比", "description": "普通同类产品不足 + 本品差异化方案", "enabled": True, "order": 4, "image_group": "detail"},
+    {"id": "detail_ec_real_trial", "name": "真人实测引入", "description": "真人使用场景 + 状态变化期待", "enabled": True, "order": 5, "image_group": "detail"},
+    {"id": "detail_ec_effect_validation", "name": "效果对比验证", "description": "局部前后对比 + 数据 / 趋势证明", "enabled": True, "order": 6, "image_group": "detail"},
+    {"id": "detail_ec_research_system", "name": "研发体系背书", "description": "研发流程 / 检测体系 / 配方可信度", "enabled": True, "order": 7, "image_group": "detail"},
+    {"id": "detail_ec_ingredient_1_mechanism", "name": "核心成分一机制", "description": "第 1 核心成分 + 消费者可理解作用", "enabled": True, "order": 8, "image_group": "detail"},
+    {"id": "detail_ec_ingredient_1_proof", "name": "核心成分一证明", "description": "成分配比 / 稳定性 / 肤感或测试依据", "enabled": True, "order": 9, "image_group": "detail"},
+    {"id": "detail_ec_ingredient_2_mechanism", "name": "核心成分二机制", "description": "第 2 核心成分 + 辅助护理逻辑", "enabled": True, "order": 10, "image_group": "detail"},
+    {"id": "detail_ec_auxiliary_mechanism", "name": "辅助功效机制", "description": "从资料中选择第二层购买理由，不固定功效", "enabled": True, "order": 11, "image_group": "detail"},
+    {"id": "detail_ec_auxiliary_validation", "name": "辅助功效验证", "description": "辅助功效测试 / 对比 / 用户感受证明", "enabled": True, "order": 12, "image_group": "detail"},
+    {"id": "detail_ec_real_feedback", "name": "真人反馈合集", "description": "真人反馈 / 局部对比 / 使用感合集", "enabled": True, "order": 13, "image_group": "detail"},
+    {"id": "detail_ec_texture", "name": "质地与肤感展示", "description": "质地特写 + 延展 / 吸收 / 清爽度", "enabled": True, "order": 14, "image_group": "detail"},
+    {"id": "detail_ec_brand_sensory", "name": "品牌感与情绪价值", "description": "品牌理念 / 香氛 / 原料来源 / 使用仪式感", "enabled": True, "order": 15, "image_group": "detail"},
+    {"id": "detail_ec_usage", "name": "使用方法", "description": "3-4 步正确使用流程", "enabled": True, "order": 16, "image_group": "detail"},
+]
+
+
+DEFAULT_DETAIL_LAYOUT_ID = "detail_evidence_chain_16"
+
+
+DETAIL_LAYOUTS = [
+    {
+        "id": "detail_evidence_chain_16",
+        "name": "证据链长图结构",
+        "description": "16 屏长图，先痛点和方案，再用成分、实验、真人反馈和使用方法完成说服。",
+        "modules": EVIDENCE_CHAIN_DETAIL_MODULES,
+    },
+    {
+        "id": "detail_standard_conversion_10",
+        "name": "标准转化结构",
+        "description": "当前 10 屏结构，适合更短的常规详情页。",
+        "modules": STANDARD_DETAIL_MODULES,
+    },
+]
+
+
+DEFAULT_MODULES = [
+    *MAIN_MODULES,
+    *CAMPAIGN_MODULES,
+    *EVIDENCE_CHAIN_DETAIL_MODULES,
+]
+
+
+ALL_MODULES = [
+    *MAIN_MODULES,
+    *CAMPAIGN_MODULES,
+    *EVIDENCE_CHAIN_DETAIL_MODULES,
+    *STANDARD_DETAIL_MODULES,
 ]
 
 
@@ -188,25 +250,4 @@ STYLE_OPTIONS = [
 ]
 
 
-DEMO_IMAGE_URLS = {
-    "main_white_bg": "/assets/generated-cica-asset-sheet.png",
-    "main_hero_selling_point": "/assets/generated-cica-asset-sheet.png",
-    "main_ingredient": "/assets/generated-cica-asset-sheet.png",
-    "main_effect": "/assets/generated-cica-asset-sheet.png",
-    "main_usage_scene": "/assets/generated-cica-asset-sheet.png",
-    "campaign_white_bg": "/assets/generated-cica-asset-sheet.png",
-    "campaign_hero_selling_point": "/assets/generated-cica-asset-sheet.png",
-    "campaign_ingredient": "/assets/generated-cica-asset-sheet.png",
-    "campaign_effect": "/assets/generated-cica-asset-sheet.png",
-    "campaign_usage_scene": "/assets/generated-cica-asset-sheet.png",
-    "hero": "/assets/generated-cica-asset-sheet.png",
-    "brand_qualification": "/assets/generated-cica-asset-sheet.png",
-    "research_strength": "/assets/generated-cica-asset-sheet.png",
-    "pain_scene": "/assets/generated-cica-asset-sheet.png",
-    "effect_comparison": "/assets/generated-cica-asset-sheet.png",
-    "competitor_comparison": "/assets/generated-cica-asset-sheet.png",
-    "product_showcase": "/assets/generated-cica-asset-sheet.png",
-    "ingredient_overview": "/assets/generated-cica-asset-sheet.png",
-    "usage": "/assets/generated-cica-asset-sheet.png",
-    "product_info": "/assets/generated-cica-asset-sheet.png",
-}
+DEMO_IMAGE_URLS = {module["id"]: "/assets/generated-cica-asset-sheet.png" for module in ALL_MODULES}

@@ -60,7 +60,7 @@ export function StyleStep({
     <>
       <section className="panel mainPanel fullPanel">
         <div className="sectionTitle">
-          <span>2</span>
+          <span>3</span>
           <div>
             <h2>选择风格</h2>
             <p>品类由 AI 根据上传资料识别，可选择固定风格，也可以让 Gemini 3.1 Pro 根据产品规划独立视觉风格。</p>
@@ -227,7 +227,7 @@ export function StyleStep({
           上一步
         </button>
         <button className="primaryButton" onClick={onNext}>
-          下一步：确认信息
+          下一步：选择模块
         </button>
       </footer>
     </>

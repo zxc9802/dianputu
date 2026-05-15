@@ -14,7 +14,7 @@ from urllib.parse import quote
 from uuid import uuid4
 
 from app.core.config import ImageGenerationSettings, ModelSettings, get_model_settings
-from app.demo_data import DEFAULT_MODULES, DEMO_IMAGE_URLS, STYLE_OPTIONS
+from app.demo_data import ALL_MODULES, DEFAULT_DETAIL_LAYOUT_ID, DEFAULT_MODULES, DEMO_IMAGE_URLS, DETAIL_LAYOUTS, STYLE_OPTIONS
 from app.services.compliance_checker import ComplianceProvider, ModelComplianceProvider, check_image_items, check_text_items
 from app.services.image_model import call_image_edit_model, call_image_model
 from app.services.language_renderer import (
@@ -268,7 +268,34 @@ def uploaded_material_from_payload(payload: Any) -> UploadedMaterial:
     )
 
 
-def build_material_analysis_messages(materials: list[UploadedMaterial]) -> list[dict[str, Any]]:
+def _detail_layout_analysis_guide(detail_layout_id: str | None) -> str:
+    layout_id = detail_layout_id or DEFAULT_DETAIL_LAYOUT_ID
+    if layout_id == "detail_standard_conversion_10":
+        return (
+            "当前详情图排版结构：标准转化结构（10 屏）。"
+            "请按 详情首图、品牌与资质背书、研发实力、痛点场景、效果对比、竞品对比、产品大图强化、成分总览、使用方法、产品信息 拆解资料。"
+            "detail_layout_brief 需要输出 layout_id、screen_count、modules、missing_evidence。"
+            "modules 必须是 10 个对象，顺序对应当前结构，每项包含 module_id、module_name、page_task、required_content；"
+            "required_content 必须写成可直接用于该屏生成的 2-5 条中文信息。"
+            "没有上传检测报告、说明书或真人反馈时，要基于产品主图和已识别信息做谨慎 AI 补全，不能留空，也不能编造真实机构、编号、头像昵称或绝对化医疗功效。"
+        )
+    return (
+        "当前详情图排版结构：证据链长图结构（16 屏，默认）。"
+        "请按以下模块拆解资料：1 首屏爆点、2 痛点放大、3 产品解决方案、4 差评与竞品对比、5 真人实测引入、"
+        "6 效果对比验证、7 研发体系背书、8 核心成分一机制、9 核心成分一证明、10 核心成分二机制、"
+        "11 辅助功效机制、12 辅助功效验证、13 真人反馈合集、14 质地与肤感展示、15 品牌感与情绪价值、16 使用方法。"
+        "第 11、12 屏必须是通用辅助购买理由，不要固定写成任何预设单一功效；应从资料中挑选第二层最有转化力的功效或体验。"
+        "detail_layout_brief 需要输出 layout_id、screen_count、modules、selected_auxiliary_effect、competitor_comparison、missing_evidence。"
+        "modules 必须是 16 个对象，顺序对应当前结构，每项包含 module_id、module_name、page_task、required_content；"
+        "module_id 顺序必须是：detail_ec_hero, detail_ec_pain_matrix, detail_ec_solution, detail_ec_competitor_comparison, detail_ec_real_trial, "
+        "detail_ec_effect_validation, detail_ec_research_system, detail_ec_ingredient_1_mechanism, detail_ec_ingredient_1_proof, detail_ec_ingredient_2_mechanism, "
+        "detail_ec_auxiliary_mechanism, detail_ec_auxiliary_validation, detail_ec_real_feedback, detail_ec_texture, detail_ec_brand_sensory, detail_ec_usage。"
+        "required_content 必须写成可直接用于该屏生成的 2-5 条中文信息。"
+        "没有上传检测报告、说明书或真人反馈时，要基于产品主图和已识别信息做谨慎 AI 补全，不能留空，也不能编造真实机构、编号、头像昵称或绝对化医疗功效。"
+    )
+
+
+def build_material_analysis_messages(materials: list[UploadedMaterial], detail_layout_id: str | None = None) -> list[dict[str, Any]]:
     from app.services.file_parser import parse_document
 
     file_lines = "\n".join(
@@ -281,7 +308,9 @@ def build_material_analysis_messages(materials: list[UploadedMaterial]) -> list[
         "必须优先提炼：1) 可作为购买理由的核心卖点；2) 有数据或实验依据的功效点；3) 可用于权威背书的报告/资质/实验室信息；"
         "4) 需要谨慎表达或不能直接宣传的内容。"
         "必须只输出 JSON，不要输出解释文字。字段包括：product_name, category, spec, "
-        "core_selling_points, functions, ingredients, target_users, usage_method, authority_assets, effect_claims, material_highlights。"
+        "core_selling_points, functions, ingredients, target_users, usage_method, authority_assets, effect_claims, material_highlights, cross_image_brief, detail_layout_brief。"
+        f"{_detail_layout_analysis_guide(detail_layout_id)}"
+        "cross_image_brief 用于把新分支拆解结果可同步影响主图/活动图，字段包括 main_image_selling_points、campaign_selling_points、visual_evidence、avoid_claims。"
         "All JSON string values must be written in Simplified Chinese. Translate Korean, Japanese, English, or any other source language into natural zh-CN e-commerce copy before returning JSON."
         "ingredients 必须是按详情页展示优先级排序的数组，每项形如 {\"name\":\"成分名\",\"benefit\":\"一句消费者能理解的温和作用\"}；"
         "优先选择最值得单独上图讲解的 3 个核心成分，benefit 不能写成药品疗效或治疗承诺。"
@@ -427,9 +456,220 @@ def _effect_claims(value: Any) -> list[dict[str, str]]:
     return normalized
 
 
-def normalize_product_info_from_model(raw: str) -> dict[str, Any]:
-    data = _extract_json_object(raw) or {}
+def _dedupe_strings(items: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        text = str(item).strip()
+        if not text or text in seen:
+            continue
+        deduped.append(text)
+        seen.add(text)
+    return deduped
+
+
+def _loose_string_items(value: Any) -> list[str]:
+    if isinstance(value, list):
+        items: list[str] = []
+        for item in value:
+            items.extend(_loose_string_items(item))
+        return _dedupe_strings(items)
+    if isinstance(value, dict):
+        preferred_keys = (
+            "required_content",
+            "manual_notes",
+            "page_task",
+            "headline_direction",
+            "primary_visual",
+            "focus",
+            "content",
+            "summary",
+        )
+        items: list[str] = []
+        for key in preferred_keys:
+            if key in value:
+                items.extend(_loose_string_items(value.get(key)))
+        if not items:
+            items.extend(str(item).strip() for item in value.values() if isinstance(item, str) and item.strip())
+        return _dedupe_strings(items)
+    if isinstance(value, str) and value.strip():
+        return [item.strip() for item in re.split(r"[/、,\n]", value) if item.strip()]
+    return []
+
+
+def _detail_layout_modules_for(layout_id: str | None) -> list[dict[str, Any]]:
+    normalized_layout_id = layout_id or DEFAULT_DETAIL_LAYOUT_ID
+    for layout in DETAIL_LAYOUTS:
+        if layout.get("id") == normalized_layout_id:
+            return [dict(module) for module in layout.get("modules", [])]
+    return [dict(module) for module in DETAIL_LAYOUTS[0].get("modules", [])]
+
+
+def _detail_layout_id_for(raw_layout_id: Any, requested_layout_id: str | None) -> str:
+    candidate = str(raw_layout_id or requested_layout_id or DEFAULT_DETAIL_LAYOUT_ID).strip()
+    return candidate if any(layout.get("id") == candidate for layout in DETAIL_LAYOUTS) else DEFAULT_DETAIL_LAYOUT_ID
+
+
+def _module_label(module: dict[str, Any]) -> str:
+    return f"第 {module.get('order')} 屏：{module.get('name')}" if module.get("order") else str(module.get("name") or module.get("id"))
+
+
+def _module_match(module: dict[str, Any], item: dict[str, Any]) -> bool:
+    module_id = str(module.get("id", "")).strip()
+    module_name = str(module.get("name", "")).strip()
+    module_order = str(module.get("order", "")).strip()
+    candidates = {
+        str(item.get("module_id", "")).strip(),
+        str(item.get("id", "")).strip(),
+        str(item.get("module_name", "")).strip(),
+        str(item.get("name", "")).strip(),
+        str(item.get("screen", "")).strip(),
+        str(item.get("order", "")).strip(),
+    }
+    return module_id in candidates or module_name in candidates or module_order in candidates or _module_label(module) in candidates
+
+
+def _existing_module_for(brief: dict[str, Any], module: dict[str, Any]) -> dict[str, Any]:
+    modules = brief.get("modules")
+    if not isinstance(modules, list):
+        return {}
+    for item in modules:
+        if isinstance(item, dict) and _module_match(module, item):
+            return item
+    return {}
+
+
+def _module_focus_items(brief: dict[str, Any], module: dict[str, Any]) -> list[str]:
+    focus = brief.get("module_focus")
+    module_id = str(module.get("id", "")).strip()
+    module_name = str(module.get("name", "")).strip()
+    module_order = str(module.get("order", "")).strip()
+    if isinstance(focus, dict):
+        keys = [
+            module_id,
+            module_name,
+            _module_label(module),
+            module_order,
+            f"第 {module_order} 屏",
+            f"第{module_order}屏",
+        ]
+        for key in keys:
+            if key in focus:
+                return _loose_string_items(focus.get(key))
+    if isinstance(focus, list):
+        for item in focus:
+            if isinstance(item, dict) and _module_match(module, item):
+                return _loose_string_items(item)
+        order = int(module.get("order") or 0)
+        if 1 <= order <= len(focus):
+            return _loose_string_items(focus[order - 1])
+    return []
+
+
+def _ingredient_lines(info: dict[str, Any]) -> list[str]:
+    ingredients = info.get("ingredients") if isinstance(info.get("ingredients"), list) else []
+    return [
+        f"{item.get('name')}：{item.get('benefit')}"
+        for item in ingredients
+        if isinstance(item, dict) and str(item.get("name", "")).strip()
+    ]
+
+
+def _effect_lines(info: dict[str, Any]) -> list[str]:
+    claims = info.get("effect_claims") if isinstance(info.get("effect_claims"), list) else []
+    lines: list[str] = []
+    for item in claims:
+        if not isinstance(item, dict):
+            continue
+        claim = str(item.get("claim", "")).strip()
+        value = str(item.get("value", "")).strip()
+        if claim:
+            lines.append(f"{claim} {value}".strip())
+    return lines
+
+
+def _detail_module_fallback_items(info: dict[str, Any], module: dict[str, Any]) -> list[str]:
+    module_id = str(module.get("id", ""))
+    product_name = str(info.get("product_name") or "").strip()
+    category = str(info.get("category") or "").strip()
+    product_anchor = product_name or category or "当前护肤产品"
+    selling = _string_list(info.get("core_selling_points"), []) or _string_list(info.get("functions"), []) or [f"{product_anchor} 的核心护理卖点"]
+    functions = _string_list(info.get("functions"), []) or selling
+    users = _string_list(info.get("target_users"), []) or ["日常护肤人群"]
+    highlights = _string_list(info.get("material_highlights"), []) or selling
+    authority = _string_list(info.get("authority_assets"), []) or ["没有上传检测报告时，仅做研发流程和配方可信感表达，不编造真实机构或编号"]
+    ingredients = _ingredient_lines(info) or ["基于产品图和品类识别核心护理成分方向"]
+    effects = _effect_lines(info) or ["使用体验型表达，不冒充真实测试数据"]
+    usage = _string_list(info.get("usage_method"), []) or ["洁面后取适量使用", "轻拍或按摩至吸收"]
+    brief = info.get("detail_layout_brief") if isinstance(info.get("detail_layout_brief"), dict) else {}
+    auxiliary = str(brief.get("selected_auxiliary_effect") or "").strip() or (functions[1] if len(functions) > 1 else functions[0])
+    competitor = str(brief.get("competitor_comparison") or "").strip() or "普通同类产品常见厚重、黏腻或说服力不足，本品突出更清爽、更贴合目标人群的方案"
+
+    mapping: dict[str, list[str]] = {
+        "hero": [product_anchor, *selling[:2], *highlights[:1]],
+        "brand_qualification": [*highlights[:2], *authority[:2]],
+        "research_strength": authority[:3],
+        "pain_scene": [*users[:2], *functions[:2]],
+        "effect_comparison": effects[:3],
+        "competitor_comparison": [competitor, *selling[:2]],
+        "product_showcase": [product_anchor, *selling[:2], *functions[:2]],
+        "ingredient_overview": ingredients[:3],
+        "usage": usage[:4],
+        "product_info": [product_anchor, category or "护肤品", *usage[:2]],
+        "detail_ec_hero": [product_anchor, *selling[:2], *highlights[:1]],
+        "detail_ec_pain_matrix": [*users[:2], *functions[:2]],
+        "detail_ec_solution": [*selling[:2], *functions[:2], *ingredients[:2]],
+        "detail_ec_competitor_comparison": [competitor, *selling[:2]],
+        "detail_ec_real_trial": [*users[:2], "没有真人素材时，用泛化真人使用场景表达，不编造具体身份"],
+        "detail_ec_effect_validation": effects[:3],
+        "detail_ec_research_system": authority[:3],
+        "detail_ec_ingredient_1_mechanism": ingredients[:1],
+        "detail_ec_ingredient_1_proof": [*(ingredients[:1]), *highlights[:2]],
+        "detail_ec_ingredient_2_mechanism": (ingredients[1:2] or ingredients[:1]),
+        "detail_ec_auxiliary_mechanism": [auxiliary, *functions[:2], *highlights[:1]],
+        "detail_ec_auxiliary_validation": [auxiliary, *effects[:2], "没有真实数据时使用体验趋势，不冒充测试结论"],
+        "detail_ec_real_feedback": [*effects[:2], "没有真人反馈时只写泛化使用感方向，不编造头像、昵称或日期"],
+        "detail_ec_texture": [*highlights[:2], "根据产品图表达质地、延展、吸收或清爽度"],
+        "detail_ec_brand_sensory": [*highlights[:2], "根据包装和产品调性补充品牌感与使用仪式感"],
+        "detail_ec_usage": usage[:4],
+    }
+    return _dedupe_strings(mapping.get(module_id, [str(module.get("description") or ""), *selling[:2]]))[:6]
+
+
+def _normalize_detail_layout_brief(value: Any, info: dict[str, Any], detail_layout_id: str | None) -> dict[str, Any]:
+    brief = value if isinstance(value, dict) else {}
+    layout_id = _detail_layout_id_for(brief.get("layout_id"), detail_layout_id)
+    layout_modules = _detail_layout_modules_for(layout_id)
+    modules: list[dict[str, Any]] = []
+    for module in layout_modules:
+        existing = _existing_module_for(brief, module)
+        required_content = (
+            _loose_string_items(existing.get("required_content"))
+            or _module_focus_items(brief, module)
+            or _detail_module_fallback_items({**info, "detail_layout_brief": brief}, module)
+        )
+        normalized_module = {
+            "module_id": str(module.get("id")),
+            "module_name": str(existing.get("module_name") or existing.get("name") or _module_label(module)),
+            "page_task": str(existing.get("page_task") or module.get("description") or "").strip(),
+            "required_content": required_content[:6],
+        }
+        for key in ("headline_direction", "primary_visual", "manual_notes", "forbidden_content", "data_source_note", "compliance_boundary"):
+            if existing.get(key):
+                normalized_module[key] = existing.get(key)
+        modules.append(normalized_module)
+
     return {
+        **brief,
+        "layout_id": layout_id,
+        "screen_count": len(layout_modules),
+        "modules": modules,
+    }
+
+
+def normalize_product_info_from_model(raw: str, detail_layout_id: str | None = None) -> dict[str, Any]:
+    data = _extract_json_object(raw) or {}
+    info = {
         "product_name": str(data.get("product_name") or "").strip(),
         "category": str(data.get("category") or "").strip(),
         "spec": str(data.get("spec") or "").strip(),
@@ -441,8 +681,11 @@ def normalize_product_info_from_model(raw: str) -> dict[str, Any]:
         "authority_assets": _string_list(data.get("authority_assets"), []),
         "effect_claims": _effect_claims(data.get("effect_claims")),
         "material_highlights": _string_list(data.get("material_highlights"), [])[:6],
+        "cross_image_brief": data.get("cross_image_brief") if isinstance(data.get("cross_image_brief"), dict) else {},
         "confirmation_status": "pending",
     }
+    info["detail_layout_brief"] = _normalize_detail_layout_brief(data.get("detail_layout_brief"), info, detail_layout_id)
+    return info
 
 
 def normalize_style_plan_from_model(raw: str) -> dict[str, Any]:
@@ -584,6 +827,7 @@ def create_demo_project() -> dict[str, Any]:
         "name": "新建商品详情页",
         "product_category": "待 AI 解析",
         "style_id": "space_repair",
+        "detail_layout_id": DEFAULT_DETAIL_LAYOUT_ID,
         "status": "draft",
         "created_at": now,
         "updated_at": now,
@@ -608,7 +852,7 @@ async def analyze_product_materials(raw_text: str | None = None) -> dict[str, An
     return {"source": "error", "error": "text model is not configured or no raw text was provided"}
 
 
-async def analyze_uploaded_materials(materials: list[UploadedMaterial]) -> dict[str, Any]:
+async def analyze_uploaded_materials(materials: list[UploadedMaterial], detail_layout_id: str | None = None) -> dict[str, Any]:
     settings = get_model_settings()
     if not materials:
         return {"source": "error", "error": "no materials were uploaded"}
@@ -644,13 +888,13 @@ async def analyze_uploaded_materials(materials: list[UploadedMaterial]) -> dict[
                     )
             else:
                 model_materials.append(material)
-        content = await call_text_model_with_retry(settings, build_material_analysis_messages(model_materials))
+        content = await call_text_model_with_retry(settings, build_material_analysis_messages(model_materials, detail_layout_id=detail_layout_id))
     except Exception as exc:
         return {"source": "error", "error": str(exc)}
     if not content:
         return {"source": "error", "error": "text model returned empty content"}
 
-    return {"source": "model", "product_info": normalize_product_info_from_model(content), "raw": content, "uploaded_materials": uploaded_materials}
+    return {"source": "model", "product_info": normalize_product_info_from_model(content, detail_layout_id=detail_layout_id), "raw": content, "uploaded_materials": uploaded_materials}
 
 
 async def plan_custom_style(
@@ -1073,10 +1317,11 @@ async def generate_detail_images(
     layered_text: bool = False,
     target_language: str | None = None,
     prompt_branch: str | None = None,
+    detail_layout_id: str | None = None,
 ) -> dict[str, Any]:
     settings = get_model_settings()
     image_settings = resolve_image_settings(settings, image_model_id)
-    enabled_modules = [module for module in DEFAULT_MODULES if module["id"] in module_ids]
+    enabled_modules = [module for module in ALL_MODULES if module["id"] in module_ids]
     style = next((item for item in STYLE_OPTIONS if item["id"] == style_id), STYLE_OPTIONS[0])
     normalized_generation_mode = generation_mode or REFERENCE_GENERATE_MODE
     missing_white_background_reference = [
@@ -1335,6 +1580,7 @@ try:
 
     class AnalyzeMaterialsRequest(BaseModel):
         materials: list[MaterialPayload] = Field(default_factory=list)
+        detail_layout_id: str | None = DEFAULT_DETAIL_LAYOUT_ID
 
     class GenerateRequest(BaseModel):
         module_ids: list[str] = Field(default_factory=lambda: [module["id"] for module in DEFAULT_MODULES])
@@ -1351,6 +1597,7 @@ try:
         layered_text: bool = False
         target_language: str | None = None
         prompt_branch: str | None = None
+        detail_layout_id: str | None = DEFAULT_DETAIL_LAYOUT_ID
 
     class EditImageRequest(BaseModel):
         image_url: str
@@ -1375,6 +1622,7 @@ try:
             "layered_text": request.layered_text,
             "target_language": request.target_language,
             "prompt_branch": request.prompt_branch,
+            "detail_layout_id": request.detail_layout_id,
         }
 
     def _edit_payload_from_request(request: EditImageRequest) -> dict[str, Any]:
@@ -1417,6 +1665,7 @@ try:
                 layered_text=bool(payload.get("layered_text")),
                 target_language=payload.get("target_language"),
                 prompt_branch=payload.get("prompt_branch"),
+                detail_layout_id=payload.get("detail_layout_id"),
             )
             job.update(
                 {
@@ -1523,11 +1772,17 @@ try:
 
     @router.post("")
     async def create_project() -> dict[str, Any]:
-        return {"project": create_demo_project(), "styles": STYLE_OPTIONS, "modules": DEFAULT_MODULES}
+        return {
+            "project": create_demo_project(),
+            "styles": STYLE_OPTIONS,
+            "modules": DEFAULT_MODULES,
+            "detail_layouts": DETAIL_LAYOUTS,
+            "default_detail_layout_id": DEFAULT_DETAIL_LAYOUT_ID,
+        }
 
     @router.get("/defaults")
     async def get_project_defaults() -> dict[str, Any]:
-        return {"styles": STYLE_OPTIONS, "modules": DEFAULT_MODULES}
+        return {"styles": STYLE_OPTIONS, "modules": DEFAULT_MODULES, "detail_layouts": DETAIL_LAYOUTS, "default_detail_layout_id": DEFAULT_DETAIL_LAYOUT_ID}
 
     @router.post("/analyze")
     async def analyze_project(request: AnalyzeRequest) -> dict[str, Any]:
@@ -1536,7 +1791,7 @@ try:
     @router.post("/analyze-materials")
     async def analyze_project_materials(request: AnalyzeMaterialsRequest) -> dict[str, Any]:
         materials = [uploaded_material_from_payload(payload) for payload in request.materials[:8]]
-        return await analyze_uploaded_materials(materials)
+        return await analyze_uploaded_materials(materials, detail_layout_id=request.detail_layout_id)
 
     @router.post("/plan-style")
     async def plan_project_style(request: PlanStyleRequest) -> dict[str, Any]:
@@ -1569,6 +1824,7 @@ try:
             layered_text=request.layered_text,
             target_language=request.target_language,
             prompt_branch=request.prompt_branch,
+            detail_layout_id=request.detail_layout_id,
         )
 
     @router.post("/generate/jobs")

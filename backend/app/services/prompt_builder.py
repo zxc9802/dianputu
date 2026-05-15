@@ -380,12 +380,95 @@ def _limited_numbered_lines(value: Any, fallback: str, limit: int) -> str:
     return _numbered_lines(_string_items(value)[:limit], fallback)
 
 
+def _format_brief_object(value: Any, limit: int = 6) -> str:
+    if not isinstance(value, dict):
+        return ""
+    lines: list[str] = []
+    for key, item in value.items():
+        if len(lines) >= limit:
+            break
+        if key == "modules" and isinstance(item, list):
+            text = f"已按屏拆解 {len(item)} 屏，当前生成只参考【当前屏专属信息】"
+        elif isinstance(item, list):
+            text = " / ".join(str(entry).strip() for entry in item[:4] if str(entry).strip())
+        elif isinstance(item, dict):
+            text = " / ".join(f"{child_key}:{child_value}" for child_key, child_value in item.items() if str(child_value).strip())
+        else:
+            text = str(item).strip()
+        if text:
+            lines.append(f"{key}：{text}")
+    return _numbered_lines(lines, "资料拆解待补充")
+
+
+def _layout_brief_lines(info: dict[str, Any]) -> list[str]:
+    lines: list[str] = []
+    detail_brief = _format_brief_object(info.get("detail_layout_brief"))
+    if detail_brief:
+        lines.extend(["- 当前详情结构拆解：", detail_brief])
+    cross_brief = _format_brief_object(info.get("cross_image_brief"), limit=4)
+    if cross_brief:
+        lines.extend(["- 跨图共用卖点（可同步影响主图/活动图）：", cross_brief])
+    return lines
+
+
+def _detail_layout_module_items(info: dict[str, Any]) -> list[dict[str, Any]]:
+    detail_brief = info.get("detail_layout_brief")
+    if not isinstance(detail_brief, dict):
+        return []
+    modules = detail_brief.get("modules")
+    if not isinstance(modules, list):
+        return []
+    return [module for module in modules if isinstance(module, dict)]
+
+
+def _current_screen_brief_lines(info: dict[str, Any], module_id: str) -> list[str]:
+    current = next(
+        (module for module in _detail_layout_module_items(info) if str(module.get("module_id")) == module_id),
+        None,
+    )
+    if not current:
+        return []
+
+    lines = ["【当前屏专属信息】"]
+    text_fields = [
+        ("module_name", "屏幕"),
+        ("page_task", "页面任务"),
+        ("headline_direction", "标题方向"),
+        ("primary_visual", "主视觉"),
+        ("data_source_note", "资料来源"),
+        ("compliance_boundary", "合规边界"),
+    ]
+    for key, label in text_fields:
+        text = _text(current.get(key), "")
+        if text:
+            lines.append(f"- {label}：{text}")
+
+    list_fields = [
+        ("required_content", "必须使用内容", 6),
+        ("manual_notes", "用户手填/确认", 6),
+        ("forbidden_content", "禁止内容", 4),
+    ]
+    for key, label, limit in list_fields:
+        items = _string_items(current.get(key))[:limit]
+        if items:
+            lines.extend([f"- {label}：", _numbered_lines(items, "当前屏信息待补充")])
+
+    return lines
+
+
+def _evidence_ingredient_brief(info: dict[str, Any], index: int) -> str:
+    ingredient = _selected_ingredients(info.get("ingredients"))[index]
+    return f"1. 成分：{ingredient['name']}；作用：{ingredient['benefit']}；视觉方向：{_ingredient_visual_direction(ingredient)}"
+
+
 def build_module_specific_brief(product_info: dict[str, Any] | None, module: dict[str, Any]) -> str:
     info = product_info or {}
     module_id = str(module.get("id"))
     base_lines = [
         "【当前模块精简 brief】",
         f"- 产品名称：{_text(info.get('product_name'), '当前护肤产品')}",
+        *_layout_brief_lines(info),
+        *_current_screen_brief_lines(info, module_id),
     ]
 
     if module_id in {"main_white_bg", "campaign_white_bg"}:
@@ -496,6 +579,46 @@ def build_module_specific_brief(product_info: dict[str, Any] | None, module: dic
         return "\n".join([*base_lines, "- 核心卖点：", _limited_numbered_lines(info.get("core_selling_points"), "温和护理", 3), "- 核心功效：", _limited_numbered_lines(info.get("functions"), "补水保湿", 3)])
 
     if module_id == "usage":
+        return "\n".join([*base_lines, "- 使用方法：", _limited_numbered_lines(info.get("usage_method"), "洁面后取适量涂抹", 4)])
+
+    if module_id == "detail_ec_hero":
+        return "\n".join([*base_lines, "- 首屏只使用最强购买理由：", _limited_numbered_lines(info.get("core_selling_points"), "温和护理", 3), "- 可信证据：", _limited_numbered_lines(info.get("material_highlights"), "资料显示产品有可上图卖点", 3)])
+
+    if module_id == "detail_ec_pain_matrix":
+        return "\n".join([*base_lines, "- 目标人群痛点：", _limited_numbered_lines(info.get("target_users"), "日常护肤人群", 4), "- 对应解决方向：", _limited_numbered_lines(info.get("functions"), "补水保湿", 3)])
+
+    if module_id == "detail_ec_solution":
+        return "\n".join([*base_lines, "- 产品方案：", _limited_numbered_lines(info.get("core_selling_points"), "温和护理", 3), "- 方案支撑成分：", _format_ingredients(info.get("ingredients"))])
+
+    if module_id == "detail_ec_competitor_comparison":
+        return "\n".join([*base_lines, "- 差评与竞品对比方向：", _text((info.get("detail_layout_brief") or {}).get("competitor_comparison"), "普通同类产品的常见不足 vs 本品差异化方案"), "- 本品优势：", _limited_numbered_lines(info.get("core_selling_points"), "温和护理", 3)])
+
+    if module_id in {"detail_ec_real_trial", "detail_ec_effect_validation", "detail_ec_real_feedback"}:
+        return "\n".join([*base_lines, "- 效果与反馈证据：", _format_effect_claims(info.get("effect_claims")), "- 用户感受与目标人群：", _limited_numbered_lines(info.get("target_users"), "日常护肤人群", 3)])
+
+    if module_id == "detail_ec_research_system":
+        return "\n".join([*base_lines, "- 研发 / 检测 / 配方可信资料：", _format_authority_assets(info.get("authority_assets"))])
+
+    if module_id == "detail_ec_ingredient_1_mechanism":
+        return "\n".join([*base_lines, "- 本图只解释第 1 个核心成分机制：", _evidence_ingredient_brief(info, 0)])
+
+    if module_id == "detail_ec_ingredient_1_proof":
+        return "\n".join([*base_lines, "- 本图只证明第 1 个核心成分为什么可信：", _evidence_ingredient_brief(info, 0), "- 可引用配比、稳定性、测试或肤感证据：", _limited_numbered_lines(info.get("material_highlights"), "资料显示该成分具有可上图依据", 3)])
+
+    if module_id == "detail_ec_ingredient_2_mechanism":
+        return "\n".join([*base_lines, "- 本图只解释第 2 个核心成分机制：", _evidence_ingredient_brief(info, 1)])
+
+    if module_id in {"detail_ec_auxiliary_mechanism", "detail_ec_auxiliary_validation"}:
+        selected_auxiliary = _text((info.get("detail_layout_brief") or {}).get("selected_auxiliary_effect"), "从资料中选择第二层购买理由")
+        return "\n".join([*base_lines, f"- 辅助功效/体验主题：{selected_auxiliary}", "- 相关功效与资料：", _limited_numbered_lines(info.get("functions"), "日常护理体验", 4), _format_effect_claims(info.get("effect_claims"))])
+
+    if module_id == "detail_ec_texture":
+        return "\n".join([*base_lines, "- 本图只呈现质地与肤感：延展、吸收、清爽度、膜感或滋润度，不新增功效。"])
+
+    if module_id == "detail_ec_brand_sensory":
+        return "\n".join([*base_lines, "- 本图只呈现品牌感、香氛/原料来源/情绪价值和使用仪式感：", _limited_numbered_lines(info.get("material_highlights"), "品牌理念与使用体验", 4)])
+
+    if module_id == "detail_ec_usage":
         return "\n".join([*base_lines, "- 使用方法：", _limited_numbered_lines(info.get("usage_method"), "洁面后取适量涂抹", 4)])
 
     if module_id == "product_info":
@@ -769,6 +892,22 @@ def _detail_product_visibility_rules(module: dict[str, Any]) -> str:
         "research_strength": "产品露出策略：不要出现产品瓶身、包装、商品主图或产品陈列",
         "pain_scene": "产品露出策略：不要出现产品瓶身、包装、商品主图或产品陈列",
         "product_info": "产品露出策略：不要出现产品瓶身、包装、商品主图或产品陈列",
+        "detail_ec_hero": "产品露出策略：必须出现产品",
+        "detail_ec_pain_matrix": "产品露出策略：产品可辅助出现，痛点视觉是主角",
+        "detail_ec_solution": "产品露出策略：必须出现产品",
+        "detail_ec_competitor_comparison": "产品露出策略：产品只能辅助出现",
+        "detail_ec_real_trial": "产品露出策略：产品可辅助出现，真人使用状态是主角",
+        "detail_ec_effect_validation": "产品露出策略：产品只能辅助出现",
+        "detail_ec_research_system": "产品露出策略：不要出现产品瓶身、包装、商品主图或产品陈列",
+        "detail_ec_ingredient_1_mechanism": "产品露出策略：产品可小比例辅助出现，成分机制是主角",
+        "detail_ec_ingredient_1_proof": "产品露出策略：产品可小比例辅助出现，成分证据是主角",
+        "detail_ec_ingredient_2_mechanism": "产品露出策略：产品可小比例辅助出现，成分机制是主角",
+        "detail_ec_auxiliary_mechanism": "产品露出策略：产品可辅助出现，辅助功效机制是主角",
+        "detail_ec_auxiliary_validation": "产品露出策略：产品可辅助出现，辅助功效验证是主角",
+        "detail_ec_real_feedback": "产品露出策略：产品可辅助出现，真人反馈是主角",
+        "detail_ec_texture": "产品露出策略：必须出现产品或质地取样画面",
+        "detail_ec_brand_sensory": "产品露出策略：产品可作为品牌氛围辅助出现",
+        "detail_ec_usage": "产品露出策略：必须出现产品",
     }
     policy = policies.get(module_id)
     if not policy:
@@ -859,6 +998,71 @@ def _detail_conversion_rules(module: dict[str, Any], prompt_branch: str | None =
             "- 产品信息页任务是收口，把产品名称、功效、规格、保质期、产地、成分和使用说明整理成正式说明书。",
             "- 版式参考示例图的米色纸质背景、参数分组、清晰横线和说明书式排版，图片元素少，文字信息完整。",
             "- 用户上传资料和手写信息优先；缺失字段只做安全泛化，不编造产地、保质期、真实备案或检测编号。",
+        ],
+        "detail_ec_hero": [
+            "- 首屏爆点任务是用产品大图、核心功效和可信卖点标签，让用户第一屏就知道为什么继续看。",
+            "- 产品作为主视觉，占画面 35%-50%；标题只打一个强购买理由，搭配 2-4 个证据标签。",
+        ],
+        "detail_ec_pain_matrix": [
+            "- 痛点放大任务是集中呈现目标用户的多个真实困扰，让用户产生代入感。",
+            "- 可用局部肌肤问题、上妆卡粉、干燥紧绷、暗沉粗糙等痛点矩阵，不贩卖焦虑、不丑化人物。",
+        ],
+        "detail_ec_solution": [
+            "- 产品解决方案任务是把痛点转为本品方案，说明产品、核心成分和质地如何协同解决问题。",
+            "- 画面结构建议为产品 + 方案路径 + 关键成分/质地，不做完整成分表。",
+        ],
+        "detail_ec_competitor_comparison": [
+            "- 差评与竞品对比页任务是承接普通同类产品的负面体验，并转化为本品差异化优势。",
+            "- 左侧呈现普通同类产品常见不足，右侧呈现本品更清爽、更可信或更适合目标人群的方案。",
+            "- 不指名真实竞品品牌，不恶意攻击竞品；对比维度控制在 3-5 个。",
+        ],
+        "detail_ec_real_trial": [
+            "- 真人实测引入任务是让用户相信后续效果验证来自真实使用过程。",
+            "- 画面可出现真人使用、时间线、打卡感和状态变化期待，但不制造医疗治疗承诺。",
+        ],
+        "detail_ec_effect_validation": [
+            "- 效果对比验证任务是用局部前后对比、趋势图或数据卡证明核心收益。",
+            "- 数据优先来自资料；无真实数据时使用体验型表达，不冒充测试。",
+        ],
+        "detail_ec_research_system": [
+            "- 研发体系背书任务是证明研发流程、检测体系和配方可信度，不讲品牌门店。",
+            "- 主视觉使用实验室、研究员、仪器、配方记录、检测台和纸质报告局部。",
+        ],
+        "detail_ec_ingredient_1_mechanism": [
+            "- 核心成分一机制任务是讲清楚第 1 核心成分如何服务主要购买理由。",
+            "- 一张图只讲一个成分，不混入其他成分名称、完整成分表或效果数据。",
+        ],
+        "detail_ec_ingredient_1_proof": [
+            "- 核心成分一证明任务是补充该成分的配比、稳定性、肤感或测试依据。",
+            "- 画面更偏证据与可信，不重复上一屏的机制解释。",
+        ],
+        "detail_ec_ingredient_2_mechanism": [
+            "- 核心成分二机制任务是讲清楚第 2 核心成分的辅助护理逻辑。",
+            "- 一张图只讲一个成分，不混入完整成分表或使用步骤。",
+        ],
+        "detail_ec_auxiliary_mechanism": [
+            "- 辅助功效机制任务是从资料中选择第二层购买理由，不固定为任何预设单一功效。",
+            "- 画面要讲清楚这个辅助功效/体验为什么成立，并和主功效形成互补。",
+        ],
+        "detail_ec_auxiliary_validation": [
+            "- 辅助功效验证任务是用测试 / 对比 / 用户感受证明第二层购买理由。",
+            "- 不重复主效果对比页；优先呈现使用体验、趋势或反馈证据。",
+        ],
+        "detail_ec_real_feedback": [
+            "- 真人反馈合集任务是集合真实反馈、局部对比和使用感，增强社交证明。",
+            "- 反馈卡片要克制，不编造头像、昵称、日期或虚假用户评价。",
+        ],
+        "detail_ec_texture": [
+            "- 质地与肤感展示任务是让用户感知延展、吸收、清爽度、膜感或滋润度。",
+            "- 主视觉使用质地特写、涂抹轨迹、微距液滴和肌肤肤感，不新增功效承诺。",
+        ],
+        "detail_ec_brand_sensory": [
+            "- 品牌感与情绪价值任务是补充香氛、原料来源、品牌理念和使用仪式感。",
+            "- 画面更偏高级氛围，但必须服务购买理由，不能变成空泛品牌海报。",
+        ],
+        "detail_ec_usage": [
+            "- 使用方法页任务是降低使用门槛，让用户觉得简单、清楚、容易执行。",
+            "- 控制在 3-4 步，每一步配真实动作，例如取量、点涂、推开、按摩吸收。",
         ],
     }
     if module_id.startswith("ingredient_") and module_id != "ingredient_overview":

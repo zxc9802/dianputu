@@ -23,7 +23,10 @@ assertIncludes("components/UploadStep.tsx", "product-image-upload", "upload step
 assertIncludes("components/UploadStep.tsx", "report-file-upload", "upload step must expose a separate report input");
 assertIncludes("components/UploadStep.tsx", "document-file-upload", "upload step must expose a separate document input");
 assertIncludes("components/UploadStep.tsx", "onAnalyze", "upload step must trigger AI material analysis");
+assertIncludes("components/UploadStep.tsx", "详情图排版结构", "upload step must let users choose the detail layout before analysis");
+assertIncludes("components/UploadStep.tsx", "onDetailLayoutChange", "upload step must propagate detail layout changes");
 assertIncludes("components/UploadStep.tsx", "手动补充信息（可不填）", "upload sidebar must expose optional manual product fields");
+assertIncludes("components/UploadStep.tsx", "productInfoFieldsForDetailLayout(selectedDetailLayoutId)", "upload manual fields must follow the selected detail layout");
 assertIncludes("components/UploadStep.tsx", "onManualFieldChange", "upload sidebar must propagate manual field edits");
 assertIncludes("components/UploadStep.tsx", "manualFieldKeys", "upload sidebar must show which fields are manually prioritized");
 assertNotIncludes("components/StyleStep.tsx", 'id="category"', "style step must not expose a manual category selector");
@@ -37,6 +40,7 @@ assertNotIncludes("app/page.tsx", "onStyleReferenceSelect", "page should not wir
 assertNotIncludes("app/page.tsx", "onStyleFilesAdded", "page should not wire style reference uploads into the style step");
 assertNotIncludes("app/page.tsx", "请先上传并选择风格参考图", "generation should not block on removed style reference mode");
 assertIncludes("lib/api.ts", "analyzeUploadedMaterials", "frontend API must send uploaded materials for AI analysis");
+assertIncludes("lib/api.ts", "detail_layout_id: detailLayoutId", "material analysis must send the selected detail layout id");
 assertNotIncludes("lib/api.ts", "analyzeProductVisual", "frontend API must not use a separate product visual suggestion step");
 assertNotIncludes("lib/api.ts", "/api/projects/analyze-product-visual", "frontend API must not call a separate product visual suggestion endpoint");
 assertIncludes("lib/productInfo.ts", "mergeProductInfoWithManualPriority", "product info helper must preserve manual fields when AI returns data");
@@ -88,6 +92,12 @@ assertIncludes("components/ModulesStep.tsx", "提示词分支", "modules step mu
 assertIncludes("components/ModulesStep.tsx", "提示词优化分支", "prompt branch selector must include the optimized prompt branch");
 assertIncludes("lib/api.ts", "prompt_branch: promptBranch", "frontend generation requests must send the selected prompt branch");
 assertIncludes("app/page.tsx", "selectedPromptBranch", "page must keep selected prompt branch in state");
+assertIncludes("app/page.tsx", "selectedDetailLayoutId", "page must keep selected detail layout in state");
+assertIncludes("app/page.tsx", "detailLayoutId: selectedDetailLayoutId", "page material analysis must use the selected detail layout");
+assertIncludes("app/page.tsx", "applyDetailLayoutToModules", "page must apply selected detail layout to detail modules");
+assertIncludes("lib/constants.ts", 'DEFAULT_DETAIL_LAYOUT_ID = "detail_evidence_chain_16"', "new projects must default to the evidence-chain detail layout");
+assertIncludes("lib/constants.ts", 'id: "detail_ec_auxiliary_mechanism"', "evidence-chain detail layout must include a generic auxiliary mechanism page");
+assertIncludes("lib/constants.ts", 'id: "detail_ec_auxiliary_validation"', "evidence-chain detail layout must include a generic auxiliary validation page");
 assertNotIncludes("components/ModulesStep.tsx", "固定产品合成（推荐）", "fixed product composition should not be presented as the recommended default");
 assertNotIncludes("components/ModulesStep.tsx", "推荐固定产品合成", "fixed product composition help text should not recommend stripping the image into layers by default");
 assertIncludes("app/page.tsx", 'const DEFAULT_GENERATION_MODE: GenerationMode = "reference_generate"', "AI full-image generation should be the default generation mode");
@@ -115,7 +125,13 @@ assertNotIncludes("components/ModulesStep.tsx", "所选模型默认尺寸", "mod
 
 assertIncludes("components/ReviewStep.tsx", "textarea", "review step must allow editing extracted fields");
 assertIncludes("components/ReviewStep.tsx", "onUpdateProductInfo", "review step must propagate edits to page state");
-assertIncludes("components/ReviewStep.tsx", "资料亮点摘要", "review step must show AI-selected material highlights");
+assertIncludes("components/ReviewStep.tsx", "productInfoFieldsForDetailLayout(selectedDetailLayoutId)", "review step fields must follow the selected detail layout");
+assertIncludes("lib/productInfo.ts", "第 16 屏：使用方法", "evidence-chain field config must expose all sixteen detail screens");
+assertIncludes("lib/productInfo.ts", "第 2 屏：痛点放大", "evidence-chain field config must expose pain screen extraction");
+assertIncludes("lib/productInfo.ts", "第 12 屏：辅助功效验证", "evidence-chain field config must expose auxiliary validation screen extraction");
+assertIncludes("lib/productInfo.ts", "detail_module:", "shared product info field config must use per-screen detail module fields");
+assertIncludes("app/page.tsx", "selectedDetailLayoutId={selectedDetailLayoutId}", "review step must receive the selected detail layout");
+assertIncludes("app/page.tsx", "const expandedProductInfo = productInfoWithDetailLayoutFields(mergedProductInfo, selectedDetailLayoutId)", "AI analysis results must be expanded into per-screen detail fields before review");
 assertIncludes("lib/productInfo.ts", "material_highlights", "product info helpers must preserve material highlight summaries");
 assertIncludes("components/ReviewStep.tsx", "confirmedFields", "review step must track field confirmation");
 assertIncludes("components/ReviewStep.tsx", "暂无 AI 提炼结果", "review step must be empty until real AI extraction succeeds");
@@ -171,8 +187,8 @@ assertIncludes("app/page.tsx", "defaultModules", "page must keep the default mod
 assertIncludes("app/page.tsx", "startNewProject", "page must expose a full new-project reset action");
 assertIncludes("app/page.tsx", "setSelectedStyleId(styles[0]?.id ?? DEFAULT_STYLE_ID)", "new project reset must restore the default style instead of copying the previous project style");
 assertIncludes("app/page.tsx", "setSelectedPlatformId(\"tmall\")", "new project reset must restore the default platform instead of copying the previous project platform");
-assertIncludes("app/page.tsx", "setModules(normalizeDetailIngredientModuleOrder(defaultModules.map((module) => ({ ...module }))))", "new project reset must restore default modules instead of copying current module choices");
-assertIncludes("app/page.tsx", "mergeRestoredModules(normalizedDefaultModules, restored.modules)", "restored projects must normalize old detail ingredient ordering");
+assertIncludes("app/page.tsx", "setModules(applyDetailLayoutToModules(defaultModules.map((module) => ({ ...module })), DEFAULT_SELECTED_DETAIL_LAYOUT_ID))", "new project reset must restore default detail layout modules instead of copying current module choices");
+assertIncludes("app/page.tsx", "mergeRestoredModules(applyDetailLayoutToModules(normalizedDefaultModules, restoredDetailLayoutId), restored.modules, restoredDetailLayoutId)", "restored projects must normalize the restored detail layout ordering");
 assertIncludes("app/page.tsx", "const hasOrderChange = normalizedModules.some", "open project state must self-correct stale detail ingredient ordering");
 assertIncludes("lib/projectEnhancements.ts", "normalizeDetailIngredientModuleOrder", "module helpers must keep ingredient overview and ingredient explanation pages together");
 assertIncludes("app/page.tsx", "setPromotionInfo(\"\")", "new project reset must clear campaign promotion text");
@@ -283,6 +299,9 @@ assertIncludes("components/ModulesStep.tsx", "campaign", "modules step must expo
 assertIncludes("components/PreviewStep.tsx", "campaign", "preview step must expose campaign image results");
 assertIncludes("components/ModulesStep.tsx", "disabled={activeProgress.isGenerating}", "generation button must prevent duplicate submissions per image group");
 assertIncludes("app/page.tsx", "runningModuleIds", "page generation progress must track every concurrently running module");
+assertIncludes("app/page.tsx", "onRetry: (module, attempt, retryAttempts, delayMs, errors)", "page generation should surface automatic retry status for transient image model failures");
+assertIncludes("lib/projectEnhancements.ts", "isRetryableImageGenerationError", "image generation retries must only target transient network/server failures");
+assertIncludes("lib/projectEnhancements.ts", "DEFAULT_IMAGE_GENERATION_RETRY_ATTEMPTS = 2", "image generation should retry transient failures twice by default");
 assertIncludes("components/ModulesStep.tsx", "(activeProgress.runningModuleIds ?? []).includes(module.id)", "modules step must show every concurrently running module as generating and tolerate restored progress state");
 assertIncludes("components/PreviewStep.tsx", "(activeProgress.runningModuleIds ?? []).includes(module.id)", "preview step must show every concurrently running module as generating and tolerate restored progress state");
 assertIncludes("app/page.tsx", "targetModuleId", "page generation handler must support a single target module");
@@ -294,6 +313,7 @@ assertIncludes("components/ModulesStep.tsx", "preventDefault", "keyboard module 
 assertIncludes("components/PreviewStep.tsx", "重新生成", "preview step must expose regenerate actions");
 assertNotIncludes("components/PreviewStep.tsx", 'moduleUrl ? "重新生成" : "生成"', "preview directory must not render regenerate buttons");
 assertIncludes("components/PreviewStep.tsx", "directoryDownloadSlot", "preview directory download buttons must use an aligned action slot");
+assertIncludes("components/PreviewStep.tsx", "downloadFilenameForModule(item.module", "detail preview cards must expose per-module download actions for newly added detail screens");
 assertIncludes("lib/api.ts", "target_language: targetLanguage", "frontend generation requests must pass target language for full-image language regeneration");
 assertIncludes("components/PreviewStep.tsx", "languageOptions", "preview step must expose language version choices");
 assertIncludes("components/PreviewStep.tsx", "`生成 ${language.label}`", "preview step must let users generate missing language versions");

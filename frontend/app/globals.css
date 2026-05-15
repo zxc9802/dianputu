@@ -279,6 +279,60 @@ a {
   gap: 18px;
 }
 
+.detailLayoutPanel {
+  margin-bottom: 20px;
+  border: 1px solid rgba(31, 140, 67, 0.2);
+  border-radius: 8px;
+  background: #f8fcf8;
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.detailLayoutPanel h3 {
+  margin: 0 0 4px;
+  font-size: 19px;
+  color: var(--green-950);
+}
+
+.detailLayoutPanel p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.detailLayoutOptions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.detailLayoutOption {
+  min-height: 92px;
+  border: 1px solid rgba(31, 140, 67, 0.2);
+  border-radius: 8px;
+  background: #fff;
+  padding: 14px;
+  text-align: left;
+  display: grid;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.detailLayoutOption.active {
+  border-color: var(--green-700);
+  box-shadow: 0 0 0 3px rgba(31, 140, 67, 0.12);
+}
+
+.detailLayoutOption b {
+  color: var(--green-950);
+}
+
+.detailLayoutOption span {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
 .uploadSlotCard {
   min-height: 310px;
   border: 1px dashed rgba(31, 140, 67, 0.44);
@@ -1788,6 +1842,10 @@ a {
   }
 
   .uploadSlotGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .detailLayoutOptions {
     grid-template-columns: 1fr;
   }
 }
