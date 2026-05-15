@@ -53,6 +53,52 @@ def resolve_image_settings(settings: ModelSettings, image_model_id: str | None) 
     return settings.image_options.get(image_model_id or settings.default_image_option_id, settings.image)
 
 
+def _image_setting_configured(settings: ImageGenerationSettings) -> bool:
+    return bool(settings.api_key or any(alternate.api_key for alternate in settings.retry_alternates))
+
+
+def _image_setting_label(settings: ImageGenerationSettings) -> str:
+    return f"{settings.label} ({settings.model})"
+
+
+async def _call_image_model_with_retry_groups(
+    settings: ImageGenerationSettings,
+    prompt: str,
+    *,
+    image: list[str] | None = None,
+    size: str | None = None,
+) -> tuple[list[str], str]:
+    channels = [settings, *settings.retry_alternates]
+    retry_groups = max(1, settings.retry_groups if settings.retry_alternates else 1)
+    last_error = ""
+
+    for group_index in range(1, retry_groups + 1):
+        for channel in channels:
+            channel_label = _image_setting_label(channel)
+            if not channel.api_key:
+                last_error = f"{channel_label} is not configured"
+                continue
+            try:
+                urls = await call_image_model(channel, prompt, image=image, size=size)
+            except Exception as exc:
+                last_error = f"{channel_label} failed: {exc}"
+                logger.warning(
+                    "image generation channel failed group=%s/%s model=%s error=%s",
+                    group_index,
+                    retry_groups,
+                    channel.model,
+                    exc,
+                )
+                continue
+            if urls:
+                return urls, ""
+            last_error = f"{channel_label} returned empty content"
+
+    if retry_groups > 1:
+        return [], f"{_image_setting_label(settings)} failed after {retry_groups} retry groups; last error: {last_error or 'no configured channel'}"
+    return [], last_error or f"{_image_setting_label(settings)} is not configured"
+
+
 def _cleanup_expired_generation_jobs() -> None:
     """Remove generation jobs older than TTL to prevent memory leaks."""
     now = datetime.now(UTC)
@@ -939,87 +985,57 @@ async def _generate_module_image(
         *(style_reference_images or []),
     ]
     image_settings = resolve_image_settings(settings, image_model_id)
-    image_label = f"{image_settings.label} ({image_settings.model})"
-    primary_error = ""
-    urls: list[str] = []
-    if image_settings.api_key:
-        try:
-            urls = await call_image_model(image_settings, generation_prompt, image=model_reference_images or None, size=request_size)
-        except Exception as primary_exc:
-            primary_error = f"{image_label} failed: {primary_exc}"
-            logger.warning("primary image generation failed %s/%s module=%s error=%s", module_index, total_modules, module["id"], primary_exc)
-    else:
-        primary_error = f"{image_label} is not configured"
+    urls, primary_error = await _call_image_model_with_retry_groups(
+        image_settings,
+        generation_prompt,
+        image=model_reference_images or None,
+        size=request_size,
+    )
 
-    if urls:
+    async def build_generated_image(urls: list[str]) -> dict[str, Any]:
         if fixed_product_mode:
-            try:
-                image_url = await _compose_fixed_product_image_url(
-                    module_id=module_id,
-                    background_url=urls[0],
-                    product_url=reference_images[0],
-                    platform_id=platform_id,
-                )
-            except Exception as composite_exc:
-                logger.warning("fixed product composite failed %s/%s module=%s error=%s", module_index, total_modules, module["id"], composite_exc)
-                return None, f"{module['id']}: fixed product composite failed: {composite_exc}"
-            logger.info("detail image generation done %s/%s module=%s mode=fixed_product_composite", module_index, total_modules, module["id"])
-            if layered_text:
-                layered_image = await build_layered_generated_image(
-                    module=module,
-                    product_info=product_info,
-                    base_url=image_url,
-                    promotion_info=promotion_info,
-                    platform_id=platform_id,
-                )
-                return layered_image, None
-            return {"module_id": module["id"], "url": image_url}, None
-        image_url = await upload_image_url_if_configured(urls[0], f"generated/{module_id}")
-        logger.info("detail image generation done %s/%s module=%s", module_index, total_modules, module["id"])
+            image_url = await _compose_fixed_product_image_url(
+                module_id=module_id,
+                background_url=urls[0],
+                product_url=reference_images[0],
+                platform_id=platform_id,
+            )
+        else:
+            image_url = await upload_image_url_if_configured(urls[0], f"generated/{module_id}")
         if layered_text:
-            layered_image = await build_layered_generated_image(
+            return await build_layered_generated_image(
                 module=module,
                 product_info=product_info,
                 base_url=image_url,
                 promotion_info=promotion_info,
                 platform_id=platform_id,
             )
-            return layered_image, None
-        return {"module_id": module["id"], "url": image_url}, None
+        return {"module_id": module["id"], "url": image_url}
 
-    primary_error = primary_error or f"{image_label} returned empty content"
-    if image_settings.id == settings.image.id and settings.fallback_image.api_key:
-        fallback_label = f"{settings.fallback_image.label} ({settings.fallback_image.model})"
+    if urls:
         try:
-            fallback_urls = await call_image_model(settings.fallback_image, generation_prompt, image=model_reference_images or None, size=request_size)
-        except Exception as fallback_exc:
-            logger.warning("fallback image generation failed %s/%s module=%s error=%s", module_index, total_modules, module["id"], fallback_exc)
-            return None, f"{module['id']}: primary {primary_error}; fallback {fallback_label} failed: {fallback_exc}"
+            image = await build_generated_image(urls)
+        except Exception as composite_exc:
+            logger.warning("fixed product composite failed %s/%s module=%s error=%s", module_index, total_modules, module["id"], composite_exc)
+            return None, f"{module['id']}: fixed product composite failed: {composite_exc}"
+        logger.info("detail image generation done %s/%s module=%s", module_index, total_modules, module["id"])
+        return image, None
+
+    if image_settings.id == settings.image.id and _image_setting_configured(settings.fallback_image):
+        fallback_urls, fallback_error = await _call_image_model_with_retry_groups(
+            settings.fallback_image,
+            generation_prompt,
+            image=model_reference_images or None,
+            size=request_size,
+        )
         if fallback_urls:
-            if fixed_product_mode:
-                try:
-                    image_url = await _compose_fixed_product_image_url(
-                        module_id=module_id,
-                        background_url=fallback_urls[0],
-                        product_url=reference_images[0],
-                        platform_id=platform_id,
-                    )
-                except Exception as composite_exc:
-                    return None, f"{module['id']}: primary {primary_error}; fallback fixed product composite failed: {composite_exc}"
-            else:
-                image_url = await upload_image_url_if_configured(fallback_urls[0], f"generated/{module_id}")
+            try:
+                image = await build_generated_image(fallback_urls)
+            except Exception as composite_exc:
+                return None, f"{module['id']}: primary {primary_error}; fallback fixed product composite failed: {composite_exc}"
             logger.info("detail image generation done %s/%s module=%s source=fallback", module_index, total_modules, module["id"])
-            if layered_text:
-                layered_image = await build_layered_generated_image(
-                    module=module,
-                    product_info=product_info,
-                    base_url=image_url,
-                    promotion_info=promotion_info,
-                    platform_id=platform_id,
-                )
-                return layered_image, None
-            return {"module_id": module["id"], "url": image_url}, None
-        return None, f"{module['id']}: primary {primary_error}; fallback {fallback_label} returned empty content"
+            return image, None
+        return None, f"{module['id']}: primary {primary_error}; fallback {fallback_error}"
 
     return None, f"{module['id']}: {primary_error}"
 
@@ -1063,13 +1079,13 @@ async def generate_detail_images(
 
     generated_images: list[dict[str, Any]] = []
     errors: list[str] = []
-    if not image_settings.api_key and not settings.fallback_image.api_key:
+    if not _image_setting_configured(image_settings) and not _image_setting_configured(settings.fallback_image):
         errors.extend(
             f"{module['id']}: {image_settings.label} ({image_settings.model}) is not configured"
             for module in enabled_modules
             if str(module["id"]) not in WHITE_BACKGROUND_MODULE_IDS
         )
-    if image_settings.api_key or settings.fallback_image.api_key or (reference_images and any(str(module["id"]) in WHITE_BACKGROUND_MODULE_IDS for module in enabled_modules)):
+    if _image_setting_configured(image_settings) or _image_setting_configured(settings.fallback_image) or (reference_images and any(str(module["id"]) in WHITE_BACKGROUND_MODULE_IDS for module in enabled_modules)):
         total_modules = len(enabled_modules)
         results = await asyncio.gather(
             *(

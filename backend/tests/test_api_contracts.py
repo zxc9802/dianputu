@@ -294,6 +294,122 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["images"], [{"module_id": "hero", "url": "https://example.com/fallback.png"}])
         self.assertEqual(calls, ["gpt-image-2-vip", "gpt-image-2-all"])
 
+    async def test_selected_fallback_retries_yunwu_then_backup_for_five_groups(self):
+        calls = []
+        primary = ImageGenerationSettings(
+            id="primary",
+            label="gpt image2(1)",
+            api_key="primary-key",
+            base_url="https://primary.example.com/v1",
+            endpoint_path="/images/generations",
+            model="gpt-image-2-vip",
+            size="2048x2048",
+            n=0,
+        )
+        backup = ImageGenerationSettings(
+            id="fallback_backup",
+            label="gpt image2(2) backup",
+            api_key="backup-key",
+            base_url="https://api-xai.ainaibahub.com/v1",
+            endpoint_path="/images/generations",
+            model="gpt-image-2",
+            size="2048x2048",
+            n=1,
+        )
+        fallback = ImageGenerationSettings(
+            id="fallback",
+            label="gpt image2(2)",
+            api_key="yunwu-key",
+            base_url="https://yunwu.ai/v1",
+            endpoint_path="/images/generations",
+            model="gpt-image-2-all",
+            size="2048x2048",
+            n=1,
+            retry_alternates=(backup,),
+            retry_groups=5,
+        )
+        settings = SimpleNamespace(
+            image=primary,
+            fallback_image=fallback,
+            default_image_option_id="fallback",
+            image_options={"primary": primary, "fallback": fallback},
+        )
+
+        async def fake_call_image_model(settings, prompt, image=None, size=None):
+            calls.append((settings.model, settings.base_url))
+            if len(calls) == 10:
+                return ["https://example.com/backup.png"]
+            return []
+
+        with patch("app.routers.projects.get_model_settings", return_value=settings):
+            with patch("app.routers.projects.call_image_model", new=fake_call_image_model):
+                result = await generate_detail_images(["hero"], "green_repair", image_model_id="fallback")
+
+        self.assertEqual(result["source"], "model")
+        self.assertEqual(result["images"], [{"module_id": "hero", "url": "https://example.com/backup.png"}])
+        self.assertEqual(
+            calls,
+            [
+                ("gpt-image-2-all", "https://yunwu.ai/v1"),
+                ("gpt-image-2", "https://api-xai.ainaibahub.com/v1"),
+            ]
+            * 5,
+        )
+
+    async def test_selected_fallback_reports_error_after_five_retry_groups_fail(self):
+        calls = []
+        backup = ImageGenerationSettings(
+            id="fallback_backup",
+            label="gpt image2(2) backup",
+            api_key="backup-key",
+            base_url="https://api-xai.ainaibahub.com/v1",
+            endpoint_path="/images/generations",
+            model="gpt-image-2",
+            size="2048x2048",
+            n=1,
+        )
+        fallback = ImageGenerationSettings(
+            id="fallback",
+            label="gpt image2(2)",
+            api_key="yunwu-key",
+            base_url="https://yunwu.ai/v1",
+            endpoint_path="/images/generations",
+            model="gpt-image-2-all",
+            size="2048x2048",
+            n=1,
+            retry_alternates=(backup,),
+            retry_groups=5,
+        )
+        settings = SimpleNamespace(
+            image=ImageGenerationSettings(
+                id="primary",
+                label="gpt image2(1)",
+                api_key="primary-key",
+                base_url="https://primary.example.com/v1",
+                endpoint_path="/images/generations",
+                model="gpt-image-2-vip",
+                size="2048x2048",
+                n=0,
+            ),
+            fallback_image=fallback,
+            default_image_option_id="fallback",
+            image_options={"fallback": fallback},
+        )
+
+        async def fake_call_image_model(settings, prompt, image=None, size=None):
+            calls.append(settings.model)
+            raise RuntimeError(f"{settings.model} down")
+
+        with patch("app.routers.projects.get_model_settings", return_value=settings):
+            with patch("app.routers.projects.call_image_model", new=fake_call_image_model):
+                result = await generate_detail_images(["hero"], "green_repair", image_model_id="fallback")
+
+        self.assertEqual(result["source"], "error")
+        self.assertEqual(result["images"], [])
+        self.assertEqual(calls, ["gpt-image-2-all", "gpt-image-2"] * 5)
+        self.assertEqual(len(result["errors"]), 1)
+        self.assertIn("failed after 5 retry groups", result["errors"][0])
+
     async def test_fixed_product_composite_uses_local_product_compositor(self):
         previous_key = environ.get("IMAGE_GENERATION_API_KEY")
         environ["IMAGE_GENERATION_API_KEY"] = "test-key"

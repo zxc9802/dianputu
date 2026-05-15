@@ -32,6 +32,8 @@ class ImageGenerationSettings:
     id: str = "primary"
     label: str = "gpt image2(1)"
     endpoint_path: str = "/images/generations"
+    retry_alternates: tuple["ImageGenerationSettings", ...] = ()
+    retry_groups: int = 1
 
     @property
     def endpoint_url(self) -> str:
@@ -116,6 +118,21 @@ def get_model_settings(env: Mapping[str, str] | None = None, env_file: Path | st
         output_format=_read(source, "IMAGE_GENERATION_OUTPUT_FORMAT", "png"),
         response_format=_read(source, "IMAGE_GENERATION_RESPONSE_FORMAT", "url"),
     )
+    fallback_size = _read(source, "FALLBACK_IMAGE_GENERATION_SIZE", "2048x2048")
+    fallback_backup_image = ImageGenerationSettings(
+        id="fallback_backup",
+        label=_read(source, "FALLBACK_IMAGE_GENERATION_BACKUP_LABEL", "gpt image2(2) backup"),
+        api_key=_read(source, "FALLBACK_IMAGE_GENERATION_BACKUP_API_KEY", ""),
+        base_url=_read(source, "FALLBACK_IMAGE_GENERATION_BACKUP_BASE_URL", "https://api-xai.ainaibahub.com/v1"),
+        endpoint_path=_read(source, "FALLBACK_IMAGE_GENERATION_BACKUP_ENDPOINT_PATH", "/images/generations"),
+        model=_read(source, "FALLBACK_IMAGE_GENERATION_BACKUP_MODEL", "gpt-image-2"),
+        size=_read(source, "FALLBACK_IMAGE_GENERATION_BACKUP_SIZE", fallback_size),
+        n=int(_read(source, "FALLBACK_IMAGE_GENERATION_BACKUP_N", "1")),
+        quality=_read(source, "FALLBACK_IMAGE_GENERATION_BACKUP_QUALITY", ""),
+        output_format=_read(source, "FALLBACK_IMAGE_GENERATION_BACKUP_OUTPUT_FORMAT", ""),
+        response_format=_read(source, "FALLBACK_IMAGE_GENERATION_BACKUP_RESPONSE_FORMAT", ""),
+    )
+    fallback_retry_groups = int(_read(source, "FALLBACK_IMAGE_GENERATION_RETRY_GROUPS", "5")) if fallback_backup_image.api_key else 1
     fallback_image = ImageGenerationSettings(
         id="fallback",
         label=_read(source, "FALLBACK_IMAGE_GENERATION_LABEL", "gpt image2(2)"),
@@ -123,8 +140,10 @@ def get_model_settings(env: Mapping[str, str] | None = None, env_file: Path | st
         base_url=_read(source, "FALLBACK_IMAGE_GENERATION_BASE_URL", _read(source, "LEGACY_IMAGE_GENERATION_BASE_URL", "https://yunwu.ai/v1")),
         endpoint_path=_read(source, "FALLBACK_IMAGE_GENERATION_ENDPOINT_PATH", "/images/generations"),
         model=_read(source, "FALLBACK_IMAGE_GENERATION_MODEL", _read(source, "LEGACY_IMAGE_GENERATION_MODEL", "gpt-image-2-all")),
-        size=_read(source, "FALLBACK_IMAGE_GENERATION_SIZE", "2048x2048"),
+        size=fallback_size,
         n=int(_read(source, "FALLBACK_IMAGE_GENERATION_N", _read(source, "LEGACY_IMAGE_GENERATION_N", "1"))),
+        retry_alternates=(fallback_backup_image,) if fallback_backup_image.api_key else (),
+        retry_groups=max(1, fallback_retry_groups),
     )
     gemini_flash_image = ImageGenerationSettings(
         id="gemini_flash_image",

@@ -5,6 +5,10 @@ from typing import Any
 from app.core.config import get_model_settings
 
 
+def _image_setting_configured(option) -> bool:
+    return bool(option.api_key or any(alternate.api_key for alternate in option.retry_alternates))
+
+
 def build_public_model_config() -> dict[str, Any]:
     settings = get_model_settings()
     default_image = settings.image_options.get(settings.default_image_option_id, settings.image)
@@ -22,7 +26,7 @@ def build_public_model_config() -> dict[str, Any]:
                 "output_format": option.output_format,
                 "response_format": option.response_format,
             },
-            "configured": bool(option.api_key),
+            "configured": _image_setting_configured(option),
         }
         for option in settings.image_options.values()
     ]
@@ -48,7 +52,7 @@ def build_public_model_config() -> dict[str, Any]:
                 "output_format": default_image.output_format,
                 "response_format": default_image.response_format,
             },
-            "configured": bool(default_image.api_key),
+            "configured": _image_setting_configured(default_image),
             "defaultOptionId": settings.default_image_option_id,
             "options": image_options,
             "fallback": {
@@ -60,7 +64,7 @@ def build_public_model_config() -> dict[str, Any]:
                     "size": settings.fallback_image.size,
                     "n": settings.fallback_image.n,
                 },
-                "configured": bool(settings.fallback_image.api_key),
+                "configured": _image_setting_configured(settings.fallback_image),
             },
         },
     }

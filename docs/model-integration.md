@@ -10,6 +10,7 @@
 - `TEXT_ANALYSIS_API_KEY`
 - `IMAGE_GENERATION_API_KEY`
 - `FALLBACK_IMAGE_GENERATION_API_KEY`
+- `FALLBACK_IMAGE_GENERATION_BACKUP_API_KEY`，作为 `gpt image2(2)` 的备用通道：每组先请求云雾，再请求备用 API，最多 5 组。
 - `DEFAULT_IMAGE_GENERATION_OPTION_ID`，默认 `fallback`，对应 `gpt image2(2)`
 
 文字模型默认 `max_tokens` 设置为 `4096`，避免推理模型把过小的输出额度消耗在 reasoning tokens 后导致正文为空。

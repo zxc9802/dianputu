@@ -45,6 +45,18 @@
         "defaults": {
           "size": "2048x2048",
           "n": 1
+        },
+        "retryGroups": 5,
+        "backup": {
+          "purpose": "Backup channel for gpt image2(2), used after Yunwu fails in each retry group",
+          "apiKeyEnv": "FALLBACK_IMAGE_GENERATION_BACKUP_API_KEY",
+          "baseUrl": "https://api-xai.ainaibahub.com/v1",
+          "endpoint": "/images/generations",
+          "model": "gpt-image-2",
+          "defaults": {
+            "size": "2048x2048",
+            "n": 1
+          }
         }
       },
       {
@@ -71,6 +83,18 @@
       "defaults": {
         "size": "2048x2048",
         "n": 1
+      },
+      "retryGroups": 5,
+      "backup": {
+        "purpose": "Backup channel for gpt image2(2), used after Yunwu fails in each retry group",
+        "apiKeyEnv": "FALLBACK_IMAGE_GENERATION_BACKUP_API_KEY",
+        "baseUrl": "https://api-xai.ainaibahub.com/v1",
+        "endpoint": "/images/generations",
+        "model": "gpt-image-2",
+        "defaults": {
+          "size": "2048x2048",
+          "n": 1
+        }
       }
     }
   }
