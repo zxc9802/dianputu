@@ -121,6 +121,10 @@ def _format_ingredient_items(items: list[dict[str, str]]) -> str:
     )
 
 
+MAX_PROMPT_AUTHORITY_ASSETS = 4
+MAX_PROMPT_EFFECT_CLAIMS = 5
+
+
 def _single_ingredient_index(module_id: str) -> int | None:
     match = re.fullmatch(r"ingredient_([123])", module_id)
     return int(match.group(1)) - 1 if match else None
@@ -146,7 +150,7 @@ def _authority_asset_label(item: str) -> str:
 
 
 def _format_authority_assets(value: Any) -> str:
-    items = _string_items(value)
+    items = _string_items(value)[:MAX_PROMPT_AUTHORITY_ASSETS]
     if not items:
         return (
             "1. 权威方向：实验室研发、配方研究、检测报告视觉；"
@@ -198,7 +202,7 @@ def _format_effect_claims(value: Any) -> str:
         )
 
     lines: list[str] = []
-    for index, item in enumerate(value, start=1):
+    for index, item in enumerate(value[:MAX_PROMPT_EFFECT_CLAIMS], start=1):
         if isinstance(item, dict):
             claim = _text(item.get("claim"), "")
             raw_value_text = _text(item.get("value"), "")
@@ -1331,6 +1335,25 @@ def _premium_skincare_style_lines() -> list[str]:
     ]
 
 
+def _compact_prompt_text(prompt: str) -> str:
+    compacted: list[str] = []
+    seen_lines: set[str] = set()
+    previous_blank = False
+    for raw_line in prompt.splitlines():
+        line = raw_line.strip()
+        if not line:
+            if compacted and not previous_blank:
+                compacted.append("")
+            previous_blank = True
+            continue
+        if line in seen_lines:
+            continue
+        seen_lines.add(line)
+        compacted.append(line)
+        previous_blank = False
+    return "\n".join(compacted).strip()
+
+
 def build_module_image_prompt(
     *,
     product_info: dict[str, Any] | None,
@@ -1480,40 +1503,42 @@ def build_module_image_prompt(
         else ""
     )
 
-    return "\n".join(
-        [
-            f"你是电商护肤{'商品主图' if is_main_image else '详情页'}视觉生成模型。请根据以下隐藏提示词生成 1 张{module_kind}。",
-            *(["", "【提示词分支】", "当前分支：提示词优化分支"] if optimized_prompt_branch else []),
-            "",
-            "【固定模块结构】",
-            *structure_lines,
-            "",
-            build_module_specific_brief(product_info, module),
-            "",
-            *(
-                [
-                    "【活动促销信息】",
-                    _text(promotion_info, "用户未填写具体促销方式；只能使用泛化活动氛围，不得编造折扣、价格、日期、赠品或满减门槛"),
-                    "",
-                ]
-                if is_campaign_image
-                else []
-            ),
-            "【当前模块内容要求】",
-            _module_requirements(module, product_info, platform_id=platform_id, prompt_branch=prompt_branch),
-            *(["", detail_product_visibility_rules] if detail_product_visibility_rules else []),
-            *(["", visual_constraints] if visual_constraints else []),
-            *(["", main_image_conversion_rules] if main_image_conversion_rules else []),
-            *(["", platform_main_image_rules] if platform_main_image_rules else []),
-            *(["", campaign_promotion_guardrails] if campaign_promotion_guardrails else []),
-            *(["", detail_conversion_rules] if detail_conversion_rules else []),
-            *(["", effect_layout_guardrails] if effect_layout_guardrails else []),
-            *(["", people_realism_guardrails] if people_realism_guardrails else []),
-            *(["", detail_text_guardrails] if detail_text_guardrails else []),
-            *(["", language_rules] if language_rules else []),
-            *(["", text_layer_rules] if text_layer_rules else []),
-            "",
-            *style_section,
-            *(["", visual_reduction_rules] if visual_reduction_rules else []),
-        ]
+    return _compact_prompt_text(
+        "\n".join(
+            [
+                f"你是电商护肤{'商品主图' if is_main_image else '详情页'}视觉生成模型。请根据以下隐藏提示词生成 1 张{module_kind}。",
+                *(["", "【提示词分支】", "当前分支：提示词优化分支"] if optimized_prompt_branch else []),
+                "",
+                "【固定模块结构】",
+                *structure_lines,
+                "",
+                build_module_specific_brief(product_info, module),
+                "",
+                *(
+                    [
+                        "【活动促销信息】",
+                        _text(promotion_info, "用户未填写具体促销方式；只能使用泛化活动氛围，不得编造折扣、价格、日期、赠品或满减门槛"),
+                        "",
+                    ]
+                    if is_campaign_image
+                    else []
+                ),
+                "【当前模块内容要求】",
+                _module_requirements(module, product_info, platform_id=platform_id, prompt_branch=prompt_branch),
+                *(["", detail_product_visibility_rules] if detail_product_visibility_rules else []),
+                *(["", visual_constraints] if visual_constraints else []),
+                *(["", main_image_conversion_rules] if main_image_conversion_rules else []),
+                *(["", platform_main_image_rules] if platform_main_image_rules else []),
+                *(["", campaign_promotion_guardrails] if campaign_promotion_guardrails else []),
+                *(["", detail_conversion_rules] if detail_conversion_rules else []),
+                *(["", effect_layout_guardrails] if effect_layout_guardrails else []),
+                *(["", people_realism_guardrails] if people_realism_guardrails else []),
+                *(["", detail_text_guardrails] if detail_text_guardrails else []),
+                *(["", language_rules] if language_rules else []),
+                *(["", text_layer_rules] if text_layer_rules else []),
+                "",
+                *style_section,
+                *(["", visual_reduction_rules] if visual_reduction_rules else []),
+            ]
+        )
     )

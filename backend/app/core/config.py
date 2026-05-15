@@ -105,6 +105,21 @@ def _merge_env(dotenv_values: Mapping[str, str], env_values: Mapping[str, str]) 
 def get_model_settings(env: Mapping[str, str] | None = None, env_file: Path | str | None = None) -> ModelSettings:
     dotenv_values = _read_env_file(_project_env_path() if env is None and env_file is None else env_file)
     source = _merge_env(dotenv_values, environ if env is None else env)
+    primary_size = _read(source, "IMAGE_GENERATION_SIZE", "2048x2048")
+    primary_backup_image = ImageGenerationSettings(
+        id="primary_backup",
+        label=_read(source, "IMAGE_GENERATION_BACKUP_LABEL", "gpt image2(1) backup"),
+        api_key=_read(source, "IMAGE_GENERATION_BACKUP_API_KEY", ""),
+        base_url=_read(source, "IMAGE_GENERATION_BACKUP_BASE_URL", "https://api-xai.ainaibahub.com/v1"),
+        endpoint_path=_read(source, "IMAGE_GENERATION_BACKUP_ENDPOINT_PATH", "/images/generations"),
+        model=_read(source, "IMAGE_GENERATION_BACKUP_MODEL", "gpt-image-2"),
+        size=_read(source, "IMAGE_GENERATION_BACKUP_SIZE", primary_size),
+        n=int(_read(source, "IMAGE_GENERATION_BACKUP_N", "1")),
+        quality=_read(source, "IMAGE_GENERATION_BACKUP_QUALITY", ""),
+        output_format=_read(source, "IMAGE_GENERATION_BACKUP_OUTPUT_FORMAT", ""),
+        response_format=_read(source, "IMAGE_GENERATION_BACKUP_RESPONSE_FORMAT", ""),
+    )
+    primary_retry_groups = int(_read(source, "IMAGE_GENERATION_RETRY_GROUPS", "5")) if primary_backup_image.api_key else 1
     primary_image = ImageGenerationSettings(
         id="primary",
         label=_read(source, "IMAGE_GENERATION_LABEL", "gpt image2(1)"),
@@ -112,11 +127,13 @@ def get_model_settings(env: Mapping[str, str] | None = None, env_file: Path | st
         base_url=_read(source, "IMAGE_GENERATION_BASE_URL", "https://api.apiyi.com/v1"),
         endpoint_path=_read(source, "IMAGE_GENERATION_ENDPOINT_PATH", "/images/generations"),
         model=_read(source, "IMAGE_GENERATION_MODEL", "gpt-image-2-vip"),
-        size=_read(source, "IMAGE_GENERATION_SIZE", "2048x2048"),
+        size=primary_size,
         n=int(_read(source, "IMAGE_GENERATION_N", "0")),
         quality=_read(source, "IMAGE_GENERATION_QUALITY", ""),
         output_format=_read(source, "IMAGE_GENERATION_OUTPUT_FORMAT", "png"),
         response_format=_read(source, "IMAGE_GENERATION_RESPONSE_FORMAT", "url"),
+        retry_alternates=(primary_backup_image,) if primary_backup_image.api_key else (),
+        retry_groups=max(1, primary_retry_groups),
     )
     fallback_size = _read(source, "FALLBACK_IMAGE_GENERATION_SIZE", "2048x2048")
     fallback_backup_image = ImageGenerationSettings(

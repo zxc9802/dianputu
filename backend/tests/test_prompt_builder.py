@@ -109,6 +109,33 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertNotIn("样本 32 人", prompt)
         self.assertNotIn("SGS-CICA-2026-042", prompt)
 
+    def test_research_strength_prompt_trims_long_authority_reports_but_keeps_guardrails(self):
+        build_module_image_prompt = load_prompt_builder()
+        research_module = next(module for module in DEFAULT_MODULES if module["id"] == "research_strength")
+
+        prompt = build_module_image_prompt(
+            product_info={
+                "product_name": "多肽紧致精华",
+                "category": "抗老精华",
+                "authority_assets": [
+                    f"报告{i}：编号 TEST-{i}，样本 {i * 10} 人，连续 {i} 天测试"
+                    for i in range(1, 9)
+                ],
+            },
+            style=STYLE_OPTIONS[0],
+            module=research_module,
+            module_index=3,
+            total_modules=10,
+        )
+
+        self.assertIn("多肽紧致精华", prompt)
+        self.assertIn("报告1", prompt)
+        self.assertIn("报告4", prompt)
+        self.assertNotIn("报告5", prompt)
+        self.assertIn("科学家实验画面为主体", prompt)
+        self.assertIn("不写具体报告编号", prompt)
+        self.assertLess(len(prompt), 3300)
+
     def test_detail_prompts_keep_hidden_notes_out_of_visible_image_copy(self):
         build_module_image_prompt = load_prompt_builder()
         research_module = next(module for module in DEFAULT_MODULES if module["id"] == "research_strength")

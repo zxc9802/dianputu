@@ -38,6 +38,8 @@ WHITE_BACKGROUND_MODULE_IDS = {"main_white_bg", "campaign_white_bg"}
 REFERENCE_GENERATE_MODE = "reference_generate"
 FIXED_PRODUCT_COMPOSITE_MODE = "fixed_product_composite"
 FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR = "固定产品合成需要先上传产品图，系统会把上传图作为产品母版复用，避免模型反复重绘导致包装、Logo 或瓶身变形。"
+MAX_MODEL_PRODUCT_REFERENCE_IMAGES = 2
+MAX_MODEL_STYLE_REFERENCE_IMAGES = 1
 STYLE_SAMPLE_IMAGE_SIZE = "1024x1024"
 DETAIL_IMAGE_GENERATION_SIZE = "1152x2048"
 GENERATION_JOBS: dict[str, dict[str, Any]] = {}
@@ -59,6 +61,20 @@ def _image_setting_configured(settings: ImageGenerationSettings) -> bool:
 
 def _image_setting_label(settings: ImageGenerationSettings) -> str:
     return f"{settings.label} ({settings.model})"
+
+
+def _focused_model_reference_images(
+    reference_images: list[str] | None,
+    style_reference_images: list[str] | None,
+    *,
+    fixed_product_mode: bool = False,
+) -> list[str]:
+    if fixed_product_mode:
+        return list(style_reference_images or [])[:MAX_MODEL_STYLE_REFERENCE_IMAGES]
+    return [
+        *list(reference_images or [])[:MAX_MODEL_PRODUCT_REFERENCE_IMAGES],
+        *list(style_reference_images or [])[:MAX_MODEL_STYLE_REFERENCE_IMAGES],
+    ]
 
 
 async def _call_image_model_with_retry_groups(
@@ -981,10 +997,11 @@ async def _generate_module_image(
         prompt_branch=prompt_branch,
     )
     generation_prompt = build_fixed_product_background_prompt(prompt, module) if fixed_product_mode else prompt
-    model_reference_images = [*(style_reference_images or [])] if fixed_product_mode else [
-        *(reference_images or []),
-        *(style_reference_images or []),
-    ]
+    model_reference_images = _focused_model_reference_images(
+        reference_images,
+        style_reference_images,
+        fixed_product_mode=fixed_product_mode,
+    )
     image_settings = resolve_image_settings(settings, image_model_id)
     urls, primary_error = await _call_image_model_with_retry_groups(
         image_settings,

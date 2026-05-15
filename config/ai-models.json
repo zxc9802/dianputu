@@ -33,6 +33,18 @@
           "size": "2048x2048",
           "output_format": "png",
           "response_format": "url"
+        },
+        "retryGroups": 5,
+        "backup": {
+          "purpose": "Backup channel for gpt image2(1), used after primary fails in each retry group",
+          "apiKeyEnv": "IMAGE_GENERATION_BACKUP_API_KEY",
+          "baseUrl": "https://api-xai.ainaibahub.com/v1",
+          "endpoint": "/images/generations",
+          "model": "gpt-image-2",
+          "defaults": {
+            "size": "2048x2048",
+            "n": 1
+          }
         }
       },
       {

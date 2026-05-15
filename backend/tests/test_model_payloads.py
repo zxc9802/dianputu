@@ -35,6 +35,26 @@ class ModelPayloadTests(unittest.TestCase):
         self.assertEqual(settings.image_options["gemini_flash_image"].endpoint_path, "/chat/completions")
         self.assertEqual(settings.image_options["gemini_flash_image"].size, "2048x2048")
 
+    def test_primary_image_can_include_backup_retry_api(self):
+        settings = get_model_settings(
+            {
+                "IMAGE_GENERATION_BACKUP_API_KEY": "backup-key",
+            }
+        )
+
+        self.assertEqual(settings.image.retry_groups, 5)
+        self.assertEqual(len(settings.image.retry_alternates), 1)
+        backup = settings.image.retry_alternates[0]
+        self.assertEqual(backup.id, "primary_backup")
+        self.assertEqual(backup.label, "gpt image2(1) backup")
+        self.assertEqual(backup.api_key, "backup-key")
+        self.assertEqual(backup.base_url, "https://api-xai.ainaibahub.com/v1")
+        self.assertEqual(backup.endpoint_path, "/images/generations")
+        self.assertEqual(backup.model, "gpt-image-2")
+        self.assertEqual(backup.size, "2048x2048")
+        self.assertEqual(backup.n, 1)
+        self.assertNotIn("primary_backup", settings.image_options)
+
     def test_fallback_image_can_include_backup_retry_api(self):
         settings = get_model_settings(
             {

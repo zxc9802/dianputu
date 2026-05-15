@@ -294,6 +294,113 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["images"], [{"module_id": "hero", "url": "https://example.com/fallback.png"}])
         self.assertEqual(calls, ["gpt-image-2-vip", "gpt-image-2-all"])
 
+    async def test_selected_primary_retries_primary_then_backup_for_five_groups(self):
+        calls = []
+        backup = ImageGenerationSettings(
+            id="primary_backup",
+            label="gpt image2(1) backup",
+            api_key="backup-key",
+            base_url="https://api-xai.ainaibahub.com/v1",
+            endpoint_path="/images/generations",
+            model="gpt-image-2",
+            size="2048x2048",
+            n=1,
+        )
+        primary = ImageGenerationSettings(
+            id="primary",
+            label="gpt image2(1)",
+            api_key="primary-key",
+            base_url="https://api.apiyi.com/v1",
+            endpoint_path="/images/generations",
+            model="gpt-image-2-vip",
+            size="2048x2048",
+            n=0,
+            retry_alternates=(backup,),
+            retry_groups=5,
+        )
+        fallback = ImageGenerationSettings(
+            id="fallback",
+            label="gpt image2(2)",
+            api_key="fallback-key",
+            base_url="https://yunwu.ai/v1",
+            endpoint_path="/images/generations",
+            model="gpt-image-2-all",
+            size="2048x2048",
+            n=1,
+        )
+        settings = SimpleNamespace(
+            image=primary,
+            fallback_image=fallback,
+            default_image_option_id="fallback",
+            image_options={"primary": primary, "fallback": fallback},
+        )
+
+        async def fake_call_image_model(settings, prompt, image=None, size=None):
+            calls.append((settings.model, settings.base_url))
+            if len(calls) == 10:
+                return ["https://example.com/primary-backup.png"]
+            return []
+
+        with patch("app.routers.projects.get_model_settings", return_value=settings):
+            with patch("app.routers.projects.call_image_model", new=fake_call_image_model):
+                result = await generate_detail_images(["hero"], "green_repair", image_model_id="primary")
+
+        self.assertEqual(result["source"], "model")
+        self.assertEqual(result["images"], [{"module_id": "hero", "url": "https://example.com/primary-backup.png"}])
+        self.assertEqual(
+            calls,
+            [
+                ("gpt-image-2-vip", "https://api.apiyi.com/v1"),
+                ("gpt-image-2", "https://api-xai.ainaibahub.com/v1"),
+            ]
+            * 5,
+        )
+
+    async def test_generation_limits_model_reference_images_to_focused_subset(self):
+        captured_images = []
+
+        async def fake_call_image_model(settings, prompt, image=None, size=None):
+            captured_images.append(image)
+            return ["https://example.com/hero.png"]
+
+        previous_primary_key = environ.get("IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        try:
+            with patch("app.routers.projects.call_image_model", new=fake_call_image_model):
+                result = await generate_detail_images(
+                    ["hero"],
+                    "green_repair",
+                    reference_images=[
+                        "https://example.com/product-1.png",
+                        "https://example.com/product-2.png",
+                        "https://example.com/product-3.png",
+                        "https://example.com/product-4.png",
+                    ],
+                    style_reference_images=[
+                        "https://example.com/style-1.png",
+                        "https://example.com/style-2.png",
+                        "https://example.com/style-3.png",
+                    ],
+                    image_model_id="primary",
+                )
+        finally:
+            if previous_primary_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_primary_key
+
+        self.assertEqual(result["source"], "model")
+        self.assertEqual(
+            captured_images,
+            [
+                [
+                    "https://example.com/product-1.png",
+                    "https://example.com/product-2.png",
+                    "https://example.com/style-1.png",
+                ]
+            ],
+        )
+
     async def test_selected_fallback_retries_yunwu_then_backup_for_five_groups(self):
         calls = []
         primary = ImageGenerationSettings(

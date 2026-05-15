@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from io import BytesIO
 import re
 from typing import Any
 
@@ -9,6 +10,9 @@ from app.core.config import ImageGenerationSettings
 
 MODEL_GATEWAY_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36"
 DATA_IMAGE_RE = re.compile(r"data:image/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=_-]+")
+MAX_REFERENCE_IMAGE_EDGE = 1536
+REFERENCE_REENCODE_THRESHOLD_BYTES = 1_500_000
+REFERENCE_JPEG_QUALITY = 85
 
 
 def build_image_generation_payload(
@@ -154,6 +158,53 @@ def _mime_from_image_bytes(image_bytes: bytes) -> str:
     return f"image/{_detect_image_format(image_bytes)}"
 
 
+def _image_has_alpha(image: Any) -> bool:
+    return image.mode in {"RGBA", "LA"} or ("transparency" in getattr(image, "info", {}))
+
+
+def _resize_to_max_edge(image: Any, max_edge: int) -> Any:
+    from PIL import Image
+
+    width, height = image.size
+    longest_edge = max(width, height)
+    if longest_edge <= max_edge:
+        return image
+    scale = max_edge / longest_edge
+    next_size = (max(1, round(width * scale)), max(1, round(height * scale)))
+    return image.resize(next_size, Image.Resampling.LANCZOS)
+
+
+def _prepare_reference_image_bytes(image_bytes: bytes) -> tuple[bytes, str]:
+    try:
+        from PIL import Image, ImageOps
+
+        with Image.open(BytesIO(image_bytes)) as source:
+            image = ImageOps.exif_transpose(source)
+            image.load()
+            oversized = max(image.size) > MAX_REFERENCE_IMAGE_EDGE
+            should_reencode = oversized or len(image_bytes) > REFERENCE_REENCODE_THRESHOLD_BYTES
+            if not should_reencode:
+                return image_bytes, _mime_from_image_bytes(image_bytes)
+
+            image = _resize_to_max_edge(image, MAX_REFERENCE_IMAGE_EDGE)
+            output = BytesIO()
+            if _image_has_alpha(image):
+                if image.mode not in {"RGBA", "LA"}:
+                    image = image.convert("RGBA")
+                image.save(output, format="PNG", optimize=True)
+                return output.getvalue(), "image/png"
+
+            if image.mode != "RGB":
+                image = image.convert("RGB")
+            image.save(output, format="JPEG", quality=REFERENCE_JPEG_QUALITY, optimize=True, progressive=True)
+            optimized = output.getvalue()
+            if not oversized and len(optimized) >= len(image_bytes):
+                return image_bytes, _mime_from_image_bytes(image_bytes)
+            return optimized, "image/jpeg"
+    except Exception:
+        return image_bytes, _mime_from_image_bytes(image_bytes)
+
+
 async def _load_reference_image_files(image_urls: list[str]) -> list[tuple[str, bytes, str]]:
     import httpx
 
@@ -166,7 +217,7 @@ async def _load_reference_image_files(image_urls: list[str]) -> list[tuple[str, 
                 response = await client.get(image_url)
                 response.raise_for_status()
                 image_bytes = response.content
-            mime = _mime_from_image_bytes(image_bytes)
+            image_bytes, mime = _prepare_reference_image_bytes(image_bytes)
             extension = mime.split("/", 1)[1]
             image_files.append((f"reference-{index}.{extension}", image_bytes, mime))
     return image_files
