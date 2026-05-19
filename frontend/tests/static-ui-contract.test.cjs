@@ -143,6 +143,8 @@ assertNotIncludes("lib/api.ts", "DEFAULT_PRODUCT_INFO", "frontend API must not f
 assertNotIncludes("lib/constants.ts", "DEFAULT_PRODUCT_INFO", "frontend constants must not ship demo product information");
 
 assertIncludes("components/PreviewStep.tsx", "download", "preview step must expose downloadable outputs");
+assertIncludes("components/PreviewStep.tsx", "正在调整中", "image edit buttons must show an in-progress label while micro-adjustment is running");
+assertIncludes("components/PreviewStep.tsx", "await onEditImage", "image edit buttons must stay in progress until the edit request finishes");
 assertIncludes("components/PreviewStep.tsx", "buildDetailDownloadState", "preview detail downloads must be driven by the shared detail download state");
 assertIncludes("components/PreviewStep.tsx", "groupedItems.detail.map", "preview step must render every generated detail image in the long preview");
 assertNotIncludes("components/PreviewStep.tsx", "generatedImages[0]?.url", "preview step must not use only the first generated image as the full long preview");

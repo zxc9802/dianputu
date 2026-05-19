@@ -216,7 +216,7 @@ export function PreviewStep({
   onSelectLanguage: (moduleId: string, versionId: string, language: LanguageCode) => void;
   onGenerateLanguage: (moduleId: string, versionId: string, language: LanguageCode) => void;
   onCheckImagesCompliance: (imageUrls: string[]) => void;
-  onEditImage: (moduleId: string, imageUrl: string, instruction: string) => void;
+  onEditImage: (moduleId: string, imageUrl: string, instruction: string) => Promise<void> | void;
   onSaveToHistory: () => void;
   onBack: () => void;
 }) {
@@ -224,6 +224,7 @@ export function PreviewStep({
   const [composeStatus, setComposeStatus] = useState("");
   const [composeError, setComposeError] = useState("");
   const [editDrafts, setEditDrafts] = useState<Record<string, string>>({});
+  const [editingModuleIds, setEditingModuleIds] = useState<Record<string, boolean>>({});
   const generatedByModule = new Map(
     generatedImages.map((image) => {
       const selectedVersion = selectedVersionForModule(imageVersions, selectedVersionIds, image.module_id);
@@ -257,6 +258,20 @@ export function PreviewStep({
     for (let index = 0; index < visibleItems.length; index++) {
       const item = visibleItems[index];
       await fetchAndDownload(item.url, `${filenamePrefix}-${String(index + 1).padStart(2, "0")}-${item.module.id}.png`);
+    }
+  }
+
+  async function handleEditImageClick(moduleId: string, imageUrl: string) {
+    const instruction = editDrafts[moduleId] ?? "";
+    if (!instruction.trim()) {
+      await onEditImage(moduleId, imageUrl, instruction);
+      return;
+    }
+    setEditingModuleIds((current) => ({ ...current, [moduleId]: true }));
+    try {
+      await onEditImage(moduleId, imageUrl, instruction);
+    } finally {
+      setEditingModuleIds((current) => ({ ...current, [moduleId]: false }));
     }
   }
 
@@ -345,6 +360,7 @@ export function PreviewStep({
                     const versions = imageVersions[module.id] ?? [];
                     const selectedVersion = selectedVersionForModule(imageVersions, selectedVersionIds, module.id);
                     const isCurrent = (activeProgress.runningModuleIds ?? []).includes(module.id);
+                    const isEditing = Boolean(editingModuleIds[module.id]);
                     return (
                       <article className="mainImageCard" key={module.id}>
                         <div className="mainImageFrame">
@@ -407,10 +423,11 @@ export function PreviewStep({
                             />
                             <button
                               className="inlineActionButton strong"
-                              onClick={() => onEditImage(module.id, url, editDrafts[module.id] ?? "")}
+                              disabled={isEditing}
+                              onClick={() => handleEditImageClick(module.id, url)}
                               type="button"
                             >
-                              微调
+                              {isEditing ? "正在调整中" : "微调"}
                             </button>
                           </div>
                         ) : null}
@@ -433,6 +450,7 @@ export function PreviewStep({
                   {groupedItems.detail.map((item, index) => {
                     const selectedVersion = selectedVersionForModule(imageVersions, selectedVersionIds, item.module.id);
                     const itemUrl = selectedVersionUrl(selectedVersion, item.url);
+                    const isEditing = Boolean(editingModuleIds[item.module.id]);
                     return (
                       <section className="longImageSection" key={item.module.id} aria-label={`${item.module.name}生成图`}>
                         <div className="detailImageFrame">
@@ -475,10 +493,11 @@ export function PreviewStep({
                             />
                             <button
                               className="inlineActionButton strong"
-                              onClick={() => onEditImage(item.module.id, itemUrl, editDrafts[item.module.id] ?? "")}
+                              disabled={isEditing}
+                              onClick={() => handleEditImageClick(item.module.id, itemUrl)}
                               type="button"
                             >
-                              微调
+                              {isEditing ? "正在调整中" : "微调"}
                             </button>
                           </div>
                         </div>
