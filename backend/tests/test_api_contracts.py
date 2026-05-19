@@ -915,6 +915,44 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(calls[0]["image_bytes"], b"abc")
         self.assertEqual(calls[0]["size"], "800x800")
 
+    async def test_edit_generated_image_retries_primary_when_selected_fallback_fails(self):
+        previous_primary_key = environ.get("IMAGE_GENERATION_API_KEY")
+        previous_fallback_key = environ.get("FALLBACK_IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "primary-test-key"
+        environ["FALLBACK_IMAGE_GENERATION_API_KEY"] = "fallback-test-key"
+        attempted_channels = []
+
+        async def fake_call_image_edit_model(settings, prompt, image_bytes, size=None):
+            attempted_channels.append(settings.id)
+            if settings.id == "fallback":
+                raise RuntimeError("401 Unauthorized")
+            return ["https://example.com/primary-edited.png"]
+
+        try:
+            with (
+                patch("app.routers.projects.call_image_edit_model", new=fake_call_image_edit_model),
+                patch("app.routers.projects.create_default_compliance_provider", return_value=StaticComplianceProvider("pass")),
+            ):
+                result = await edit_generated_image(
+                    "data:image/png;base64,YWJj",
+                    "把按钮改成蓝色",
+                    platform_size="800x800",
+                    image_model_id="fallback",
+                )
+        finally:
+            if previous_primary_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_primary_key
+            if previous_fallback_key is None:
+                environ.pop("FALLBACK_IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["FALLBACK_IMAGE_GENERATION_API_KEY"] = previous_fallback_key
+
+        self.assertEqual(result["source"], "model")
+        self.assertEqual(result["url"], "https://example.com/primary-edited.png")
+        self.assertEqual(attempted_channels, ["fallback", "primary"])
+
     async def test_layered_generation_builds_base_and_default_language_version(self):
         image = Image.new("RGB", (320, 320), (230, 244, 235))
         buffer = BytesIO()

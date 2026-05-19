@@ -62,7 +62,8 @@ assertIncludes("lib/constants.ts", 'DETAIL_IMAGE_GENERATION_SIZE = "1152x2048"',
 assertIncludes("app/page.tsx", "generationSizeForGroup(group)", "detail image generation requests must send the 9:16 size instead of the square platform size");
 assertIncludes("app/page.tsx", "generationSizeForModuleId(moduleId)", "detail image regeneration and edits must keep 9:16 sizing");
 assertIncludes("app/globals.css", "aspect-ratio: 9 / 16", "detail preview frames must render as 9:16 portraits");
-assertIncludes("app/page.tsx", "editGeneratedImage(imageUrl, trimmed, generationSizeForModuleId(moduleId), selectedImageModelId, selectedPlatformId)", "image edits must keep the current module group's request size, selected image model, and platform id");
+assertIncludes("app/page.tsx", 'const EDIT_IMAGE_MODEL_ID = "primary"', "image edits must pin micro-adjustment to gpt image2(1)");
+assertIncludes("app/page.tsx", "editGeneratedImage(imageUrl, trimmed, generationSizeForModuleId(moduleId), EDIT_IMAGE_MODEL_ID, selectedPlatformId)", "image edits must keep the current module group's request size and platform id while using gpt image2(1)");
 assertIncludes("lib/api.ts", "createEditImageJob", "image edits must create a backend job instead of holding one long request");
 assertIncludes("lib/api.ts", "fetchEditImageJob", "image edits must poll the backend edit job");
 assertIncludes("lib/api.ts", "pollEditImageJob", "image edits must wait for job completion through polling");

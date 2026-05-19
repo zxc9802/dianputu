@@ -1445,6 +1445,24 @@ def build_image_edit_prompt(instruction: str) -> str:
     )
 
 
+def _ordered_image_edit_settings(settings: ModelSettings, selected: ImageGenerationSettings) -> list[ImageGenerationSettings]:
+    channels: list[ImageGenerationSettings] = []
+    seen_ids: set[str] = set()
+
+    def add(channel: ImageGenerationSettings) -> None:
+        if not channel.api_key or channel.id in seen_ids:
+            return
+        channels.append(channel)
+        seen_ids.add(channel.id)
+        for alternate in channel.retry_alternates:
+            add(alternate)
+
+    add(selected)
+    add(settings.fallback_image)
+    add(settings.image)
+    return channels
+
+
 async def edit_generated_image(
     image_url: str,
     instruction: str,
@@ -1469,7 +1487,8 @@ async def edit_generated_image(
 
     settings = get_model_settings()
     image_settings = resolve_image_settings(settings, image_model_id)
-    if not image_settings.api_key and not settings.fallback_image.api_key:
+    edit_channels = _ordered_image_edit_settings(settings, image_settings)
+    if not edit_channels:
         return {"source": "error", "error": "image model is not configured"}
 
     prompt = build_image_edit_prompt(cleaned_instruction)
@@ -1480,19 +1499,21 @@ async def edit_generated_image(
     except Exception as exc:
         return {"source": "error", "error": f"failed to download source image: {exc}"}
 
-    try:
-        urls = await call_image_edit_model(image_settings, prompt, image_bytes, size=platform_size)
-    except Exception as primary_exc:
-        logger.warning("primary image edit failed error=%s", primary_exc)
-        if image_settings.id != settings.image.id or not settings.fallback_image.api_key:
-            return {"source": "error", "error": str(primary_exc)}
+    urls: list[str] = []
+    errors: list[str] = []
+    for channel in edit_channels:
         try:
-            urls = await call_image_edit_model(settings.fallback_image, prompt, image_bytes, size=platform_size)
-        except Exception as fallback_exc:
-            return {"source": "error", "error": f"primary failed: {primary_exc}; fallback failed: {fallback_exc}"}
+            urls = await call_image_edit_model(channel, prompt, image_bytes, size=platform_size)
+        except Exception as exc:
+            logger.warning("image edit channel failed channel=%s error=%s", channel.id, exc)
+            errors.append(f"{channel.label} failed: {exc}")
+            continue
+        if urls:
+            break
+        errors.append(f"{channel.label} returned empty content")
 
     if not urls:
-        return {"source": "error", "error": "image model returned empty content"}
+        return {"source": "error", "error": "; ".join(errors) or "image model returned empty content"}
     url = await upload_image_url_if_configured(urls[0], "edited")
     return {"source": "model", "url": url, "compliance": compliance}
 

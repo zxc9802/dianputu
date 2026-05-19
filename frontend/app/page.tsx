@@ -87,6 +87,7 @@ const DEFAULT_CATEGORY = "";
 const DEFAULT_STYLE_ID = "space_repair";
 const DEFAULT_PLATFORM_ID: CommercePlatformId = "tmall";
 const DEFAULT_IMAGE_MODEL_ID = DEMO_MODEL_CONFIG.imageGeneration.defaultOptionId ?? "primary";
+const EDIT_IMAGE_MODEL_ID = "primary";
 const DEFAULT_GENERATION_MODE: GenerationMode = "reference_generate";
 const DEFAULT_GENERATION_LANGUAGE: LanguageCode = "zh-CN";
 const DEFAULT_PROMPT_BRANCH: PromptBranch = "current";
@@ -763,7 +764,7 @@ export default function Home() {
       return;
     }
     setStatusText("AI 微调中");
-    const result = await editGeneratedImage(imageUrl, trimmed, generationSizeForModuleId(moduleId), selectedImageModelId, selectedPlatformId);
+    const result = await editGeneratedImage(imageUrl, trimmed, generationSizeForModuleId(moduleId), EDIT_IMAGE_MODEL_ID, selectedPlatformId);
     if (result.source === "model" && result.url) {
       setImageVersionStore((current) =>
         appendImageVersions(current, [{ module_id: moduleId, url: result.url as string, compliance: result.compliance }], "edit", Date.now(), trimmed)
