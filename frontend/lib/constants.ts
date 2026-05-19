@@ -290,7 +290,7 @@ export const DEMO_MODEL_CONFIG = {
     defaults: { max_tokens: 4096, temperature: 0.7 }
   },
   imageGeneration: {
-    model: "gpt-image-2-all",
+    model: "gpt-image-2",
     configured: false,
     defaultOptionId: "fallback",
     options: [
@@ -304,7 +304,7 @@ export const DEMO_MODEL_CONFIG = {
       {
         id: "fallback",
         label: "gpt image2(2)",
-        model: "gpt-image-2-all",
+        model: "gpt-image-2",
         configured: false,
         defaults: { size: "2048x2048", n: 1, quality: "", output_format: "", response_format: "" }
       },
@@ -319,7 +319,7 @@ export const DEMO_MODEL_CONFIG = {
     defaults: { size: "2048x2048", n: 1, quality: "", output_format: "", response_format: "" },
     fallback: {
       label: "gpt image2(2)",
-      model: "gpt-image-2-all",
+      model: "gpt-image-2",
       configured: false,
       defaults: { size: "2048x2048", n: 1 }
     }

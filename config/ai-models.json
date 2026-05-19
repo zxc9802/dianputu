@@ -14,9 +14,9 @@
     "purpose": "Default product detail image generation model used when the user has not selected another option",
     "defaultOptionId": "fallback",
     "apiKeyEnv": "FALLBACK_IMAGE_GENERATION_API_KEY",
-    "baseUrl": "https://yunwu.ai/v1",
+    "baseUrl": "https://api-xai.ainaibahub.com/v1",
     "endpoint": "/images/generations",
-    "model": "gpt-image-2-all",
+    "model": "gpt-image-2",
     "defaults": {
       "size": "2048x2048",
       "n": 1
@@ -51,20 +51,20 @@
         "id": "fallback",
         "label": "gpt image2(2)",
         "apiKeyEnv": "FALLBACK_IMAGE_GENERATION_API_KEY",
-        "baseUrl": "https://yunwu.ai/v1",
+        "baseUrl": "https://api-xai.ainaibahub.com/v1",
         "endpoint": "/images/generations",
-        "model": "gpt-image-2-all",
+        "model": "gpt-image-2",
         "defaults": {
           "size": "2048x2048",
           "n": 1
         },
         "retryGroups": 5,
         "backup": {
-          "purpose": "Backup channel for gpt image2(2), used after Yunwu fails in each retry group",
+          "purpose": "Backup channel for gpt image2(2), used after api-xai fails in each retry group",
           "apiKeyEnv": "FALLBACK_IMAGE_GENERATION_BACKUP_API_KEY",
-          "baseUrl": "https://api-xai.ainaibahub.com/v1",
+          "baseUrl": "https://yunwu.ai/v1",
           "endpoint": "/images/generations",
-          "model": "gpt-image-2",
+          "model": "gpt-image-2-all",
           "defaults": {
             "size": "2048x2048",
             "n": 1
@@ -88,21 +88,21 @@
     "fallback": {
       "purpose": "Fallback image generation endpoint used only when the primary endpoint fails for the current image",
       "apiKeyEnv": "FALLBACK_IMAGE_GENERATION_API_KEY",
-      "baseUrl": "https://yunwu.ai/v1",
+      "baseUrl": "https://api-xai.ainaibahub.com/v1",
       "endpoint": "/images/generations",
       "label": "gpt image2(2)",
-      "model": "gpt-image-2-all",
+      "model": "gpt-image-2",
       "defaults": {
         "size": "2048x2048",
         "n": 1
       },
       "retryGroups": 5,
       "backup": {
-        "purpose": "Backup channel for gpt image2(2), used after Yunwu fails in each retry group",
+        "purpose": "Backup channel for gpt image2(2), used after api-xai fails in each retry group",
         "apiKeyEnv": "FALLBACK_IMAGE_GENERATION_BACKUP_API_KEY",
-        "baseUrl": "https://api-xai.ainaibahub.com/v1",
+        "baseUrl": "https://yunwu.ai/v1",
         "endpoint": "/images/generations",
-        "model": "gpt-image-2",
+        "model": "gpt-image-2-all",
         "defaults": {
           "size": "2048x2048",
           "n": 1

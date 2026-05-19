@@ -108,6 +108,71 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("辅助功效验证", auxiliary_validation_prompt)
         self.assertIn("测试 / 对比 / 用户感受", auxiliary_validation_prompt)
 
+    def test_standard_conversion_product_info_is_style_aware_product_intro_with_clear_text(self):
+        build_module_image_prompt = load_prompt_builder()
+        style = next(option for option in STYLE_OPTIONS if option["id"] == "black_gold_luxury")
+
+        prompt = build_module_image_prompt(
+            product_info={
+                "product_name": "黑松露紧致精华",
+                "spec": "30ml",
+                "core_selling_points": ["一瓶撑起紧致光泽感"],
+                "functions": ["紧致", "淡纹", "提亮肤色观感"],
+                "ingredients": [
+                    {"name": "玻色因", "benefit": "帮助支撑弹润肤感"},
+                    {"name": "黑松露精粹", "benefit": "辅助提升细腻光泽感"},
+                ],
+                "material_highlights": ["敏感肌使用前建议先做局部测试"],
+            },
+            style=style,
+            module={
+                "id": "product_info",
+                "name": "产品信息",
+                "description": "产品信息 + 一句话卖点 + 规格成分功效 + 注意事项",
+                "image_group": "detail",
+            },
+            module_index=10,
+            total_modules=10,
+        )
+
+        self.assertIn("当前模块：产品信息", prompt)
+        self.assertIn("第 10/10 张详情模块", prompt)
+        self.assertIn("产品介绍图信息格式", prompt)
+        self.assertIn("产品信息\n——————————————————\n一句话卖点（小字）", prompt)
+        self.assertGreaterEqual(prompt.count("——————————————————"), 5)
+        for label in ["产品名称：", "产品规格：", "产品成分：", "产品功效：", "注意事项："]:
+            self.assertIn(label, prompt)
+        self.assertIn("整体色调必须跟随所选风格", prompt)
+        self.assertIn("风格名称：黑金奢华风", prompt)
+        self.assertIn("#C8A24A", prompt)
+        self.assertIn("文字区域必须使用高对比", prompt)
+        self.assertIn("黑松露紧致精华", prompt)
+        self.assertIn("30ml", prompt)
+        self.assertIn("玻色因", prompt)
+        self.assertIn("一瓶撑起紧致光泽感", prompt)
+        self.assertIn("敏感肌使用前建议先做局部测试", prompt)
+        self.assertNotIn("使用方法页任务是降低使用门槛", prompt)
+
+    def test_evidence_chain_final_screen_remains_usage_method(self):
+        build_module_image_prompt = load_prompt_builder()
+        prompt = build_module_image_prompt(
+            product_info={
+                "product_name": "屏障修护精华",
+                "usage_method": ["洁面后取 2-3 滴", "均匀涂抹全脸", "轻拍至吸收"],
+            },
+            style=STYLE_OPTIONS[2],
+            module=next(module for module in PROMPT_MODULES if module["id"] == "detail_ec_usage"),
+            module_index=16,
+            total_modules=16,
+        )
+
+        self.assertIn("当前模块：使用方法", prompt)
+        self.assertIn("第 16/16 张详情模块", prompt)
+        self.assertIn("使用方法页任务是降低使用门槛", prompt)
+        self.assertIn("使用方法：", prompt)
+        self.assertIn("洁面后取 2-3 滴", prompt)
+        self.assertNotIn("产品介绍图信息格式", prompt)
+
     def test_brand_qualification_prompt_uses_brand_assets_and_user_materials_first(self):
         build_module_image_prompt = load_prompt_builder()
         brand_module = next(module for module in PROMPT_MODULES if module["id"] == "brand_qualification")
@@ -488,7 +553,8 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("风格参考色", prompt)
         self.assertIn("只作为局部点缀和 UI 兼容参考", prompt)
         self.assertIn("每张图可以根据模块内容使用不同主色、背景色或辅助色", prompt)
-        self.assertIn("材质、光影、版式、字体层级、装饰元素和图标语言必须一致", prompt)
+        self.assertIn("风格统一优先体现在材质、光影、版式、留白和字体层级", prompt)
+        self.assertIn("装饰/图标只在承担信息功能时使用", prompt)
         self.assertNotIn("共享统一的背景色调", prompt)
         self.assertNotIn("- 主色：#8ECFE6", prompt)
 
@@ -858,6 +924,13 @@ class PromptBuilderTests(unittest.TestCase):
             module_index=4,
             total_modules=10,
         )
+        evidence_pain_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[0],
+            module=next(module for module in PROMPT_MODULES if module["id"] == "detail_ec_pain_matrix"),
+            module_index=2,
+            total_modules=16,
+        )
 
         self.assertIn("冷峻克制的高科技蓝色/银色调", research_prompt)
         self.assertIn("极度整洁的现代研发中心", research_prompt)
@@ -867,12 +940,16 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("不要半透明 UI 卡片", research_prompt)
         self.assertNotIn("未来科技感玻璃拟态卡片", research_prompt)
 
-        self.assertIn("情绪化电影灯光", pain_prompt)
-        self.assertIn("冷色调或暗调背景", pain_prompt)
-        self.assertIn("环境隐喻痛点", pain_prompt)
-        self.assertIn("干燥开裂纹理", pain_prompt)
-        self.assertIn("暗淡灯光隐喻肤色暗沉", pain_prompt)
+        self.assertIn("痛点视觉必须融合当前统一视觉风格", pain_prompt)
+        self.assertIn("用所选风格的材质、光影、背景色和辅助色表达问题感", pain_prompt)
+        self.assertIn("明亮、干净、克制", pain_prompt)
+        self.assertIn("不要为了痛点而强制使用暗调、脏灰、压抑光线或大面积红色警示", pain_prompt)
+        self.assertNotIn("冷色调或暗调背景", pain_prompt)
+        self.assertNotIn("暗淡灯光隐喻肤色暗沉", pain_prompt)
         self.assertIn("不要把脸画丑", pain_prompt)
+        self.assertIn("痛点视觉必须融合当前统一视觉风格", evidence_pain_prompt)
+        self.assertIn("痛点矩阵可以使用所选风格的卡片、线条、材质和提示色", evidence_pain_prompt)
+        self.assertNotIn("大面积红色警示", evidence_pain_prompt)
 
     def test_main_image_prompts_include_click_rate_strategy_from_store_main_doc(self):
         build_module_image_prompt = load_prompt_builder()
@@ -998,7 +1075,9 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("产品作为主视觉，占画面 35%-50%", hero_prompt)
 
         self.assertIn("局部放大镜", pain_prompt)
-        self.assertIn("红色警示标签", pain_prompt)
+        self.assertIn("低饱和提示色", pain_prompt)
+        self.assertIn("不做大面积红色警示贴纸", pain_prompt)
+        self.assertNotIn("红色警示标签", pain_prompt)
         self.assertIn("上妆卡粉", pain_prompt)
         self.assertIn("卡粉起皮", pain_prompt)
         self.assertIn("干到发紧", pain_prompt)
@@ -1083,6 +1162,73 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("产品信息页减法约束", product_info_prompt)
         self.assertIn("不要添加任何装饰背景", product_info_prompt)
         self.assertIn("产品基础信息 / 参数 / 成分说明", product_info_prompt)
+
+    def test_style_reference_detail_prompts_keep_low_density_and_evidence_chain_module_budgets(self):
+        build_module_image_prompt = load_prompt_builder()
+        product_info = {
+            "product_name": "水润保湿面霜",
+            "category": "面霜",
+            "core_selling_points": ["5 分钟水润急救", "妆前更服帖"],
+            "functions": ["补水保湿", "改善干燥"],
+            "ingredients": [
+                {"name": "透明质酸钠", "benefit": "帮助提升水润肤感"},
+                {"name": "神经酰胺", "benefit": "帮助维持屏障舒适"},
+            ],
+            "usage_method": ["洁面后取适量", "均匀涂抹全脸", "轻拍至吸收"],
+        }
+        style_reference = {
+            "id": "style_reference",
+            "name": "清透低密风",
+            "primary_color": "#BEEBFF",
+            "keywords": ["浅蓝", "水润", "大留白"],
+            "visual_direction": "参考图为浅蓝水润背景、大标题、单主体、少量辅助图片的低元素密度详情长图。",
+            "layout_guidance": "每屏只保留一个视觉焦点，背景干净，辅助信息少而清楚。",
+            "visual_elements": ["单主体产品", "少量局部图", "简洁线性图标"],
+            "materials": ["浅蓝渐变背景", "水润台面"],
+            "lighting": ["柔和高调光"],
+            "forbidden": ["复杂装饰", "密集卡片"],
+        }
+
+        prompts = {
+            module_id: build_module_image_prompt(
+                product_info=product_info,
+                style=style_reference,
+                module=next(module for module in PROMPT_MODULES if module["id"] == module_id),
+                module_index=index,
+                total_modules=16,
+                has_style_reference=True,
+            )
+            for index, module_id in [
+                (1, "detail_ec_hero"),
+                (2, "detail_ec_pain_matrix"),
+                (3, "detail_ec_solution"),
+                (6, "detail_ec_effect_validation"),
+                (8, "detail_ec_ingredient_1_mechanism"),
+                (14, "detail_ec_texture"),
+                (16, "detail_ec_usage"),
+            ]
+        }
+
+        for prompt in prompts.values():
+            self.assertIn("参考图低元素密度约束", prompt)
+            self.assertIn("只学习清爽、稀疏、留白、单主体的组织方式", prompt)
+            self.assertIn("每屏只保留 1 个主视觉", prompt)
+            self.assertIn("背景只保留一种主材质或氛围", prompt)
+
+        self.assertIn("证据链首屏减法约束", prompts["detail_ec_hero"])
+        self.assertIn("产品 + 主标题 + 最多 2 个卖点标签", prompts["detail_ec_hero"])
+        self.assertIn("痛点放大页减法约束", prompts["detail_ec_pain_matrix"])
+        self.assertIn("最多 3 个痛点画面", prompts["detail_ec_pain_matrix"])
+        self.assertIn("解决方案页减法约束", prompts["detail_ec_solution"])
+        self.assertIn("最多 2 组辅助信息", prompts["detail_ec_solution"])
+        self.assertIn("效果验证页减法约束", prompts["detail_ec_effect_validation"])
+        self.assertIn("前后对比或趋势证明只能保留 1 组", prompts["detail_ec_effect_validation"])
+        self.assertIn("核心成分机制页减法约束", prompts["detail_ec_ingredient_1_mechanism"])
+        self.assertIn("本页只讲第 1 个核心成分", prompts["detail_ec_ingredient_1_mechanism"])
+        self.assertIn("质地肤感页减法约束", prompts["detail_ec_texture"])
+        self.assertIn("1 个质地特写 + 1 个肤感结论", prompts["detail_ec_texture"])
+        self.assertIn("证据链使用方法页减法约束", prompts["detail_ec_usage"])
+        self.assertIn("3-4 步真实动作", prompts["detail_ec_usage"])
 
     def test_campaign_prompts_keep_promotion_elements_secondary_and_user_provided(self):
         build_module_image_prompt = load_prompt_builder()

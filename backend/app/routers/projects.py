@@ -715,6 +715,7 @@ def normalize_style_reference_plan_from_model(raw: str) -> dict[str, Any]:
     style = normalize_style_plan_from_model(raw)
     forbidden = _string_list(style.get("forbidden"), [])
     reference_forbidden = [
+        "不要因为参考图好看而增加无信息价值装饰",
         "不要复刻参考图中的品牌",
         "不要复刻参考图中的 Logo、商标、具体产品包装或可读小字",
         "不要照搬参考图里的具体文案、人物肖像、机构背书或水印",
@@ -723,7 +724,7 @@ def normalize_style_reference_plan_from_model(raw: str) -> dict[str, Any]:
         **style,
         "id": "style_reference",
         "seed_id": style.get("seed_id") or "benchmark_image",
-        "forbidden": [*forbidden, *[item for item in reference_forbidden if item not in forbidden]][:10],
+        "forbidden": [*reference_forbidden, *[item for item in forbidden if item not in reference_forbidden]][:10],
         "reasoning": style.get("reasoning") or "基于用户上传的对标图片提取可复用风格指纹",
     }
 
@@ -769,7 +770,9 @@ def build_style_reference_analysis_messages(
     lines = [
         "你是资深电商美术指导和视觉风格分析师。请分析用户上传的对标图片，提取可复用到商品图生成中的风格指纹。",
         "不要描述成单张图片赏析，要转成一套可跨主图、活动图、详情模块复用的视觉系统。",
-        "必须分析这些维度：主色、辅色、点缀色；光影；构图；背景与材质；产品摆放和主体占比；字体层级；信息密度；装饰元素；摄影或渲染质感；电商转化氛围。",
+        "必须分析这些维度：主色、辅色、点缀色；光影；构图；背景与材质；产品摆放和主体占比；字体层级；信息密度；低元素密度；装饰元素；摄影或渲染质感；电商转化氛围。",
+        "如果参考图属于清爽详情长图或低元素密度版式，必须提取它的元素预算：每屏只保留 1 个主视觉 + 1-2 组辅助信息，背景只保留一种主材质或氛围。",
+        "module_usage 和 layout_guidance 要说明后续每屏只保留哪些必要元素，禁止为了贴近参考图而额外加入无信息价值的水滴、植物、光斑、纹理、图标或卡片。",
         "必须明确不要复刻哪些内容：品牌名、Logo、商标、具体产品包装、人物肖像、具体文案、小字、机构背书、水印和其他可能侵权元素。",
         "只输出 JSON，不要解释文字。",
         "JSON 字段：seed_id, name, theme, primary_color, keywords, best_for, visual_elements, materials, lighting, module_usage, forbidden, visual_direction, layout_guidance, reasoning。",
@@ -1234,6 +1237,7 @@ async def _generate_module_image(
         module_index=module_index,
         total_modules=total_modules,
         promotion_info=promotion_info,
+        has_product_reference=bool(reference_images) and not fixed_product_mode,
         has_style_reference=bool(style_reference_images),
         text_layer_mode=layered_text,
         target_language=target_language,

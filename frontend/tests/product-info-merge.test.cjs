@@ -73,6 +73,7 @@ assert.equal(evidenceFields.filter((field) => field.key.startsWith("detail_modul
 assert.equal(standardFields.filter((field) => field.key.startsWith("detail_module:")).length, 10, "standard layout must expose one manual field per detail screen");
 assert.ok(evidenceFields.some((field) => field.key === detailModuleFieldKey("detail_ec_pain_matrix") && field.label === "第 2 屏：痛点放大"), "evidence layout must collect pain screen notes");
 assert.ok(evidenceFields.some((field) => field.key === detailModuleFieldKey("detail_ec_auxiliary_validation") && field.label === "第 12 屏：辅助功效验证"), "evidence layout must collect auxiliary validation screen notes");
+assert.ok(evidenceFields.some((field) => field.key === detailModuleFieldKey("detail_ec_usage") && field.label === "第 16 屏：使用方法"), "evidence layout final screen should collect usage notes");
 assert.ok(standardFields.some((field) => field.key === detailModuleFieldKey("product_info") && field.label === "第 10 屏：产品信息"), "standard layout should keep the tenth product info screen");
 
 const competitorFieldKey = detailModuleFieldKey("detail_ec_competitor_comparison");

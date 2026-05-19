@@ -74,6 +74,8 @@ class MaterialAnalysisTests(unittest.TestCase):
         self.assertIn("required_content", text)
         self.assertIn("detail_ec_hero", text)
         self.assertIn("detail_ec_auxiliary_validation", text)
+        self.assertIn("16 使用方法", text)
+        self.assertNotIn("第 16 屏产品介绍", text)
         self.assertIn("没有上传检测报告、说明书或真人反馈时", text)
         self.assertIn("基于产品主图和已识别信息做谨慎 AI 补全", text)
 
@@ -511,6 +513,10 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("固定模块结构", prompt)
         self.assertIn("当前模块：详情首图", prompt)
         self.assertIn("只生成当前模块", prompt)
+        self.assertIn("产品身份锁定", prompt)
+        self.assertIn("第一张产品参考图是唯一产品母版", prompt)
+        self.assertIn("不能替换成相似但不同的瓶子、罐子、刷子或通用护肤品包装", prompt)
+        self.assertIn("只能改变背景、光影、陈列台、质地、水花、道具、营销标签和构图", prompt)
         self.assertEqual(reference_images, ["data:image/png;base64,abc"])
 
     async def test_generation_uses_custom_style_brief_when_provided(self):
@@ -713,8 +719,8 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
                 environ["FALLBACK_IMAGE_GENERATION_API_KEY"] = previous_fallback_key
 
         self.assertEqual(result["source"], "model")
-        self.assertEqual(calls, ["gpt-image-2-vip", "gpt-image-2-all", "gpt-image-2-vip"])
-        self.assertIn("gpt-image-2-all", result["images"][0]["url"])
+        self.assertEqual(calls, ["gpt-image-2-vip", "gpt-image-2", "gpt-image-2-vip"])
+        self.assertIn("gpt-image-2", result["images"][0]["url"])
         self.assertIn("gpt-image-2-vip", result["images"][1]["url"])
 
     async def test_generated_data_urls_are_uploaded_to_object_storage(self):

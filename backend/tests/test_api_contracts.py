@@ -178,10 +178,9 @@ class ApiContractTests(unittest.TestCase):
         self.assertIn("gpt image2(1)", serialized)
         self.assertIn("gpt image2(2)", serialized)
         self.assertIn("gemini-3.1-flash-image-preview", serialized)
-        self.assertIn("gpt-image-2-all", serialized)
         self.assertNotIn("api_key", serialized)
         self.assertNotIn("bearer", serialized)
-        self.assertEqual(config["imageGeneration"]["model"], "gpt-image-2-all")
+        self.assertEqual(config["imageGeneration"]["model"], "gpt-image-2")
         self.assertEqual(config["imageGeneration"]["defaultOptionId"], "fallback")
         self.assertEqual(config["imageGeneration"]["options"][0]["id"], "primary")
         self.assertEqual(config["imageGeneration"]["options"][0]["label"], "gpt image2(1)")
@@ -213,6 +212,9 @@ class ApiContractTests(unittest.TestCase):
             "背景与材质",
             "字体层级",
             "信息密度",
+            "低元素密度",
+            "元素预算",
+            "每屏只保留",
             "不要复刻",
         ]:
             self.assertIn(expected, prompt)
@@ -235,6 +237,7 @@ class ApiContractTests(unittest.TestCase):
         self.assertEqual(style["seed_id"], "benchmark_image")
         self.assertEqual(style["name"], "冷萃晶透风")
         self.assertIn("不要复刻参考图中的品牌", style["forbidden"])
+        self.assertIn("不要因为参考图好看而增加无信息价值装饰", style["forbidden"])
 
 
 class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
@@ -339,7 +342,7 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["source"], "model")
         self.assertEqual(result["images"], [{"module_id": "hero", "url": "https://example.com/fallback.png"}])
-        self.assertEqual(calls, ["gpt-image-2-vip", "gpt-image-2-all"])
+        self.assertEqual(calls, ["gpt-image-2-vip", "gpt-image-2"])
 
     async def test_selected_primary_retries_primary_then_backup_for_five_groups(self):
         calls = []
@@ -448,7 +451,7 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
-    async def test_selected_fallback_retries_yunwu_then_backup_for_five_groups(self):
+    async def test_selected_fallback_retries_api_xai_then_yunwu_backup_for_five_groups(self):
         calls = []
         primary = ImageGenerationSettings(
             id="primary",
@@ -464,19 +467,19 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
             id="fallback_backup",
             label="gpt image2(2) backup",
             api_key="backup-key",
-            base_url="https://api-xai.ainaibahub.com/v1",
+            base_url="https://yunwu.ai/v1",
             endpoint_path="/images/generations",
-            model="gpt-image-2",
+            model="gpt-image-2-all",
             size="2048x2048",
             n=1,
         )
         fallback = ImageGenerationSettings(
             id="fallback",
             label="gpt image2(2)",
-            api_key="yunwu-key",
-            base_url="https://yunwu.ai/v1",
+            api_key="api-xai-key",
+            base_url="https://api-xai.ainaibahub.com/v1",
             endpoint_path="/images/generations",
-            model="gpt-image-2-all",
+            model="gpt-image-2",
             size="2048x2048",
             n=1,
             retry_alternates=(backup,),
@@ -504,8 +507,8 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             calls,
             [
-                ("gpt-image-2-all", "https://yunwu.ai/v1"),
                 ("gpt-image-2", "https://api-xai.ainaibahub.com/v1"),
+                ("gpt-image-2-all", "https://yunwu.ai/v1"),
             ]
             * 5,
         )
@@ -516,19 +519,19 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
             id="fallback_backup",
             label="gpt image2(2) backup",
             api_key="backup-key",
-            base_url="https://api-xai.ainaibahub.com/v1",
+            base_url="https://yunwu.ai/v1",
             endpoint_path="/images/generations",
-            model="gpt-image-2",
+            model="gpt-image-2-all",
             size="2048x2048",
             n=1,
         )
         fallback = ImageGenerationSettings(
             id="fallback",
             label="gpt image2(2)",
-            api_key="yunwu-key",
-            base_url="https://yunwu.ai/v1",
+            api_key="api-xai-key",
+            base_url="https://api-xai.ainaibahub.com/v1",
             endpoint_path="/images/generations",
-            model="gpt-image-2-all",
+            model="gpt-image-2",
             size="2048x2048",
             n=1,
             retry_alternates=(backup,),
@@ -560,7 +563,7 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["source"], "error")
         self.assertEqual(result["images"], [])
-        self.assertEqual(calls, ["gpt-image-2-all", "gpt-image-2"] * 5)
+        self.assertEqual(calls, ["gpt-image-2", "gpt-image-2-all"] * 5)
         self.assertEqual(len(result["errors"]), 1)
         self.assertIn("failed after 5 retry groups", result["errors"][0])
 
