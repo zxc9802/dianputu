@@ -883,8 +883,8 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("质感陈列台", hero_prompt)
         self.assertIn("商业香水/护肤品级布光", hero_prompt)
         self.assertIn("强轮廓边缘光", hero_prompt)
-        self.assertIn("体积感环境光", hero_prompt)
-        self.assertIn("装饰元素控制在 2-4 个", hero_prompt)
+        self.assertIn("克制商业光影", hero_prompt)
+        self.assertIn("辅助视觉元素最多 2 个", hero_prompt)
 
         self.assertIn("极浅景深超微距摄影", ingredient_prompt)
         self.assertIn("晨露质感", ingredient_prompt)
@@ -1010,6 +1010,58 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("建立代入感", usage_prompt)
         self.assertIn("晨间上妆前", usage_prompt)
         self.assertIn("人物遮挡产品", usage_prompt)
+
+    def test_main_and_campaign_prompts_limit_visual_element_piling(self):
+        build_module_image_prompt = load_prompt_builder()
+        product_info = {
+            "product_name": "水润保湿精华",
+            "category": "护肤精华",
+            "core_selling_points": ["干皮急救", "妆前服帖"],
+            "functions": ["补水保湿", "改善干燥"],
+            "ingredients": [{"name": "透明质酸钠", "benefit": "帮助提升水润肤感"}],
+            "effect_claims": [{"claim": "水润感提升", "value": "92%", "source_type": "人体功效测试"}],
+            "usage_method": ["洁面后取适量涂抹"],
+        }
+
+        prompts = {
+            module_id: build_module_image_prompt(
+                product_info=product_info,
+                style=STYLE_OPTIONS[1],
+                module=next(module for module in PROMPT_MODULES if module["id"] == module_id),
+                module_index=index,
+                total_modules=5,
+                promotion_info="618 限时 8 折，满 199 减 30",
+            )
+            for index, module_id in [
+                (2, "main_hero_selling_point"),
+                (3, "main_ingredient"),
+                (4, "main_effect"),
+                (5, "main_usage_scene"),
+                (2, "campaign_hero_selling_point"),
+                (3, "campaign_ingredient"),
+                (4, "campaign_effect"),
+                (5, "campaign_usage_scene"),
+            ]
+        }
+
+        for prompt in prompts.values():
+            self.assertIn("主图/活动图元素预算约束", prompt)
+            self.assertIn("每张图只传递 1 个主卖点", prompt)
+            self.assertIn("辅助视觉元素最多 2 个", prompt)
+            self.assertIn("不要为了高级感堆叠水滴、叶片、光斑、纹理、漂浮图形、卡片和图标", prompt)
+            self.assertNotIn("装饰元素控制在 2-4 个", prompt)
+            self.assertNotIn("品类质感装饰元素（水珠/叶片/精华液滴/光泽纹理）", prompt)
+
+        self.assertIn("主图首图元素预算", prompts["main_hero_selling_point"])
+        self.assertIn("产品 + 1 个大标题 + 最多 2 个辅助标签", prompts["main_hero_selling_point"])
+        self.assertIn("活动首图元素预算", prompts["campaign_hero_selling_point"])
+        self.assertIn("促销角标/优惠标签最多 2 个", prompts["campaign_hero_selling_point"])
+        self.assertIn("成分主图元素预算", prompts["main_ingredient"])
+        self.assertIn("最多 2 个核心成分", prompts["main_ingredient"])
+        self.assertIn("效果主图元素预算", prompts["main_effect"])
+        self.assertIn("1 组效果证据", prompts["main_effect"])
+        self.assertIn("使用场景主图元素预算", prompts["main_usage_scene"])
+        self.assertIn("1 个真实使用动作", prompts["main_usage_scene"])
 
     def test_detail_prompts_include_sales_visual_contradiction_strategy(self):
         build_module_image_prompt = load_prompt_builder()

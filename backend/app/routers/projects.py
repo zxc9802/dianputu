@@ -68,11 +68,16 @@ def _focused_model_reference_images(
     style_reference_images: list[str] | None,
     *,
     fixed_product_mode: bool = False,
+    product_identity_reference_board: str | None = None,
 ) -> list[str]:
     if fixed_product_mode:
         return list(style_reference_images or [])[:MAX_MODEL_STYLE_REFERENCE_IMAGES]
+    product_references = [
+        *([product_identity_reference_board] if product_identity_reference_board else []),
+        *list(reference_images or []),
+    ][:MAX_MODEL_PRODUCT_REFERENCE_IMAGES]
     return [
-        *list(reference_images or [])[:MAX_MODEL_PRODUCT_REFERENCE_IMAGES],
+        *product_references,
         *list(style_reference_images or [])[:MAX_MODEL_STYLE_REFERENCE_IMAGES],
     ]
 
@@ -1195,6 +1200,31 @@ def _png_data_url(image_bytes: bytes) -> str:
     return f"data:image/png;base64,{encoded}"
 
 
+def _build_product_identity_reference_board(image_bytes: bytes) -> str:
+    from PIL import Image, ImageOps
+
+    with Image.open(BytesIO(image_bytes)) as source:
+        product = ImageOps.exif_transpose(source)
+        product.load()
+        product = product.convert("RGBA")
+
+    canvas_size = 1024
+    max_product_size = 860
+    product.thumbnail((max_product_size, max_product_size), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGBA", (canvas_size, canvas_size), (248, 250, 251, 255))
+    x = (canvas_size - product.width) // 2
+    y = (canvas_size - product.height) // 2
+    canvas.alpha_composite(product, (x, y))
+
+    output = BytesIO()
+    canvas.convert("RGB").save(output, format="PNG", optimize=True)
+    return _png_data_url(output.getvalue())
+
+
+async def _build_product_identity_reference_board_from_url(image_url: str) -> str:
+    return _build_product_identity_reference_board(await _read_image_bytes(image_url))
+
+
 async def _compose_fixed_product_image_url(*, module_id: str, background_url: str, product_url: str, platform_id: str | None = None) -> str:
     background_bytes = await _read_image_bytes(background_url)
     product_bytes = await _read_image_bytes(product_url)
@@ -1229,6 +1259,12 @@ async def _generate_module_image(
     if module_id in WHITE_BACKGROUND_MODULE_IDS and reference_images:
         return {"module_id": module_id, "url": reference_images[0]}, None
     fixed_product_mode = generation_mode == FIXED_PRODUCT_COMPOSITE_MODE and bool(reference_images)
+    product_identity_reference_board = ""
+    if reference_images and not fixed_product_mode:
+        try:
+            product_identity_reference_board = await _build_product_identity_reference_board_from_url(reference_images[0])
+        except Exception as exc:
+            logger.warning("product identity reference board failed module=%s error=%s", module_id, exc)
 
     prompt = build_module_image_prompt(
         product_info=product_info,
@@ -1238,6 +1274,7 @@ async def _generate_module_image(
         total_modules=total_modules,
         promotion_info=promotion_info,
         has_product_reference=bool(reference_images) and not fixed_product_mode,
+        has_product_identity_reference_board=bool(product_identity_reference_board),
         has_style_reference=bool(style_reference_images),
         text_layer_mode=layered_text,
         target_language=target_language,
@@ -1249,6 +1286,7 @@ async def _generate_module_image(
         reference_images,
         style_reference_images,
         fixed_product_mode=fixed_product_mode,
+        product_identity_reference_board=product_identity_reference_board or None,
     )
     image_settings = resolve_image_settings(settings, image_model_id)
     urls, primary_error = await _call_image_model_with_retry_groups(

@@ -310,8 +310,8 @@ MODULE_VISUAL_RECIPES: dict[str, dict[str, str]] = {
         "forbidden": "重绘产品、改动瓶身标签、擦除包装文字、生成空白标签、所有额外文字、贴纸、道具、人物、植物、水滴、光效、场景、渐变、纹理、颜色氛围",
     },
     "main_hero_selling_point": {
-        "layout": "产品占画面约 45-55%，居中或居中偏左；用空间透视建立前景、中景、背景层次，产品放在质感陈列台上（水面、石材或亚克力镜面），上方或右侧放主标题，下方或次要位置放副标题；背景使用品牌主色深浅渐变铺满画面",
-        "primary_visual": "品牌色渐变氛围背景 + 产品大图（带光影和微倒影）+ 质感陈列台 + 大号主标题 + 小号副标题 + 品类质感装饰元素（水珠/叶片/精华液滴/光泽纹理）+ 体积感环境光、流动丝绸质感或水波纹焦散",
+        "layout": "产品占画面约 45-55%，居中或居中偏左；用空间透视建立清晰主体层次，产品放在质感陈列台上，上方或右侧放主标题，下方或次要位置放副标题；背景使用品牌主色深浅渐变或低纹理材质铺满画面",
+        "primary_visual": "品牌色氛围背景 + 产品大图（带光影和微倒影）+ 质感陈列台 + 大号主标题 + 小号副标题 + 最多 2 个服务卖点的辅助视觉元素",
         "product_role": "最大视觉主体，使用商业香水/护肤品级布光、强轮廓边缘光和克制镜面反射增强存在感；产品不是孤立放在空白上，而是嵌入有空间深度的场景中",
         "forbidden": "成分表、成分卡片、数据图表、使用步骤、人物使用场景、纯白或纯浅色大面积空白背景、产品孤零零放在空白画面中、扁平海报感背景、廉价贴纸光效",
     },
@@ -340,14 +340,14 @@ MODULE_VISUAL_RECIPES: dict[str, dict[str, str]] = {
         "forbidden": "复杂场景、植物、水滴、光效、道具、人物、大面积活动背景、编造价格折扣日期",
     },
     "campaign_hero_selling_point": {
-        "layout": "产品占画面约 45-55%，居中或居中偏左；用空间透视和质感陈列台建立高级活动场景，搭配促销角标、优惠券样式标签；上方或右侧放主标题，副标题放促销利益点；背景使用活动感品牌色渐变铺满画面",
-        "primary_visual": "活动氛围渐变背景 + 产品大图（带光影和微倒影）+ 质感陈列台 + 大号主标题 + 促销标签 + 品类质感装饰元素 + 活动角标 + 体积感环境光",
+        "layout": "产品占画面约 45-55%，居中或居中偏左；用空间透视和质感陈列台建立高级活动场景，搭配少量促销角标或优惠券标签；上方或右侧放主标题，副标题放促销利益点；背景使用活动感品牌色或低纹理材质铺满画面",
+        "primary_visual": "活动氛围背景 + 产品大图（带光影和微倒影）+ 质感陈列台 + 大号主标题 + 最多 2 个促销标签/角标",
         "product_role": "最大视觉主体，使用商业香水/护肤品级布光、强轮廓边缘光和克制光晕；必须压过活动装饰，产品不能孤立放在空白上",
         "forbidden": "成分表、成分卡片、数据图表、使用步骤、人物使用场景、纯白或纯浅色大面积空白背景、促销元素挤满画面",
     },
     "campaign_ingredient": {
-        "layout": "成分卡片堆叠布局，背景用极浅景深超微距摄影呈现原料质感，角落加入轻量活动角标",
-        "primary_visual": "成分卡片 + 晶莹剔透的原料微距 + 晨露质感 + 发光精华液滴 + 清透高调色彩 + 轻活动氛围",
+        "layout": "成分重点布局，背景用极浅景深超微距摄影呈现原料质感，角落可加入 1 个轻量活动角标",
+        "primary_visual": "核心成分原料微距 + 简洁成分标签 + 清透高调色彩 + 1 个轻活动利益标签",
         "product_role": "缩小放角落或不出现，不作为中心主体",
         "forbidden": "效果数据、数据仪表盘、使用场景人物、产品居中环绕文字构图、浑浊廉价的植物堆叠",
     },
@@ -359,7 +359,7 @@ MODULE_VISUAL_RECIPES: dict[str, dict[str, str]] = {
     },
     "campaign_usage_scene": {
         "layout": "活动场景图，置于极简奢华浴室或梳妆台一角，使用动作占主画面，并加入礼盒、优惠券或活动标签氛围",
-        "primary_visual": "使用场景 + 礼盒或活动氛围元素 + 柔和自然窗光 + 丁达尔光晕 + 优雅手部姿态",
+        "primary_visual": "1 个真实使用场景 + 1 个活动利益标签 + 柔和自然窗光 + 优雅手部姿态",
         "product_role": "嵌入场景中清晰可见",
         "forbidden": "数据图表、成分列表、原料卡片、产品居中环绕文字构图、凌乱居家背景、随意自拍感",
     },
@@ -736,7 +736,7 @@ def _module_visual_constraints(module: dict[str, Any], platform_id: str | None =
         f"- 禁止出现：{recipe['forbidden']}。",
     ]
     if module_id not in {"main_white_bg", "campaign_white_bg"}:
-        lines.append("- 视觉密度：装饰元素控制在 2-4 个，保留干净负空间和明确视觉焦点，避免把画面堆成拥挤海报。")
+        lines.append("- 视觉密度：辅助视觉元素最多 2 个，保留干净负空间和明确视觉焦点，避免把画面堆成拥挤海报。")
     lines.append("- 不要把本图做成其他主图模块的模板；每张主图必须有独立视觉主体和版式。")
     return "\n".join(lines)
 
@@ -867,6 +867,57 @@ def _main_image_conversion_rules(module: dict[str, Any], platform_id: str | None
             ]
         )
 
+    return "\n".join(lines)
+
+
+def _main_campaign_visual_budget_rules(module: dict[str, Any]) -> str:
+    module_id = str(module.get("id"))
+    if module_id in {"main_white_bg", "campaign_white_bg"}:
+        return ""
+    if not (module_id.startswith("main_") or module_id.startswith("campaign_")):
+        return ""
+
+    lines = [
+        "【主图/活动图元素预算约束】",
+        "- 每张图只传递 1 个主卖点，先保证产品、主标题和核心证据一眼可读。",
+        "- 辅助视觉元素最多 2 个，且必须服务当前模块卖点；不要为了高级感堆叠水滴、叶片、光斑、纹理、漂浮图形、卡片和图标。",
+        "- 背景只保留一种主材质或光影氛围；不要同时叠加水面、丝绸、植物、气泡、焦散、微粒和多层卡片。",
+    ]
+    if module_id == "main_hero_selling_point":
+        lines.extend(
+            [
+                "【主图首图元素预算】",
+                "- 画面只保留产品 + 1 个大标题 + 最多 2 个辅助标签；背景和台面只负责托住产品，不再额外铺陈装饰。",
+            ]
+        )
+    elif module_id == "campaign_hero_selling_point":
+        lines.extend(
+            [
+                "【活动首图元素预算】",
+                "- 画面只保留产品 + 1 个大标题 + 1 个促销利益点；促销角标/优惠标签最多 2 个，不能再叠加礼花、光斑、优惠券墙或多层贴纸。",
+            ]
+        )
+    elif module_id in {"main_ingredient", "campaign_ingredient"}:
+        lines.extend(
+            [
+                "【成分主图元素预算】",
+                "- 最多 2 个核心成分，每个成分只配 1 句短标签；原料微距、产品小图和活动角标三者不能同时抢焦点。",
+            ]
+        )
+    elif module_id in {"main_effect", "campaign_effect"}:
+        lines.extend(
+            [
+                "【效果主图元素预算】",
+                "- 只保留产品 + 1 组效果证据 + 1 个核心数字/标签；不要同时堆进度环、仪表盘、对比卡、肌肤大图和多组数据。",
+            ]
+        )
+    elif module_id in {"main_usage_scene", "campaign_usage_scene"}:
+        lines.extend(
+            [
+                "【使用场景主图元素预算】",
+                "- 只保留 1 个真实使用动作、清楚产品露出和 1 个场景/活动辅助信息；不要堆礼盒、优惠券、毛巾、植物和多个护肤道具。",
+            ]
+        )
     return "\n".join(lines)
 
 
@@ -1346,7 +1397,7 @@ def _module_requirements(
                 else (
                     "背景：暖白、象牙白、浅米色、柔灰或浅石材色，可加入一个低饱和品牌强调色；保留自然的大留白或低纹理文案区。"
                     if optimized
-                    else "背景：使用品牌主色系的渐变铺满整个画面，避免大面积空白或纯白；可用径向渐变、光晕、深→浅过渡、体积感环境光、流动丝绸质感或水波纹焦散营造高级氛围。"
+                    else "背景：使用品牌主色系或低饱和渐变铺满画面，避免大面积纯白；只保留一种主材质或光影氛围，给主标题留出干净区域。"
                 )
             ),
             (
@@ -1360,20 +1411,20 @@ def _module_requirements(
                 else "光影：使用商业香水/护肤品级布光，主光柔和、强轮廓边缘光清晰，瓶身边缘从背景中跃出。"
             ),
             (
-                "品类质感元素：根据产品品类和风格自然加入 1-2 个质感装饰（如水珠、植物影子、精华液滴、丝绸纹理），增加画面层次但不能抢过产品。"
+                "品类质感元素：根据产品品类和风格只保留 1-2 个服务卖点的辅助元素，例如水润质地或原料微距，不能抢过产品。"
                 if optimized
-                else "品类质感元素：根据产品品类和风格，在产品周围自然散布 2-4 个质感装饰（如水珠、植物叶片、精华液滴、丝绸纹理、光泽粒子），装饰元素控制在 2-4 个，增加画面丰富度但不能抢过产品。"
+                else "品类质感元素：根据产品品类和风格只保留 1-2 个服务卖点的辅助元素，例如水润质地、原料微距或克制光影，不能抢过产品。"
             ),
             "文字层级：主标题用核心卖点（字号大、醒目、放在视觉焦点区域），副标题用品类或功效关键词（字号小、作为辅助信息）。文字要有透视感或阴影，不能像贴纸一样平贴在画面上。",
             (
                 "整体目标：像高端护肤品牌首图一样，清晰、高级、可信，同时具备货架点击力；不是廉价促销海报。"
                 if optimized
-                else "装饰光效：可添加光斑 bokeh、微粒漂浮、柔光光晕等元素，增加高级感和画面呼吸感。"
+                else "辅助光效：只使用一种克制商业光影承托产品，不再叠加光斑、微粒、漂浮图形或额外纹理。"
             ),
             (
                 ""
                 if optimized
-                else "整体目标：像高点击货架爆款护肤品首图一样——饱满、直接、有冲击力，不是简约留白风。"
+                else "整体目标：像高点击货架护肤品首图一样——产品清楚、卖点直接、信息少，不靠堆装饰制造冲击力。"
             ),
         ],
         "main_ingredient": [
@@ -1415,7 +1466,7 @@ def _module_requirements(
             (
                 "背景：使用低饱和品牌色和活动色做层次，避免强饱和红黄蓝、廉价金色渐变和满屏贴纸；保留可承载活动文案的干净区域。"
                 if optimized
-                else "背景：使用带活动感的品牌色渐变铺满画面，可叠加节日/促销氛围光效、体积感环境光或水波纹焦散，避免大面积空白或纯白。"
+                else "背景：使用带活动感的品牌色或低饱和活动色铺满画面，只保留一种主光影氛围，避免大面积纯白和多层促销装饰。"
             ),
             (
                 "产品：作为最大视觉主体展示，放置在石材、亚克力或镜面陈列台上，用柔和光影和微投影/倒影增强立体感；必须压过活动装饰。"
@@ -1428,16 +1479,16 @@ def _module_requirements(
                 else "光影：使用商业香水/护肤品级布光，主光柔和、强轮廓边缘光清晰，活动光效只能作为辅助。"
             ),
             (
-                "品类质感元素：根据产品品类在产品周围加入 1-2 个质感装饰（水珠、叶片、精华液滴等），增加画面丰富度但不堆元素。"
+                "品类质感元素：根据产品品类只保留 1-2 个服务卖点的辅助元素，增加层次但不堆元素。"
                 if optimized
-                else "品类质感元素：根据产品品类在产品周围散布 2-4 个质感装饰（水珠、叶片、精华液滴等），装饰元素控制在 2-4 个，增加画面丰富度。"
+                else "品类质感元素：根据产品品类只保留 1-2 个服务卖点的辅助元素，增加层次但不堆元素。"
             ),
             "文字层级：主标题用核心卖点（字号大），副标题放促销利益点（优惠券、限时角标、满减标签），层级分明不混乱。",
             "促销表达需来自用户填写的活动信息，可使用优惠券、限时角标、满减标签、折扣贴纸等电商活动元素。",
             (
                 "整体目标：像高点击电商大促护肤首图，但视觉仍克制、高级、可信，不做廉价促销贴纸堆叠。"
                 if optimized
-                else "装饰光效：可添加光斑、微粒、活动礼花等元素增加节日感。"
+                else "辅助光效：只使用一种克制活动光影，不再叠加光斑、微粒、活动礼花或多层贴纸。"
             ),
             (
                 ""
@@ -1446,7 +1497,7 @@ def _module_requirements(
             ),
         ],
         "campaign_ingredient": [
-            "画面呈现活动成分次图，展示核心成分与原料质感，同时加入活动氛围元素。",
+            "画面呈现活动成分次图，展示核心成分与原料质感，只保留 1 个活动利益标签作辅助。",
             "镜头语言：使用极浅景深超微距摄影，原料边缘清晰、背景柔化，形成昂贵的商业成分大片感。",
             "材质质感：原料与液滴要晶莹剔透，带晨露质感、发光精华液滴和清透高调色彩；活动元素只做轻量角标。",
             "必须参考以下成分信息，选择 2-3 个重点成分呈现：",
@@ -1464,11 +1515,11 @@ def _module_requirements(
             "可加入限时优惠、活动权益、购买利益点，但不能夸大效果或制造绝对承诺。",
         ],
         "campaign_usage_scene": [
-            "画面呈现活动使用场景次图，结合目标人群、使用环境和活动购买氛围。",
-            "环境：使用极简奢华浴室或梳妆台一角，台面干净、材质高级，可加入礼盒、优惠券或活动标签氛围。",
+            "画面呈现活动使用场景次图，结合目标人群、使用环境和一个活动购买理由。",
+            "环境：使用极简奢华浴室或梳妆台一角，台面干净、材质高级，可加入 1 个礼盒、优惠券或活动标签作为辅助。",
             "光照：使用透过纱帘或百叶窗的柔和自然窗光，可有丁达尔光晕和轻微 bokeh。",
             "人物：优先使用优雅手部姿态、滴管动作、轻拍或涂抹局部，弱化面部特征，避免凌乱居家背景和随意自拍感。",
-            "可以加入礼盒、活动氛围、优惠券、限时购标签等元素，产品必须清晰可见。",
+            "活动辅助元素只能选 1-2 个，产品必须清晰可见，不能堆成促销道具场。",
             "场景需围绕目标人群与使用方法展开，不编造用户未填写的具体价格、折扣或活动日期。",
         ],
         "hero": [
@@ -1699,15 +1750,22 @@ def _compact_prompt_text(prompt: str) -> str:
     return "\n".join(compacted).strip()
 
 
-def _product_identity_lock_rules(has_product_reference: bool) -> str:
+def _product_identity_lock_rules(has_product_reference: bool, *, has_product_identity_reference_board: bool = False) -> str:
     if not has_product_reference:
         return ""
+    product_reference_line = (
+        "- 第一张产品参考图是系统生成的产品身份参考板，也是唯一产品母版；生成结果必须保持同一商品身份，不是重新设计一个相似护肤品。"
+        if has_product_identity_reference_board
+        else "- 第一张产品参考图是唯一产品母版；生成结果必须保持同一商品身份，不是重新设计一个相似护肤品。"
+    )
     return "\n".join(
         [
             "【产品身份锁定】",
-            "- 第一张产品参考图是唯一产品母版；生成结果必须保持同一商品身份，不是重新设计一个相似护肤品。",
+            product_reference_line,
+            "- 产品参考图只用于锁定商品外观；如果同时有风格参考图，风格参考图只用于色彩、光影、版式和氛围，不得提供瓶型、包装、Logo、文案或相似 SKU。",
+            "- 不可变产品身份：容器类型、瓶型/罐型、盖子/泵头/滴管/刷头、主体比例、包装主色、轮廓、标签版式、Logo/品牌标识、主文字位置、可识别图案、包装材质和边缘细节。",
             "- 不能替换成相似但不同的瓶子、罐子、刷子或通用护肤品包装；不能改变容器类型、盖子/刷头/配件、主体比例、主色和轮廓。",
-            "- 必须保留参考图中的标签版式、Logo/品牌标识、主文字位置、可识别图案、包装材质和边缘细节；文字可以因模型能力略微模糊，但不能变成新品牌、乱码品牌或空白标签。",
+            "- 可变画面元素：背景、光影、陈列台、质地、水花、道具、营销标签和构图；这些元素不能遮挡产品标签，也不能改写产品包装。",
             "- 只能改变背景、光影、陈列台、质地、水花、道具、营销标签和构图；这些元素不能遮挡产品标签，也不能改写产品包装。",
             "- 如果当前模块要求不要出现产品，可以不展示产品；但只要画面中出现产品，必须是参考图同款产品。",
         ]
@@ -1723,6 +1781,7 @@ def build_module_image_prompt(
     total_modules: int,
     promotion_info: str | None = None,
     has_product_reference: bool = False,
+    has_product_identity_reference_board: bool = False,
     has_style_reference: bool = False,
     text_layer_mode: bool = False,
     target_language: str | None = None,
@@ -1775,7 +1834,7 @@ def build_module_image_prompt(
             [
                 "- 只生成当前主图，不要拼接成长图，不要加入详情页模块边框或长段说明。",
                 "- 1:1 电商货架主图；产品清晰、可点击率高、信息聚焦。",
-                f"- 同套 {total_modules} 张主图共享材质、字体层级、光影、装饰和图标；每张可按模块变色。",
+                f"- 同套 {total_modules} 张主图共享材质、字体层级和光影；装饰/图标只在承担信息功能时使用，每张可按模块变色。",
             ]
         )
         if is_campaign_image:
@@ -1849,6 +1908,7 @@ def build_module_image_prompt(
 
     visual_constraints = _module_visual_constraints(module, platform_id=platform_id)
     main_image_conversion_rules = _main_image_conversion_rules(module, platform_id=platform_id) if is_main_image else ""
+    main_campaign_visual_budget_rules = _main_campaign_visual_budget_rules(module) if is_main_image else ""
     platform_main_image_rules = _platform_main_image_rules(module, platform_id) if is_main_image else ""
     campaign_promotion_guardrails = _campaign_promotion_guardrails(module) if is_campaign_image else ""
     detail_product_visibility_rules = _detail_product_visibility_rules(module) if not is_main_image else ""
@@ -1857,7 +1917,10 @@ def build_module_image_prompt(
     people_realism_guardrails = _people_realism_guardrails(module)
     detail_text_guardrails = _detail_text_guardrails(module) if not is_main_image else ""
     language_rules = _language_rules(target_language)
-    product_identity_lock_rules = _product_identity_lock_rules(has_product_reference and not is_white_bg)
+    product_identity_lock_rules = _product_identity_lock_rules(
+        has_product_reference and not is_white_bg,
+        has_product_identity_reference_board=has_product_identity_reference_board,
+    )
     visual_reduction_rules = (
         "\n".join(
             part
@@ -1908,6 +1971,7 @@ def build_module_image_prompt(
                 *(["", text_layer_rules] if text_layer_rules else []),
                 "",
                 *style_section,
+                *(["", main_campaign_visual_budget_rules] if main_campaign_visual_budget_rules else []),
                 *(["", visual_reduction_rules] if visual_reduction_rules else []),
             ]
         )

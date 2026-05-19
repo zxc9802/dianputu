@@ -1,5 +1,5 @@
 import unittest
-from base64 import b64encode
+from base64 import b64decode, b64encode
 from io import BytesIO
 from os import environ
 from types import SimpleNamespace
@@ -16,6 +16,13 @@ from app.routers.models import build_public_model_config
 from app.routers.projects import COMPOSE_JOBS, EDIT_JOBS, FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR, UploadedMaterial, build_layered_generated_image, build_material_analysis_messages, build_style_reference_analysis_messages, compose_long_jpeg, edit_generated_image, generate_detail_images, normalize_style_reference_plan_from_model, render_layered_language_version, router as projects_router
 from app.services.language_renderer import build_text_layers, render_text_layers_to_data_url
 from app.services.app_session import AppSessionUserSnapshot
+
+
+def _test_png_data_url(color=(120, 180, 220, 255), size=(96, 128)) -> str:
+    image = Image.new("RGBA", size, color)
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return "data:image/png;base64," + b64encode(buffer.getvalue()).decode("ascii")
 
 
 class StaticComplianceProvider:
@@ -415,22 +422,18 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
 
         previous_primary_key = environ.get("IMAGE_GENERATION_API_KEY")
         environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        product_1 = _test_png_data_url((40, 120, 220, 255))
+        product_2 = _test_png_data_url((220, 120, 40, 255))
+        product_3 = _test_png_data_url((120, 220, 40, 255))
+        style_1 = _test_png_data_url((180, 220, 240, 255))
+        style_2 = _test_png_data_url((240, 220, 180, 255))
         try:
             with patch("app.routers.projects.call_image_model", new=fake_call_image_model):
                 result = await generate_detail_images(
                     ["hero"],
                     "green_repair",
-                    reference_images=[
-                        "https://example.com/product-1.png",
-                        "https://example.com/product-2.png",
-                        "https://example.com/product-3.png",
-                        "https://example.com/product-4.png",
-                    ],
-                    style_reference_images=[
-                        "https://example.com/style-1.png",
-                        "https://example.com/style-2.png",
-                        "https://example.com/style-3.png",
-                    ],
+                    reference_images=[product_1, product_2, product_3],
+                    style_reference_images=[style_1, style_2],
                     image_model_id="primary",
                 )
         finally:
@@ -440,16 +443,61 @@ class GenerationContractTests(unittest.IsolatedAsyncioTestCase):
                 environ["IMAGE_GENERATION_API_KEY"] = previous_primary_key
 
         self.assertEqual(result["source"], "model")
+        self.assertEqual(len(captured_images[0]), 3)
+        self.assertTrue(captured_images[0][0].startswith("data:image/png;base64,"))
+        self.assertNotEqual(captured_images[0][0], product_1)
         self.assertEqual(
             captured_images,
             [
                 [
-                    "https://example.com/product-1.png",
-                    "https://example.com/product-2.png",
-                    "https://example.com/style-1.png",
+                    captured_images[0][0],
+                    product_1,
+                    style_1,
                 ]
             ],
         )
+
+    async def test_reference_generation_sends_product_identity_board_before_original_product(self):
+        captured_images = []
+        captured_prompts = []
+
+        async def fake_call_image_model(settings, prompt, image=None, size=None):
+            captured_images.append(image)
+            captured_prompts.append(prompt)
+            return ["https://example.com/hero.png"]
+
+        previous_primary_key = environ.get("IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        product = _test_png_data_url((24, 80, 160, 255), size=(90, 140))
+        style = _test_png_data_url((180, 230, 250, 255), size=(120, 80))
+        try:
+            with patch("app.routers.projects.call_image_model", new=fake_call_image_model):
+                result = await generate_detail_images(
+                    ["hero"],
+                    "green_repair",
+                    reference_images=[product],
+                    style_reference_images=[style],
+                    image_model_id="primary",
+                )
+        finally:
+            if previous_primary_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_primary_key
+
+        self.assertEqual(result["source"], "model")
+        self.assertEqual(len(captured_images[0]), 3)
+        identity_board, original_product, style_reference = captured_images[0]
+        self.assertTrue(identity_board.startswith("data:image/png;base64,"))
+        self.assertNotEqual(identity_board, product)
+        self.assertEqual(original_product, product)
+        self.assertEqual(style_reference, style)
+        with Image.open(BytesIO(b64decode(identity_board.partition(",")[2]))) as board:
+            self.assertEqual(board.size, (1024, 1024))
+        self.assertIn("产品身份参考板", captured_prompts[0])
+        self.assertIn("产品参考图只用于锁定商品外观", captured_prompts[0])
+        self.assertIn("风格参考图只用于色彩、光影、版式和氛围", captured_prompts[0])
+        self.assertIn("不可变产品身份", captured_prompts[0])
 
     async def test_selected_fallback_retries_api_xai_then_yunwu_backup_for_five_groups(self):
         calls = []
