@@ -30,6 +30,14 @@ import { useAppViewer } from "@/lib/client/app-session";
 import { saveHistory } from "@/lib/historyApi";
 import { resolveInitialImageModelId } from "@/lib/modelSelection";
 import {
+  buildStyleReferenceScopeOptions,
+  MAX_STYLE_REFERENCE_FILES,
+  moveStyleReferenceFile,
+  normalizeStyleReferenceFile,
+  selectStyleReferencesForModule,
+  toggleStyleReferenceScope
+} from "@/lib/styleReferenceTargeting";
+import {
   applyProductInfoDraft,
   createEmptyProductInfo,
   mergeProductInfoWithManualPriority,
@@ -73,6 +81,7 @@ import type {
   ProjectTemplate,
   PublicModelConfig,
   SavedStyleRecord,
+  StyleReferenceScope,
   StepId,
   StyleOption,
   StyleSource,
@@ -183,7 +192,7 @@ function readPersistedProjectState(): PersistedProjectState | null {
       productInfo: parsed.productInfo ?? null,
       hasAiProductInfo: Boolean(parsed.hasAiProductInfo && parsed.productInfo),
       uploadedFiles: Array.isArray(parsed.uploadedFiles) ? parsed.uploadedFiles : [],
-      styleReferenceFiles: Array.isArray(parsed.styleReferenceFiles) ? parsed.styleReferenceFiles : [],
+      styleReferenceFiles: Array.isArray(parsed.styleReferenceFiles) ? parsed.styleReferenceFiles.map(normalizeStyleReferenceFile) : [],
       selectedStyleId: parsed.selectedStyleId || DEFAULT_STYLE_ID,
       customStyle: parsed.customStyle && typeof parsed.customStyle === "object" ? (parsed.customStyle as StyleOption) : null,
       styleSource,
@@ -362,7 +371,7 @@ export default function Home() {
         setProductInfo(restored.productInfo);
         setHasAiProductInfo(restored.hasAiProductInfo);
         setUploadedFiles(restored.uploadedFiles ?? []);
-        setStyleReferenceFiles(restored.styleReferenceFiles ?? []);
+        setStyleReferenceFiles((restored.styleReferenceFiles ?? []).map(normalizeStyleReferenceFile));
         setSelectedStyleId(restored.selectedStyleId);
         setCustomStyle(restored.customStyle);
         setStyleSource(restored.styleSource);
@@ -489,6 +498,10 @@ export default function Home() {
     [imageVersionStore]
   );
   const allTemplates = useMemo(() => [...OFFICIAL_PROJECT_TEMPLATES, ...userTemplates], [userTemplates]);
+  const styleReferenceScopeGroups = useMemo(
+    () => buildStyleReferenceScopeOptions(modules, selectedDetailLayoutId),
+    [modules, selectedDetailLayoutId]
+  );
 
   function createCurrentProjectState(status = statusText): PersistedProjectState {
     return createProjectStateSnapshot({
@@ -519,7 +532,7 @@ export default function Home() {
     setProductInfo(state.productInfo);
     setHasAiProductInfo(state.hasAiProductInfo);
     setUploadedFiles(state.uploadedFiles ?? []);
-    setStyleReferenceFiles(state.styleReferenceFiles ?? []);
+    setStyleReferenceFiles((state.styleReferenceFiles ?? []).map(normalizeStyleReferenceFile));
     setSelectedStyleId(state.selectedStyleId);
     setCustomStyle(state.customStyle);
     setStyleSource(state.styleSource);
@@ -570,12 +583,24 @@ export default function Home() {
 
   async function addStyleReferenceFiles(files: File[]) {
     setStatusText("读取对标图片");
-    const nextFiles = await Promise.all(files.map((file) => fileToUploadInfo("style_reference", file)));
-    setStyleReferenceFiles((current) => [...current, ...nextFiles].slice(-4));
+    const nextFiles = (await Promise.all(files.map((file) => fileToUploadInfo("style_reference", file)))).map(normalizeStyleReferenceFile);
+    setStyleReferenceFiles((current) =>
+      [...current.map(normalizeStyleReferenceFile), ...nextFiles].slice(0, MAX_STYLE_REFERENCE_FILES)
+    );
     setStatusText("对标图片已加入");
   }
 
-  function buildStyleReferencePayload(): MaterialPayload[] {
+  function moveStyleReferencePriority(id: string, direction: -1 | 1) {
+    setStyleReferenceFiles((current) => moveStyleReferenceFile(current, id, direction));
+  }
+
+  function toggleStyleReferenceFileScope(id: string, scope: StyleReferenceScope) {
+    setStyleReferenceFiles((current) =>
+      current.map((file) => (file.id === id ? toggleStyleReferenceScope(file, scope) : file))
+    );
+  }
+
+  function buildStyleReferencePayload(limit = 4): MaterialPayload[] {
     return styleReferenceFiles
       .filter((file) => file.type.startsWith("image/") && file.dataUrl)
       .map((file) => ({
@@ -585,10 +610,11 @@ export default function Home() {
         content_type: file.type,
         data_url: file.dataUrl
       }))
-      .slice(0, 4);
+      .slice(0, limit);
   }
 
-  function styleReferenceImages() {
+  function styleReferenceImages(moduleId?: string) {
+    if (moduleId) return selectStyleReferencesForModule(styleReferenceFiles, moduleId).images;
     return buildStyleReferencePayload()
       .map((file) => file.data_url)
       .filter((url): url is string => Boolean(url));
@@ -698,7 +724,9 @@ export default function Home() {
       return;
     }
     const activeCustomStyle = styleSource === "ai_custom" && customStyle ? customStyle : undefined;
-    const benchmarkImages = activeCustomStyle?.id === "style_reference" ? styleReferenceImages() : [];
+    const benchmarkReferences = activeCustomStyle?.id === "style_reference"
+      ? selectStyleReferencesForModule(styleReferenceFiles, moduleId)
+      : { images: [], selections: [] };
     const group = moduleGroup(module);
     const languageRequest = { targetLanguage: language };
     setLanguageGeneration({ moduleId, versionId, language });
@@ -711,7 +739,8 @@ export default function Home() {
         referenceImages,
         group === "campaign" ? promotionInfo : "",
         generationSizeForGroup(group),
-        benchmarkImages,
+        benchmarkReferences.images,
+        benchmarkReferences.selections,
         activeCustomStyle,
         selectedImageModelId,
         selectedGenerationMode,
@@ -981,7 +1010,6 @@ export default function Home() {
       .map((file) => file.dataUrl as string)
       .slice(0, 4);
     const activeCustomStyle = styleSource === "ai_custom" && customStyle ? customStyle : undefined;
-    const benchmarkImages = activeCustomStyle?.id === "style_reference" ? styleReferenceImages() : [];
     if (referenceImages.length === 0) {
       setStatusText("请先上传产品图，避免生成结果与原产品不一致");
       return;
@@ -1022,15 +1050,19 @@ export default function Home() {
     try {
       const summary = await runParallelImageGeneration(
         modulesToGenerate,
-        (module) =>
-          generateImages(
+        (module) => {
+          const benchmarkReferences = activeCustomStyle?.id === "style_reference"
+            ? selectStyleReferencesForModule(styleReferenceFiles, module.id)
+            : { images: [], selections: [] };
+          return generateImages(
             [module.id],
             selectedStyleId,
             productInfoForGeneration,
             referenceImages,
             group === "campaign" ? promotionInfo : "",
             generationSizeForGroup(group),
-            benchmarkImages,
+            benchmarkReferences.images,
+            benchmarkReferences.selections,
             activeCustomStyle,
             selectedImageModelId,
             selectedGenerationMode,
@@ -1039,7 +1071,8 @@ export default function Home() {
             languageRequest.targetLanguage,
             selectedPromptBranch,
             selectedDetailLayoutId
-          ),
+          );
+        },
         (module, result, progress) => {
           if (result.images.length) {
             const images =
@@ -1275,6 +1308,7 @@ export default function Home() {
             selectedStyleId={selectedStyleId}
             customStyle={customStyle}
             styleReferenceFiles={styleReferenceFiles}
+            styleReferenceScopeGroups={styleReferenceScopeGroups}
             isPlanningCustomStyle={isPlanningCustomStyle}
             isAnalyzingStyleReference={isAnalyzingStyleReference}
             isGeneratingStyleSample={isGeneratingStyleSample}
@@ -1291,6 +1325,8 @@ export default function Home() {
             onDeleteSavedStyle={(id) => void handleDeleteSavedStyle(id)}
             onStyleReferenceFilesAdded={(files) => void addStyleReferenceFiles(files)}
             onStyleReferenceFileRemove={(id) => setStyleReferenceFiles((current) => current.filter((file) => file.id !== id))}
+            onStyleReferenceFileMove={moveStyleReferencePriority}
+            onStyleReferenceScopeToggle={toggleStyleReferenceFileScope}
             onAnalyzeStyleReference={handleAnalyzeStyleReference}
             onGenerateAiStyleSample={handleGenerateAiStyleSample}
             onBack={() => go(previousStep(activeStep))}

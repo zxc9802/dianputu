@@ -40,6 +40,10 @@ FIXED_PRODUCT_COMPOSITE_MODE = "fixed_product_composite"
 FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR = "固定产品合成需要先上传产品图，系统会把上传图作为产品母版复用，避免模型反复重绘导致包装、Logo 或瓶身变形。"
 MAX_MODEL_PRODUCT_REFERENCE_IMAGES = 2
 MAX_MODEL_STYLE_REFERENCE_IMAGES = 1
+MAX_TARGETED_STYLE_REFERENCE_IMAGES = 2
+MAX_GLOBAL_STYLE_REFERENCE_IMAGES_WITH_TARGETED = 1
+MAX_GLOBAL_STYLE_REFERENCE_IMAGES_WITHOUT_TARGETED = 2
+MAX_SCOPED_STYLE_REFERENCE_IMAGES = MAX_TARGETED_STYLE_REFERENCE_IMAGES + MAX_GLOBAL_STYLE_REFERENCE_IMAGES_WITH_TARGETED
 STYLE_SAMPLE_IMAGE_SIZE = "1024x1024"
 DETAIL_IMAGE_GENERATION_SIZE = "1152x2048"
 GENERATION_JOBS: dict[str, dict[str, Any]] = {}
@@ -69,17 +73,82 @@ def _focused_model_reference_images(
     *,
     fixed_product_mode: bool = False,
     product_identity_reference_board: str | None = None,
+    style_reference_image_limit: int = MAX_MODEL_STYLE_REFERENCE_IMAGES,
 ) -> list[str]:
     if fixed_product_mode:
-        return list(style_reference_images or [])[:MAX_MODEL_STYLE_REFERENCE_IMAGES]
+        return list(style_reference_images or [])[:style_reference_image_limit]
     product_references = [
         *([product_identity_reference_board] if product_identity_reference_board else []),
         *list(reference_images or []),
     ][:MAX_MODEL_PRODUCT_REFERENCE_IMAGES]
     return [
         *product_references,
-        *list(style_reference_images or [])[:MAX_MODEL_STYLE_REFERENCE_IMAGES],
+        *list(style_reference_images or [])[:style_reference_image_limit],
     ]
+
+
+def _style_reference_scope_list(selection: dict[str, Any]) -> list[dict[str, Any]]:
+    scopes = selection.get("scopes")
+    return [scope for scope in scopes if isinstance(scope, dict)] if isinstance(scopes, list) and scopes else [{"type": "global"}]
+
+
+def _style_reference_selection_url(selection: dict[str, Any]) -> str:
+    return str(selection.get("url") or selection.get("data_url") or "").strip()
+
+
+def _style_reference_targets_module(selection: dict[str, Any], module_id: str) -> bool:
+    return any(
+        str(scope.get("type") or "").strip() == "module"
+        and str(scope.get("moduleId") or scope.get("module_id") or "").strip() == module_id
+        for scope in _style_reference_scope_list(selection)
+    )
+
+
+def _style_reference_is_global(selection: dict[str, Any]) -> bool:
+    return any(str(scope.get("type") or "").strip() == "global" for scope in _style_reference_scope_list(selection))
+
+
+def _selected_style_reference_urls(selections: list[dict[str, Any]]) -> list[str]:
+    urls: list[str] = []
+    seen: set[str] = set()
+    for selection in selections:
+        url = _style_reference_selection_url(selection)
+        if url and url not in seen:
+            urls.append(url)
+            seen.add(url)
+    return urls
+
+
+def _module_style_reference_images(
+    module_id: str,
+    style_reference_images: list[str] | None,
+    style_reference_selections: list[dict[str, Any]] | None,
+) -> tuple[list[str], bool, int]:
+    selections = [item for item in (style_reference_selections or []) if isinstance(item, dict) and _style_reference_selection_url(item)]
+    if not selections:
+        return list(style_reference_images or []), False, MAX_MODEL_STYLE_REFERENCE_IMAGES
+
+    targeted = [selection for selection in selections if _style_reference_targets_module(selection, module_id)]
+    selected_targeted = targeted[:MAX_TARGETED_STYLE_REFERENCE_IMAGES]
+    global_references = [selection for selection in selections if _style_reference_is_global(selection)]
+
+    if selected_targeted:
+        targeted_urls = {_style_reference_selection_url(selection) for selection in selected_targeted}
+        selected = [
+            *selected_targeted,
+            *[
+                selection
+                for selection in global_references
+                if _style_reference_selection_url(selection) not in targeted_urls
+            ][:MAX_GLOBAL_STYLE_REFERENCE_IMAGES_WITH_TARGETED],
+        ]
+        return _selected_style_reference_urls(selected), True, MAX_SCOPED_STYLE_REFERENCE_IMAGES
+
+    return (
+        _selected_style_reference_urls(global_references[:MAX_GLOBAL_STYLE_REFERENCE_IMAGES_WITHOUT_TARGETED]),
+        False,
+        MAX_SCOPED_STYLE_REFERENCE_IMAGES,
+    )
 
 
 async def _call_image_model_with_retry_groups(
@@ -1239,6 +1308,7 @@ async def _generate_module_image(
     product_info: dict[str, Any] | None,
     reference_images: list[str] | None,
     style_reference_images: list[str] | None,
+    style_reference_selections: list[dict[str, Any]] | None,
     promotion_info: str | None,
     style: dict[str, Any],
     custom_style: dict[str, Any] | None,
@@ -1258,6 +1328,11 @@ async def _generate_module_image(
     request_size = DETAIL_IMAGE_GENERATION_SIZE if module.get("image_group") == "detail" else platform_size
     if module_id in WHITE_BACKGROUND_MODULE_IDS and reference_images:
         return {"module_id": module_id, "url": reference_images[0]}, None
+    module_style_reference_images, has_targeted_style_reference, style_reference_image_limit = _module_style_reference_images(
+        module_id,
+        style_reference_images,
+        style_reference_selections,
+    )
     fixed_product_mode = generation_mode == FIXED_PRODUCT_COMPOSITE_MODE and bool(reference_images)
     product_identity_reference_board = ""
     if reference_images and not fixed_product_mode:
@@ -1275,7 +1350,8 @@ async def _generate_module_image(
         promotion_info=promotion_info,
         has_product_reference=bool(reference_images) and not fixed_product_mode,
         has_product_identity_reference_board=bool(product_identity_reference_board),
-        has_style_reference=bool(style_reference_images),
+        has_style_reference=bool(module_style_reference_images),
+        has_targeted_style_reference=has_targeted_style_reference,
         text_layer_mode=layered_text,
         target_language=target_language,
         platform_id=platform_id,
@@ -1284,9 +1360,10 @@ async def _generate_module_image(
     generation_prompt = build_fixed_product_background_prompt(prompt, module) if fixed_product_mode else prompt
     model_reference_images = _focused_model_reference_images(
         reference_images,
-        style_reference_images,
+        module_style_reference_images,
         fixed_product_mode=fixed_product_mode,
         product_identity_reference_board=product_identity_reference_board or None,
+        style_reference_image_limit=style_reference_image_limit,
     )
     image_settings = resolve_image_settings(settings, image_model_id)
     urls, primary_error = await _call_image_model_with_retry_groups(
@@ -1350,6 +1427,7 @@ async def generate_detail_images(
     product_info: dict[str, Any] | None = None,
     reference_images: list[str] | None = None,
     style_reference_images: list[str] | None = None,
+    style_reference_selections: list[dict[str, Any]] | None = None,
     custom_style: dict[str, Any] | None = None,
     promotion_info: str | None = None,
     platform_size: str | None = None,
@@ -1399,6 +1477,7 @@ async def generate_detail_images(
                     product_info=product_info,
                     reference_images=reference_images,
                     style_reference_images=style_reference_images,
+                    style_reference_selections=style_reference_selections,
                     promotion_info=promotion_info,
                     style=style,
                     custom_style=custom_style,
@@ -1651,6 +1730,7 @@ try:
         product_info: dict[str, Any] | None = None
         reference_images: list[str] = Field(default_factory=list)
         style_reference_images: list[str] = Field(default_factory=list)
+        style_reference_selections: list[dict[str, Any]] = Field(default_factory=list)
         custom_style: dict[str, Any] | None = None
         promotion_info: str | None = None
         platform_size: str | None = None
@@ -1676,6 +1756,7 @@ try:
             "product_info": request.product_info,
             "reference_images": list(request.reference_images),
             "style_reference_images": list(request.style_reference_images),
+            "style_reference_selections": list(request.style_reference_selections),
             "custom_style": request.custom_style,
             "promotion_info": request.promotion_info,
             "platform_size": request.platform_size,
@@ -1719,6 +1800,7 @@ try:
                 product_info=payload.get("product_info"),
                 reference_images=payload.get("reference_images") or [],
                 style_reference_images=payload.get("style_reference_images") or [],
+                style_reference_selections=payload.get("style_reference_selections") or [],
                 custom_style=payload.get("custom_style"),
                 promotion_info=payload.get("promotion_info"),
                 platform_size=payload.get("platform_size"),
@@ -1878,6 +1960,7 @@ try:
             product_info=request.product_info,
             reference_images=request.reference_images,
             style_reference_images=request.style_reference_images,
+            style_reference_selections=request.style_reference_selections,
             custom_style=request.custom_style,
             promotion_info=request.promotion_info,
             platform_size=request.platform_size,

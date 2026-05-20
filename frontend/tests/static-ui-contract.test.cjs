@@ -269,6 +269,14 @@ assertIncludes("app/page.tsx", "planAiCustomStyle", "page must call Gemini only 
 assertIncludes("app/page.tsx", "styleReferenceFiles", "page must store uploaded benchmark reference images separately from product files");
 assertIncludes("app/page.tsx", "handleAnalyzeStyleReference", "page must analyze benchmark reference images through Gemini");
 assertIncludes("app/page.tsx", "styleReferenceImages", "generation must collect benchmark reference image URLs");
+assertIncludes("lib/styleReferenceTargeting.ts", "MAX_STYLE_REFERENCE_FILES = 20", "style reference uploads must allow up to 20 prioritized images");
+assertIncludes("app/page.tsx", "selectStyleReferencesForModule", "generation must select benchmark references per target module");
+assertIncludes("app/page.tsx", "moveStyleReferenceFile", "page must support changing benchmark image priority");
+assertIncludes("lib/api.ts", "style_reference_selections", "image generation requests must send scoped benchmark reference metadata");
+assertIncludes("components/StyleStep.tsx", "styleReferenceScopeGroups", "style step must render grouped target-screen options");
+assertIncludes("components/StyleStep.tsx", "onStyleReferenceFileMove", "style step must expose priority up/down controls");
+assertIncludes("components/StyleStep.tsx", "type=\"checkbox\"", "style step must allow one benchmark image to affect multiple screens");
+assertIncludes("components/StyleStep.tsx", "scopeDropdown", "style step must present target screens in a dropdown control");
 assertIncludes("app/page.tsx", "generateAiCustomStyleSample", "page must generate AI style samples only from the separate sample action");
 assertIncludes("app/page.tsx", "styleSource === \"ai_custom\" ? customStyle", "generation must send the selected AI custom style brief");
 assertIncludes("components/StyleStep.tsx", "customStyle.asset", "AI custom style card must render the generated GPT image sample when available");

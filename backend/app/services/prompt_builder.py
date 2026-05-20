@@ -1783,6 +1783,7 @@ def build_module_image_prompt(
     has_product_reference: bool = False,
     has_product_identity_reference_board: bool = False,
     has_style_reference: bool = False,
+    has_targeted_style_reference: bool = False,
     text_layer_mode: bool = False,
     target_language: str | None = None,
     platform_id: str | None = None,
@@ -1876,6 +1877,15 @@ def build_module_image_prompt(
                 "【统一视觉风格】",
                 *(_premium_skincare_style_lines() if optimized_prompt_branch else []),
                 "- 上传的风格参考图优先：只参考排版、色调、光影和氛围，不改变产品外观、包装和品牌信息。",
+                *(
+                    [
+                        "- 本屏存在指定屏对标图：优先学习这些图片的版式节奏、主视觉比例、信息密度和氛围；全局参考只做轻量一致性补充。"
+                    ]
+                    if has_targeted_style_reference
+                    else [
+                        "- 当前没有指定屏对标图：只使用全局参考的色彩、光影和整体版式，不要强行复刻到本屏。"
+                    ]
+                ),
                 *reference_style_lines,
                 "- 不要混入预设风格名称、主色或关键词；风格只以已上传的风格参考图为准。",
                 reference_product_style_rule,

@@ -573,6 +573,46 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("上传的风格参考图优先", prompt)
         self.assertEqual(mocked.call_args.kwargs["image"], ["data:image/png;base64,product", "data:image/png;base64,style"])
 
+    async def test_generation_filters_scoped_style_reference_images_per_module(self):
+        previous_key = environ.get("IMAGE_GENERATION_API_KEY")
+        environ["IMAGE_GENERATION_API_KEY"] = "test-key"
+        captured_calls = []
+
+        async def fake_call_image_model(settings, prompt, image=None, size=None):
+            captured_calls.append({"prompt": prompt, "image": image})
+            module_slug = "hero" if "当前模块：详情首图" in prompt else "usage"
+            return [f"https://example.com/{module_slug}.png"]
+
+        try:
+            with patch("app.routers.projects.call_image_model", new=fake_call_image_model):
+                result = await generate_detail_images(
+                    ["hero", "usage"],
+                    "green_repair",
+                    product_info={"product_name": "积雪草修护精华"},
+                    reference_images=["data:image/png;base64,product"],
+                    style_reference_selections=[
+                        {"url": "target-1", "scopes": [{"type": "module", "moduleId": "hero"}], "strength": "targeted"},
+                        {"url": "global-1", "scopes": [{"type": "global"}], "strength": "global"},
+                        {"url": "target-2", "scopes": [{"type": "module", "moduleId": "hero"}], "strength": "targeted"},
+                        {"url": "target-3", "scopes": [{"type": "module", "moduleId": "hero"}], "strength": "targeted"},
+                        {"url": "global-2", "scopes": [{"type": "global"}], "strength": "global"},
+                    ],
+                )
+        finally:
+            if previous_key is None:
+                environ.pop("IMAGE_GENERATION_API_KEY", None)
+            else:
+                environ["IMAGE_GENERATION_API_KEY"] = previous_key
+
+        self.assertEqual(result["source"], "model")
+        hero_call = next(call for call in captured_calls if "当前模块：详情首图" in call["prompt"])
+        usage_call = next(call for call in captured_calls if "当前模块：使用方法" in call["prompt"])
+        self.assertEqual(hero_call["image"], ["data:image/png;base64,product", "target-1", "target-2", "global-1"])
+        self.assertEqual(usage_call["image"], ["data:image/png;base64,product", "global-1", "global-2"])
+        self.assertIn("本屏存在指定屏对标图", hero_call["prompt"])
+        self.assertIn("全局参考只做轻量一致性补充", hero_call["prompt"])
+        self.assertIn("当前没有指定屏对标图", usage_call["prompt"])
+
     async def test_white_background_ignores_style_reference_images(self):
         previous_key = environ.get("IMAGE_GENERATION_API_KEY")
         environ["IMAGE_GENERATION_API_KEY"] = "test-key"
@@ -849,6 +889,7 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
                 product_info={"product_name": "积雪草修护精华"},
                 reference_images=["https://example.com/product.png"],
                 style_reference_images=[],
+                style_reference_selections=[],
                 custom_style=None,
                 promotion_info="",
                 platform_size="2048x2048",

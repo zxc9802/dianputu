@@ -862,18 +862,28 @@ a {
 
 .styleReferenceThumbs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 8px;
 }
 
-.styleReferenceThumbs figure {
-  position: relative;
+.styleReferenceItem {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  border: 1px solid rgba(52, 127, 185, 0.18);
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px;
+}
+
+.styleReferenceItem figure {
   margin: 0;
   min-width: 0;
 }
 
-.styleReferenceThumbs img,
-.styleReferenceThumbs span {
+.styleReferenceItem img,
+.styleReferenceItem span {
   width: 100%;
   aspect-ratio: 1 / 1;
   border: 1px solid var(--line);
@@ -881,11 +891,11 @@ a {
   background: #fff;
 }
 
-.styleReferenceThumbs img {
+.styleReferenceItem img {
   object-fit: cover;
 }
 
-.styleReferenceThumbs span {
+.styleReferenceItem span {
   display: grid;
   place-items: center;
   padding: 8px;
@@ -894,18 +904,99 @@ a {
   text-align: center;
 }
 
-.styleReferenceThumbs button {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  width: 26px;
-  height: 26px;
-  border: 0;
+.styleReferenceMeta {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.styleReferenceTitleRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.styleReferenceTitleRow b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #153746;
+  font-size: 13px;
+}
+
+.styleReferenceActions {
+  display: flex;
+  gap: 4px;
+}
+
+.styleReferenceActions button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(255, 255, 255, .92);
+  background: #fff;
   color: #1b5a70;
   display: grid;
   place-items: center;
+}
+
+.styleReferenceActions button:disabled {
+  opacity: .42;
+}
+
+.scopeDropdown {
+  position: relative;
+}
+
+.scopeDropdown summary {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #f7fbfc;
+  color: #153746;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.scopeDropdownMenu {
+  margin-top: 8px;
+  display: grid;
+  gap: 10px;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid rgba(52, 127, 185, 0.22);
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+  box-shadow: var(--shadow);
+}
+
+.scopeGroup {
+  display: grid;
+  gap: 6px;
+}
+
+.scopeGroup b {
+  color: #153746;
+  font-size: 13px;
+}
+
+.scopeCheckbox {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  color: #4d5660;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.scopeCheckbox input {
+  margin: 2px 0 0;
 }
 
 .styleReferenceEmpty {

@@ -1,6 +1,6 @@
 import { DEFAULT_MODULES, DEMO_MODEL_CONFIG, STYLE_OPTIONS } from "./constants";
 import { MainAppRedirectError, extractApiErrorMessage, readJsonSafely, redirectToMainAppIfNeeded } from "./client/api-response";
-import type { CommercePlatformId, ComplianceReport, ComplianceTextItem, DetailLayoutId, GenerationMode, LanguageCode, LanguageVersion, MaterialPayload, ModuleConfig, ProductInfo, PromptBranch, PublicModelConfig, SavedStyleRecord, StyleOption, TextLayer } from "./types";
+import type { CommercePlatformId, ComplianceReport, ComplianceTextItem, DetailLayoutId, GenerationMode, LanguageCode, LanguageVersion, MaterialPayload, ModuleConfig, ProductInfo, PromptBranch, PublicModelConfig, SavedStyleRecord, StyleOption, StyleReferenceSelection, TextLayer } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 const LOCAL_SAVED_STYLES_STORAGE_KEY = "detail-image-agent-saved-styles";
@@ -181,6 +181,7 @@ export async function generateImages(
   promotionInfo = "",
   platformSize = "",
   styleReferenceImages: string[] = [],
+  styleReferenceSelections: StyleReferenceSelection[] = [],
   customStyle?: StyleOption,
   imageModelId = "",
   generationMode: GenerationMode = "reference_generate",
@@ -199,6 +200,7 @@ export async function generateImages(
       promotionInfo,
       platformSize,
       styleReferenceImages,
+      styleReferenceSelections,
       customStyle,
       imageModelId,
       generationMode,
@@ -265,6 +267,7 @@ export async function createGenerateImageJob(
   promotionInfo = "",
   platformSize = "",
   styleReferenceImages: string[] = [],
+  styleReferenceSelections: StyleReferenceSelection[] = [],
   customStyle?: StyleOption,
   imageModelId = "",
   generationMode: GenerationMode = "reference_generate",
@@ -282,6 +285,7 @@ export async function createGenerateImageJob(
       product_info: productInfo,
       reference_images: referenceImages,
       style_reference_images: styleReferenceImages,
+      style_reference_selections: styleReferenceSelections,
       custom_style: customStyle,
       promotion_info: promotionInfo,
       platform_size: platformSize,

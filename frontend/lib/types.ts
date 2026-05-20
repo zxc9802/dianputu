@@ -10,6 +10,16 @@ export type PromptBranch = "current" | "prompt_optimization";
 
 export type DetailLayoutId = "detail_evidence_chain_16" | "detail_standard_conversion_10";
 
+export type StyleReferenceScope = { type: "global" } | { type: "module"; moduleId: string };
+
+export type StyleReferenceSelection = {
+  url: string;
+  fileId?: string;
+  filename?: string;
+  scopes: StyleReferenceScope[];
+  strength: "global" | "targeted";
+};
+
 export type StyleOption = {
   id: string;
   seed_id?: string;
@@ -162,6 +172,7 @@ export type UploadedFileInfo = {
   lastModified: number;
   dataUrl?: string;
   text?: string;
+  styleReferenceScopes?: StyleReferenceScope[];
 };
 
 export type GeneratedImageVersion = {

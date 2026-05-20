@@ -516,6 +516,52 @@ async function runRetryChecks() {
   assert.deepEqual(JSON.parse(JSON.stringify(nonRetrySummary.errors)), ["detail_ec_solution: missing product reference image"]);
 }
 
+const targetingPath = path.join(root, "lib", "styleReferenceTargeting.ts");
+const targetingSource = fs.readFileSync(targetingPath, "utf8");
+const compiledTargeting = ts.transpileModule(targetingSource, {
+  compilerOptions: {
+    module: ts.ModuleKind.CommonJS,
+    target: ts.ScriptTarget.ES2019,
+    esModuleInterop: true
+  }
+}).outputText;
+const targetingSandbox = {
+  exports: {},
+  module: { exports: {} },
+  require(request) {
+    if (request === "@/lib/types" || request === "./types") return {};
+    if (request === "@/lib/constants" || request === "./constants") return constantsSandbox.module.exports;
+    throw new Error(`Unexpected require: ${request}`);
+  }
+};
+targetingSandbox.exports = targetingSandbox.module.exports;
+vm.runInNewContext(compiledTargeting, targetingSandbox, { filename: targetingPath });
+
+const {
+  GLOBAL_STYLE_REFERENCE_SCOPE,
+  normalizeStyleReferenceScopes,
+  buildStyleReferenceScopeOptions,
+  moveStyleReferenceFile,
+  selectStyleReferencesForModule
+} = targetingSandbox.module.exports;
+const plainValue = (value) => JSON.parse(JSON.stringify(value));
+
+assert.deepEqual(plainValue(normalizeStyleReferenceScopes(undefined)), [{ type: "global" }]);
+assert.equal(buildStyleReferenceScopeOptions(DEFAULT_MODULES, "detail_evidence_chain_16").detail[0].moduleId, "detail_ec_hero");
+assert.equal(buildStyleReferenceScopeOptions(DEFAULT_MODULES, "detail_standard_conversion_10").detail[0].moduleId, "hero");
+assert.deepEqual(plainValue(moveStyleReferenceFile([{ id: "a" }, { id: "b" }, { id: "c" }], "c", -1).map((item) => item.id)), ["a", "c", "b"]);
+
+const refFiles = [
+  { id: "t1", name: "target one", slot: "style_reference", type: "image/png", dataUrl: "target-1", styleReferenceScopes: [{ type: "module", moduleId: "detail_ec_hero" }] },
+  { id: "g1", name: "global one", slot: "style_reference", type: "image/png", dataUrl: "global-1", styleReferenceScopes: [{ type: "global" }] },
+  { id: "t2", name: "target two", slot: "style_reference", type: "image/png", dataUrl: "target-2", styleReferenceScopes: [{ type: "module", moduleId: "detail_ec_hero" }] },
+  { id: "t3", name: "target three", slot: "style_reference", type: "image/png", dataUrl: "target-3", styleReferenceScopes: [{ type: "module", moduleId: "detail_ec_hero" }] },
+  { id: "g2", name: "global two", slot: "style_reference", type: "image/png", dataUrl: "global-2", styleReferenceScopes: [{ type: "global" }] }
+];
+
+assert.deepEqual(plainValue(selectStyleReferencesForModule(refFiles, "detail_ec_hero").images), ["target-1", "target-2", "global-1"]);
+assert.deepEqual(plainValue(selectStyleReferencesForModule(refFiles, "detail_ec_usage").images), ["global-1", "global-2"]);
+
 runAsyncChecks()
   .then(runRetryChecks)
   .then(() => {

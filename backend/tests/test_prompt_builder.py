@@ -1215,6 +1215,42 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("不要添加任何装饰背景", product_info_prompt)
         self.assertIn("产品基础信息 / 参数 / 成分说明", product_info_prompt)
 
+    def test_targeted_style_reference_prompt_strengthens_current_screen_reference(self):
+        build_module_image_prompt = load_prompt_builder()
+        style_reference = {
+            "id": "style_reference",
+            "name": "清透低密风",
+            "primary_color": "#BEEBFF",
+            "keywords": ["浅蓝", "水润", "大留白"],
+            "visual_direction": "参考图为浅蓝水润背景、大标题、单主体、少量辅助图片的低元素密度详情长图。",
+            "layout_guidance": "每屏只保留一个视觉焦点，背景干净，辅助信息少而清楚。",
+        }
+
+        targeted_prompt = build_module_image_prompt(
+            product_info={"product_name": "水润保湿面霜"},
+            style=style_reference,
+            module=next(module for module in PROMPT_MODULES if module["id"] == "hero"),
+            module_index=1,
+            total_modules=10,
+            has_style_reference=True,
+            has_targeted_style_reference=True,
+        )
+        global_prompt = build_module_image_prompt(
+            product_info={"product_name": "水润保湿面霜"},
+            style=style_reference,
+            module=next(module for module in PROMPT_MODULES if module["id"] == "usage"),
+            module_index=9,
+            total_modules=10,
+            has_style_reference=True,
+            has_targeted_style_reference=False,
+        )
+
+        self.assertIn("本屏存在指定屏对标图", targeted_prompt)
+        self.assertIn("版式节奏、主视觉比例、信息密度和氛围", targeted_prompt)
+        self.assertIn("全局参考只做轻量一致性补充", targeted_prompt)
+        self.assertIn("当前没有指定屏对标图", global_prompt)
+        self.assertIn("只使用全局参考的色彩、光影和整体版式", global_prompt)
+
     def test_style_reference_detail_prompts_keep_low_density_and_evidence_chain_module_budgets(self):
         build_module_image_prompt = load_prompt_builder()
         product_info = {

@@ -1,7 +1,8 @@
 "use client";
 
-import { Check, ImagePlus, Sparkles, Trash2, Wand2, X } from "lucide-react";
-import type { SavedStyleRecord, StyleOption, StyleSource, UploadedFileInfo } from "@/lib/types";
+import { ArrowDown, ArrowUp, Check, ImagePlus, Sparkles, Trash2, Wand2, X } from "lucide-react";
+import { GLOBAL_STYLE_REFERENCE_SCOPE, hasScope, normalizeStyleReferenceScopes, type StyleReferenceScopeGroups } from "@/lib/styleReferenceTargeting";
+import type { SavedStyleRecord, StyleOption, StyleReferenceScope, StyleSource, UploadedFileInfo } from "@/lib/types";
 
 export function StyleStep({
   styles,
@@ -9,6 +10,7 @@ export function StyleStep({
   selectedStyleId,
   customStyle,
   styleReferenceFiles,
+  styleReferenceScopeGroups,
   isPlanningCustomStyle,
   isAnalyzingStyleReference,
   isGeneratingStyleSample,
@@ -25,6 +27,8 @@ export function StyleStep({
   onDeleteSavedStyle,
   onStyleReferenceFilesAdded,
   onStyleReferenceFileRemove,
+  onStyleReferenceFileMove,
+  onStyleReferenceScopeToggle,
   onAnalyzeStyleReference,
   onGenerateAiStyleSample,
   onBack,
@@ -35,6 +39,7 @@ export function StyleStep({
   selectedStyleId: string;
   customStyle: StyleOption | null;
   styleReferenceFiles: UploadedFileInfo[];
+  styleReferenceScopeGroups: StyleReferenceScopeGroups;
   isPlanningCustomStyle: boolean;
   isAnalyzingStyleReference: boolean;
   isGeneratingStyleSample: boolean;
@@ -51,11 +56,28 @@ export function StyleStep({
   onDeleteSavedStyle: (id: string) => void;
   onStyleReferenceFilesAdded: (files: File[]) => void;
   onStyleReferenceFileRemove: (id: string) => void;
+  onStyleReferenceFileMove: (id: string, direction: -1 | 1) => void;
+  onStyleReferenceScopeToggle: (id: string, scope: StyleReferenceScope) => void;
   onAnalyzeStyleReference: () => void;
   onGenerateAiStyleSample: () => void;
   onBack: () => void;
   onNext: () => void;
 }) {
+  const scopeOptionGroups = [
+    { id: "detail", title: "详情图", options: styleReferenceScopeGroups.detail },
+    { id: "main", title: "店铺主图", options: styleReferenceScopeGroups.main },
+    { id: "campaign", title: "活动主图", options: styleReferenceScopeGroups.campaign }
+  ];
+
+  function scopeSummary(file: UploadedFileInfo) {
+    const scopes = normalizeStyleReferenceScopes(file.styleReferenceScopes);
+    const moduleCount = scopes.filter((scope) => scope.type === "module").length;
+    const globalCount = hasScope(file.styleReferenceScopes, GLOBAL_STYLE_REFERENCE_SCOPE) ? 1 : 0;
+    if (globalCount && moduleCount) return `全局 + ${moduleCount} 屏`;
+    if (globalCount) return "全局影响";
+    return `${moduleCount} 屏`;
+  }
+
   return (
     <>
       <section className="panel mainPanel fullPanel">
@@ -98,13 +120,59 @@ export function StyleStep({
               </div>
               {styleReferenceFiles.length ? (
                 <div className="styleReferenceThumbs">
-                  {styleReferenceFiles.map((file) => (
-                    <figure key={file.id}>
-                      {file.dataUrl ? <img src={file.dataUrl} alt={file.name} /> : <span>{file.name}</span>}
-                      <button type="button" onClick={() => onStyleReferenceFileRemove(file.id)} aria-label={`移除 ${file.name}`}>
-                        <X size={15} />
-                      </button>
-                    </figure>
+                  {styleReferenceFiles.map((file, index) => (
+                    <article className="styleReferenceItem" key={file.id}>
+                      <figure>
+                        {file.dataUrl ? <img src={file.dataUrl} alt={file.name} /> : <span>{file.name}</span>}
+                      </figure>
+                      <div className="styleReferenceMeta">
+                        <div className="styleReferenceTitleRow">
+                          <b>{index + 1}. {file.name}</b>
+                          <div className="styleReferenceActions">
+                            <button type="button" onClick={() => onStyleReferenceFileMove(file.id, -1)} disabled={index === 0} aria-label={`上移 ${file.name}`}>
+                              <ArrowUp size={15} />
+                            </button>
+                            <button type="button" onClick={() => onStyleReferenceFileMove(file.id, 1)} disabled={index === styleReferenceFiles.length - 1} aria-label={`下移 ${file.name}`}>
+                              <ArrowDown size={15} />
+                            </button>
+                            <button type="button" onClick={() => onStyleReferenceFileRemove(file.id)} aria-label={`移除 ${file.name}`}>
+                              <X size={15} />
+                            </button>
+                          </div>
+                        </div>
+                        <details className="scopeDropdown">
+                          <summary>{scopeSummary(file)}</summary>
+                          <div className="scopeDropdownMenu">
+                            <label className="scopeCheckbox">
+                              <input
+                                type="checkbox"
+                                checked={hasScope(file.styleReferenceScopes, GLOBAL_STYLE_REFERENCE_SCOPE)}
+                                onChange={() => onStyleReferenceScopeToggle(file.id, GLOBAL_STYLE_REFERENCE_SCOPE)}
+                              />
+                              全局影响
+                            </label>
+                            {scopeOptionGroups.map((group) => (
+                              <div className="scopeGroup" key={group.id}>
+                                <b>{group.title}</b>
+                                {group.options.map((option) => {
+                                  const scope: StyleReferenceScope = { type: "module", moduleId: option.moduleId };
+                                  return (
+                                    <label className="scopeCheckbox" key={option.moduleId}>
+                                      <input
+                                        type="checkbox"
+                                        checked={hasScope(file.styleReferenceScopes, scope)}
+                                        onChange={() => onStyleReferenceScopeToggle(file.id, scope)}
+                                      />
+                                      {option.label}
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      </div>
+                    </article>
                   ))}
                 </div>
               ) : (
