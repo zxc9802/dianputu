@@ -1730,6 +1730,140 @@ def _premium_skincare_style_lines() -> list[str]:
     ]
 
 
+STANDARD_DETAIL_HIGH_IMPACT_TEMPLATES: dict[str, list[str]] = {
+    "hero": [
+        "- 标准详情高冲击模板：产品在两块交叉厚渐变亚克力砖上方或其接触边缘，顶光直射，投下刀锋般锐利的透光阴影，形成第一屏停留率。",
+        "- 英文视觉锚点：One high-end cosmetics bottle sitting on intersecting heavy glass blocks, strong top light, sharp colorful refractive shadows, premium architectural render.",
+    ],
+    "brand_qualification": [
+        "- 标准详情高冲击模板：极简白色石膏/大理石拱门承托品牌可信感，产品或品牌符号位于拱门中心，画面像博物馆展陈。",
+        "- 英文视觉锚点：single pure white plaster classical arch, product or brand proof in the portal, museum gallery aesthetic, calm volumetric side lighting.",
+    ],
+    "research_strength": [
+        "- 标准详情高冲击模板：悬浮透明冰川冰块中封存一滴发光金色原液，四周冷淡雾气与边缘光表现高浓度活性。",
+        "- 英文视觉锚点：floating transparent ice cube containing a glowing golden droplet, cool vapor, dark slate-grey minimalist background, epic rim lighting.",
+    ],
+    "pain_scene": [
+        "- 标准详情高冲击模板：使用当前风格主色调的暗色调过渡背景，中间只保留一道精致柔和的金光或极简裂纹，表达痛点但保持高级。",
+        "- 不能为了痛点改成脏灰恐吓画面；色彩必须与整套详情图无缝咬合。",
+    ],
+    "effect_comparison": [
+        "- 标准详情高冲击模板：极干净水面作为抽象辅助视觉，一侧为轻微散乱水汽，一侧为镜面平静清澈水波；只服务局部效果对比，不做全屏杂乱分割。",
+        "- 英文视觉锚点：clean water surface, misty scattered condensation versus mirror-calm water, sharp silver light caustics, premium proof mood.",
+    ],
+    "competitor_comparison": [
+        "- 标准详情高冲击模板：两个简洁圆形托盘对比，左侧粗糙干燥陶土块，右侧极水润莹透半透明水凝胶，用材质差异替代嘈杂表格。",
+        "- 英文视觉锚点：two abstract pedestal discs, coarse earthy terracotta versus glowing water-like hyper-smooth hydrogel block, clean light backdrop.",
+    ],
+    "product_showcase": [
+        "- 标准详情高冲击模板：微距对准瓶盖、泵头或瓶身关键结构，瓶身折射柔和偏振光影，质感拉满但画面不堆道具。",
+        "- 英文视觉锚点：macro close-up of premium metallic cap, soft polarization color reflections, smooth glass body out of focus.",
+    ],
+    "ingredient_overview": [
+        "- 标准详情高冲击模板：多个半透明玻璃圆盘或成分浮岛完美层叠，折射淡雅草本/科技色彩，表达配方体系而不是完整成分表。",
+        "- 英文视觉锚点：stack of thin circular glass panels with pastel cyan and pale gold tints, perfect shadows, architectural studio scene.",
+    ],
+    "usage": [
+        "- 标准详情高冲击模板：使用步骤可用极简双手线条或纯净水滴落在陶瓷盘中的皇冠水纹做主视觉锚点，摒弃不必要背景。",
+        "- 英文视觉锚点：single high-speed water droplet splash hitting a ceramic plate, crown-like ripple, monochromatic soft grey lighting.",
+    ],
+    "product_info": [
+        "- 标准详情高冲击模板：规整低饱和多阶展台，上方保留产品或小比例线稿，下方保留干净参数留白，信息表必须清晰。",
+        "- 英文视觉锚点：neat multi-tiered podium made of sand-colored concrete, blank space below for specs, soft even shadows, quiet luxury.",
+    ],
+}
+
+
+EVIDENCE_CHAIN_HIGH_IMPACT_TEMPLATES: dict[str, list[str]] = {
+    "detail_ec_hero": [
+        "- 证据链高冲击模板：单个产品陈列在半透明磨砂亚克力弧形台面，背后是柔和渐变背光，dramatic rim light 勾勒瓶身轮廓。",
+        "- 英文视觉锚点：premium skincare bottle centered on a minimal translucent frosted acrylic curved pedestal, elegant volumetric backlight, high-end studio lighting.",
+    ],
+    "detail_ec_pain_matrix": [
+        "- 证据链高冲击模板：基于当前风格主色调的暗调/低亮度渐变背景，点缀极简干开裂质感或优雅阴影褶皱。",
+        "- 痛点表达必须温和且高契合度，绝不生硬使用冷灰色，不做脏乱皮肤恐吓。",
+    ],
+    "detail_ec_solution": [
+        "- 证据链高冲击模板：产品瓶身被一圈温润白色柔光环包裹，悬浮于干净哑光白色台面上，象征治愈与新生。",
+        "- 英文视觉锚点：one glowing white light ring elegantly encircling a cosmetic bottle, pristine matte white stage, warm luxury glow.",
+    ],
+    "detail_ec_competitor_comparison": [
+        "- 证据链高冲击模板：左右双材质对比，左侧暗沉粗糙黑色火山石，右侧白皙水润通透磨砂白玻璃。",
+        "- 英文视觉锚点：dual-texture split, dark rough matte volcanic stone versus ultra-smooth wet frosted white glass with soft refraction.",
+    ],
+    "detail_ec_real_trial": [
+        "- 证据链高冲击模板：清晨柔光下的极简浴室一角，只露镜子边缘和一片窗影，产品带清晨水雾，真实但不凌乱。",
+        "- 英文视觉锚点：minimal bathroom vanity scene at sunrise, single cosmetic bottle with micro dew drops, warm morning sunlight.",
+    ],
+    "detail_ec_effect_validation": [
+        "- 证据链高冲击模板：双层渐变亚克力圆台承载使用前/后或趋势证明，柔和向上光晕突出更好的一层。",
+        "- 英文视觉锚点：minimalist double-tier circular clear acrylic pedestal, neon glow highlighting upper tier, data-driven geometric elegance.",
+    ],
+    "detail_ec_research_system": [
+        "- 证据链高冲击模板：单个高透玻璃培养皿静置在反射镜面上，内部只有一颗晶莹液体微距球，保持 ultra clean lab aesthetic。",
+        "- 避免全套显微镜、烧杯、复杂实验仪器墙；科研感来自材质、光影和局部证据。",
+    ],
+    "detail_ec_ingredient_1_mechanism": [
+        "- 证据链高冲击模板：大景深微距下，一颗晶莹剔透的水状分子球被微气泡环绕，表现分子级渗透力。",
+        "- 英文视觉锚点：extreme macro crystalline fluid sphere surrounded by miniature micro bubbles, cinematic depth of field.",
+    ],
+    "detail_ec_ingredient_1_proof": [
+        "- 证据链高冲击模板：半透明分子链几何线条像悬浮现代雕塑，材质为拉丝银色金属和磨砂玻璃。",
+        "- 英文视觉锚点：minimalist architectural model of molecular bonds, brushed platinum and frosted glass ribbons, soft white studio.",
+    ],
+    "detail_ec_ingredient_2_mechanism": [
+        "- 证据链高冲击模板：乳白与金黄两种高黏度液体流动线条以太极般弧度优雅相融，背景极度空旷。",
+        "- 英文视觉锚点：abstract liquid swirl of creamy white oil and honey-gold serum blending together in mid-air, dynamic smooth wave.",
+    ],
+    "detail_ec_auxiliary_mechanism": [
+        "- 证据链高冲击模板：单片极简绿叶投影在柔焦米色墙面，产品置于光斑中心，表达天然屏障或第二层购买理由。",
+        "- 英文视觉锚点：organic shadow of a single palm leaf on warm beige wall, soft direct sunbeam, clean sensory aesthetic.",
+    ],
+    "detail_ec_auxiliary_validation": [
+        "- 证据链高冲击模板：细腻水波纹在微距下呈现平滑镜面渐变，水面反射淡金色光芒，代表防护膜或体验趋势。",
+        "- 英文视觉锚点：macro pristine water waves, gentle ripples, golden hour caustic reflections, ultra-minimal and high-end.",
+    ],
+    "detail_ec_real_feedback": [
+        "- 证据链高冲击模板：半透明毛玻璃圆角卡片少量堆叠，折射底部粉色/暖白光晕，表达反馈合集但不做评论瀑布流。",
+        "- 英文视觉锚点：minimal stack of curved frosted glass sheets, pink and orange glow from below, clean abstract composition.",
+    ],
+    "detail_ec_texture": [
+        "- 证据链高冲击模板：乳霜质地山脊起伏，微距下表面有丝缎般柔润光泽，无气泡杂质，边缘柔焦虚化。",
+        "- 英文视觉锚点：extreme macro silky facial cream texture, satin luster, smooth peaks and valleys, shallow depth of field.",
+    ],
+    "detail_ec_brand_sensory": [
+        "- 证据链高冲击模板：轻盈丝绸缎带在微重力下环绕产品或仪式感主体，呈珍珠贝壳般虹彩折射。",
+        "- 英文视觉锚点：ultra-light luxury silk ribbon floating in mid-air, pearlescent iridescent finish, pure zen-like background.",
+    ],
+    "detail_ec_usage": [
+        "- 证据链高冲击模板：浅灰大理石阶梯陈列台，三件同款产品呈优雅阶梯状排列，步骤编号与动作说明保持简洁清晰。",
+        "- 英文视觉锚点：three identical skincare bottles arranged diagonally on clean grey marble steps, sharp linear shadows, architectural product photography.",
+    ],
+}
+
+
+def _optimized_detail_high_impact_rules(module: dict[str, Any]) -> str:
+    module_id = str(module.get("id"))
+    template_lines = EVIDENCE_CHAIN_HIGH_IMPACT_TEMPLATES.get(module_id)
+    family_title = "证据链高冲击模板"
+    if template_lines is None:
+        template_lines = STANDARD_DETAIL_HIGH_IMPACT_TEMPLATES.get(module_id)
+        family_title = "标准详情高冲击模板"
+    if not template_lines:
+        return ""
+    return "\n".join(
+        [
+            "【极简高冲击视觉公式】",
+            "- 公式：主体产品放置 + 极简几何展台 + 情绪化背景氛围 + 视觉锚点 + 艺术化光影与高奢材质。",
+            "- 去噪原则：背景饱和度降低 20%-30%，仅保留抽象光影和低纹理材质；产品或当前主视觉必须是画面亮度最高、对比最强的中心。",
+            "- 视觉锚点：优先使用悬浮/微重力、磨砂玻璃、渐变半透明亚克力、水面焦散、宏观微距、真实接触阴影和克制边缘光。",
+            "- 负向约束：杜绝低效道具、杂乱梳妆台、全套实验仪器、复杂绿植盆栽、复杂医院设备、廉价发光粒子和大面积纯色色块；negative prompt: cluttered environment, messy objects, unrelated props, low quality.",
+            f"【{family_title}】",
+            *template_lines,
+        ]
+    )
+
+
 def _compact_prompt_text(prompt: str) -> str:
     compacted: list[str] = []
     seen_lines: set[str] = set()
@@ -1923,6 +2057,7 @@ def build_module_image_prompt(
     campaign_promotion_guardrails = _campaign_promotion_guardrails(module) if is_campaign_image else ""
     detail_product_visibility_rules = _detail_product_visibility_rules(module) if not is_main_image else ""
     detail_conversion_rules = _detail_conversion_rules(module, prompt_branch=prompt_branch) if not is_main_image else ""
+    detail_high_impact_rules = _optimized_detail_high_impact_rules(module) if optimized_prompt_branch and not is_main_image else ""
     effect_layout_guardrails = _effect_comparison_layout_guardrails(module, product_info)
     people_realism_guardrails = _people_realism_guardrails(module)
     detail_text_guardrails = _detail_text_guardrails(module) if not is_main_image else ""
@@ -1974,6 +2109,7 @@ def build_module_image_prompt(
                 *(["", platform_main_image_rules] if platform_main_image_rules else []),
                 *(["", campaign_promotion_guardrails] if campaign_promotion_guardrails else []),
                 *(["", detail_conversion_rules] if detail_conversion_rules else []),
+                *(["", detail_high_impact_rules] if detail_high_impact_rules else []),
                 *(["", effect_layout_guardrails] if effect_layout_guardrails else []),
                 *(["", people_realism_guardrails] if people_realism_guardrails else []),
                 *(["", detail_text_guardrails] if detail_text_guardrails else []),

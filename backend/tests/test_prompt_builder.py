@@ -454,6 +454,74 @@ class PromptBuilderTests(unittest.TestCase):
         self.assertIn("cheap Taobao poster style", optimized_prompt)
         self.assertIn("材质道具控制在 1-2 个", optimized_prompt)
 
+    def test_prompt_optimization_branch_adds_standard_detail_high_impact_template_only_on_branch(self):
+        build_module_image_prompt = load_prompt_builder()
+        module = next(module for module in PROMPT_MODULES if module["id"] == "hero")
+        product_info = {
+            "product_name": "屏障修护精华",
+            "core_selling_points": ["卡粉起皮先稳住屏障"],
+            "functions": ["补水保湿", "屏障护理"],
+        }
+
+        default_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[2],
+            module=module,
+            module_index=1,
+            total_modules=10,
+        )
+        optimized_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[2],
+            module=module,
+            module_index=1,
+            total_modules=10,
+            prompt_branch="prompt_optimization",
+        )
+
+        self.assertNotIn("极简高冲击视觉公式", default_prompt)
+        self.assertNotIn("交叉厚渐变亚克力砖", default_prompt)
+        self.assertIn("极简高冲击视觉公式", optimized_prompt)
+        self.assertIn("主体产品放置 + 极简几何展台 + 情绪化背景氛围 + 视觉锚点 + 艺术化光影与高奢材质", optimized_prompt)
+        self.assertIn("背景饱和度降低 20%-30%", optimized_prompt)
+        self.assertIn("交叉厚渐变亚克力砖", optimized_prompt)
+        self.assertIn("刀锋般锐利的透光阴影", optimized_prompt)
+        self.assertIn("cluttered environment", optimized_prompt)
+
+    def test_prompt_optimization_branch_adds_evidence_chain_clean_catchy_templates(self):
+        build_module_image_prompt = load_prompt_builder()
+        product_info = {
+            "product_name": "水润保湿面霜",
+            "core_selling_points": ["5 分钟水润急救"],
+            "functions": ["补水保湿", "改善干燥"],
+            "ingredients": [{"name": "透明质酸钠", "benefit": "帮助提升水润肤感"}],
+        }
+
+        hero_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[2],
+            module=next(module for module in PROMPT_MODULES if module["id"] == "detail_ec_hero"),
+            module_index=1,
+            total_modules=16,
+            prompt_branch="prompt_optimization",
+        )
+        pain_prompt = build_module_image_prompt(
+            product_info=product_info,
+            style=STYLE_OPTIONS[2],
+            module=next(module for module in PROMPT_MODULES if module["id"] == "detail_ec_pain_matrix"),
+            module_index=2,
+            total_modules=16,
+            prompt_branch="prompt_optimization",
+        )
+
+        self.assertIn("证据链高冲击模板", hero_prompt)
+        self.assertIn("半透明磨砂亚克力弧形台面", hero_prompt)
+        self.assertIn("dramatic rim light", hero_prompt)
+        self.assertIn("低效道具", hero_prompt)
+        self.assertIn("当前风格主色调的暗调/低亮度渐变背景", pain_prompt)
+        self.assertIn("干开裂质感", pain_prompt)
+        self.assertIn("绝不生硬使用冷灰色", pain_prompt)
+
     def test_prompts_enforce_realistic_people_when_people_may_appear(self):
         build_module_image_prompt = load_prompt_builder()
         usage_module = next(module for module in PROMPT_MODULES if module["id"] == "usage")
