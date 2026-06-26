@@ -600,23 +600,28 @@ export async function checkImageCompliance(imageUrls: string[], platformId: Comm
   }
 }
 
+type AnalyzeMaterialsResult = {
+  source: string;
+  product_info?: ProductInfo;
+  raw?: string;
+  error?: string;
+  uploaded_materials?: Array<{ id?: string; slot: string; filename: string; content_type: string; url: string }>;
+};
+
+type AnalyzeMaterialsJobStatus = {
+  status: "pending" | "running" | "done" | "error";
+  stage: string;
+  current: number;
+  total: number;
+  message: string;
+  error?: string;
+  result?: AnalyzeMaterialsResult;
+};
+
 export async function analyzeUploadedMaterials(materials: MaterialPayload[], options: { detailLayoutId?: DetailLayoutId } = {}) {
-  const detailLayoutId = options.detailLayoutId;
   try {
-    return await requestJson<{
-      source: string;
-      product_info?: ProductInfo;
-      raw?: string;
-      error?: string;
-      uploaded_materials?: Array<{ id?: string; slot: string; filename: string; content_type: string; url: string }>;
-    }>(
-      "/api/projects/analyze-materials",
-      {
-        method: "POST",
-        body: JSON.stringify({ materials, detail_layout_id: detailLayoutId }),
-        timeoutMs: 180000
-      }
-    );
+    const { job_id: jobId } = await createAnalyzeMaterialsJob(materials, options);
+    return await pollAnalyzeMaterialsJob(jobId);
   } catch (error) {
     rethrowMainAppRedirect(error);
     return {
@@ -624,6 +629,36 @@ export async function analyzeUploadedMaterials(materials: MaterialPayload[], opt
       error: error instanceof Error ? error.message : "AI 解析请求失败"
     };
   }
+}
+
+export async function createAnalyzeMaterialsJob(materials: MaterialPayload[], options: { detailLayoutId?: DetailLayoutId } = {}) {
+  return requestJson<{ job_id: string }>("/api/projects/analyze-materials/jobs", {
+    method: "POST",
+    body: JSON.stringify({ materials, detail_layout_id: options.detailLayoutId }),
+    timeoutMs: 15000
+  });
+}
+
+export async function fetchAnalyzeMaterialsJob(jobId: string) {
+  return requestJson<AnalyzeMaterialsJobStatus>(`/api/projects/analyze-materials/jobs/${jobId}`, { timeoutMs: 15000 });
+}
+
+export async function pollAnalyzeMaterialsJob(jobId: string, timeoutMs = 600000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt <= timeoutMs) {
+    const job = await fetchAnalyzeMaterialsJob(jobId);
+    if (job.status === "done") {
+      if (!job.result) {
+        throw new Error("资料解析任务完成但没有返回结果");
+      }
+      return job.result;
+    }
+    if (job.status === "error") {
+      throw new Error(job.error || job.message || "资料解析任务失败");
+    }
+    await sleep(3000);
+  }
+  throw new Error("资料解析任务超时，请稍后重试");
 }
 
 type ComposeImageInput = Array<{ module_id: string; module_name: string; url: string }>;

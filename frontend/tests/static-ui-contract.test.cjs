@@ -55,7 +55,11 @@ assertIncludes("lib/api.ts", "fetchGenerateImageJob", "image generation must pol
 assertIncludes("lib/api.ts", "pollGenerateImageJob", "image generation must wait for job completion through short polling requests");
 assertIncludes("lib/api.ts", "/api/projects/generate/jobs", "frontend image generation must use the backend job endpoint");
 assertNotIncludes("lib/api.ts", "timeoutMs: 600000\n    });\n  } catch (error) {\n    rethrowMainAppRedirect(error);\n    return {\n      source: \"demo\"", "image generation must not wait on a single long synchronous request");
-assertIncludes("lib/api.ts", "timeoutMs: 180000", "material analysis must keep the request open long enough for model output");
+assertIncludes("lib/api.ts", "createAnalyzeMaterialsJob", "material analysis must create a backend job instead of holding one long request");
+assertIncludes("lib/api.ts", "fetchAnalyzeMaterialsJob", "material analysis must poll the backend analysis job");
+assertIncludes("lib/api.ts", "pollAnalyzeMaterialsJob", "material analysis must wait for job completion through polling");
+assertIncludes("lib/api.ts", "/api/projects/analyze-materials/jobs", "frontend material analysis must use the backend job endpoint");
+assertNotIncludes("lib/api.ts", '"/api/projects/analyze-materials"', "frontend material analysis must not call the long synchronous endpoint directly");
 assertIncludes("lib/constants.ts", 'defaults: { size: "2048x2048"', "frontend demo model config must reflect 2K image generation defaults");
 assertIncludes("app/page.tsx", "selectedPlatform.generationSize", "main and campaign image generation requests must keep using the selected platform size");
 assertIncludes("lib/constants.ts", 'DETAIL_IMAGE_GENERATION_SIZE = "1152x2048"', "detail image generation size must be an explicit 9:16 request size");

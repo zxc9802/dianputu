@@ -46,6 +46,8 @@ MAX_GLOBAL_STYLE_REFERENCE_IMAGES_WITHOUT_TARGETED = 2
 MAX_SCOPED_STYLE_REFERENCE_IMAGES = MAX_TARGETED_STYLE_REFERENCE_IMAGES + MAX_GLOBAL_STYLE_REFERENCE_IMAGES_WITH_TARGETED
 STYLE_SAMPLE_IMAGE_SIZE = "1024x1024"
 DETAIL_IMAGE_GENERATION_SIZE = "1152x2048"
+ANALYSIS_JOBS: dict[str, dict[str, Any]] = {}
+ANALYSIS_JOB_TTL_SECONDS = 3600  # 1 hour
 GENERATION_JOBS: dict[str, dict[str, Any]] = {}
 GENERATION_JOB_TTL_SECONDS = 3600  # 1 hour
 EDIT_JOBS: dict[str, dict[str, Any]] = {}
@@ -199,6 +201,18 @@ def _cleanup_expired_generation_jobs() -> None:
     ]
     for job_id in expired:
         GENERATION_JOBS.pop(job_id, None)
+
+
+def _cleanup_expired_analysis_jobs() -> None:
+    """Remove analysis jobs older than TTL to prevent memory leaks."""
+    now = datetime.now(UTC)
+    expired = [
+        job_id
+        for job_id, job in ANALYSIS_JOBS.items()
+        if (now - datetime.fromisoformat(job.get("created_at", now.isoformat()))).total_seconds() > ANALYSIS_JOB_TTL_SECONDS
+    ]
+    for job_id in expired:
+        ANALYSIS_JOBS.pop(job_id, None)
 
 
 def _cleanup_expired_edit_jobs() -> None:
@@ -1778,6 +1792,43 @@ try:
             "platform_id": request.platform_id,
         }
 
+    def _analysis_payload_from_request(request: AnalyzeMaterialsRequest) -> dict[str, Any]:
+        return {
+            "materials": [uploaded_material_from_payload(payload) for payload in request.materials[:8]],
+            "detail_layout_id": request.detail_layout_id,
+        }
+
+    async def run_analysis_job(job_id: str, payload: dict[str, Any]) -> None:
+        job = ANALYSIS_JOBS.get(job_id)
+        if not job:
+            return
+        try:
+            job.update(
+                {
+                    "status": "running",
+                    "stage": "analyzing",
+                    "current": 0,
+                    "total": 1,
+                    "message": "正在解析资料",
+                }
+            )
+            result = await analyze_uploaded_materials(
+                payload.get("materials") or [],
+                detail_layout_id=payload.get("detail_layout_id"),
+            )
+            job.update(
+                {
+                    "status": "done",
+                    "stage": "done",
+                    "current": 1,
+                    "total": 1,
+                    "message": "资料解析完成",
+                    "result": result,
+                }
+            )
+        except Exception as exc:
+            job.update({"status": "error", "stage": "error", "message": str(exc), "error": str(exc)})
+
     async def run_generation_job(job_id: str, payload: dict[str, Any]) -> None:
         job = GENERATION_JOBS.get(job_id)
         if not job:
@@ -1937,6 +1988,29 @@ try:
     async def analyze_project_materials(request: AnalyzeMaterialsRequest) -> dict[str, Any]:
         materials = [uploaded_material_from_payload(payload) for payload in request.materials[:8]]
         return await analyze_uploaded_materials(materials, detail_layout_id=request.detail_layout_id)
+
+    @router.post("/analyze-materials/jobs")
+    async def create_analyze_project_materials_job(request: AnalyzeMaterialsRequest, background_tasks: BackgroundTasks) -> dict[str, str]:
+        _cleanup_expired_analysis_jobs()
+        payload = _analysis_payload_from_request(request)
+        job_id = f"analysis_{uuid4().hex}"
+        ANALYSIS_JOBS[job_id] = {
+            "status": "pending",
+            "stage": "pending",
+            "current": 0,
+            "total": 1,
+            "message": "等待开始解析",
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        background_tasks.add_task(run_analysis_job, job_id, payload)
+        return {"job_id": job_id}
+
+    @router.get("/analyze-materials/jobs/{job_id}")
+    async def get_analyze_project_materials_job(job_id: str) -> dict[str, Any]:
+        job = ANALYSIS_JOBS.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="analysis job not found")
+        return job
 
     @router.post("/plan-style")
     async def plan_project_style(request: PlanStyleRequest) -> dict[str, Any]:

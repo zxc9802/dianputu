@@ -1268,6 +1268,43 @@ class DownloadContractTests(unittest.TestCase):
         finally:
             EDIT_JOBS.pop(job_id, None)
 
+    def test_analyze_materials_job_endpoint_returns_pollable_result(self):
+        job_result = {
+            "source": "model",
+            "product_info": {"product_name": "积雪草修护精华"},
+            "raw": '{"product_name":"积雪草修护精华"}',
+            "uploaded_materials": [],
+        }
+        with patch("app.routers.projects.analyze_uploaded_materials", new=AsyncMock(return_value=job_result)):
+            response = self.make_client().post(
+                "/api/projects/analyze-materials/jobs",
+                json={
+                    "detail_layout_id": "detail_standard_conversion_10",
+                    "materials": [
+                        {
+                            "id": "material-1",
+                            "slot": "documents",
+                            "filename": "product.txt",
+                            "content_type": "text/plain",
+                            "text": "积雪草修护精华",
+                        }
+                    ],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        job_id = response.json()["job_id"]
+        try:
+            job_response = self.make_client().get(f"/api/projects/analyze-materials/jobs/{job_id}")
+            self.assertEqual(job_response.status_code, 200)
+            job = job_response.json()
+            self.assertEqual(job["status"], "done")
+            self.assertEqual(job["result"], job_result)
+        finally:
+            from app.routers import projects
+
+            projects.ANALYSIS_JOBS.pop(job_id, None)
+
     def test_image_compliance_endpoint_uses_gemini_image_review(self):
         class FakeComplianceProvider:
             source = "fake_gemini"
