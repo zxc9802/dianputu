@@ -13,7 +13,7 @@ from app.core.config import ImageGenerationSettings
 from app.demo_data import ALL_MODULES, DEFAULT_DETAIL_LAYOUT_ID, DEFAULT_MODULES, DEFAULT_PRODUCT_INFO, DEMO_IMAGE_URLS, DETAIL_LAYOUTS, STYLE_OPTIONS
 from app.dependencies.auth import require_app_user
 from app.routers.models import build_public_model_config
-from app.routers.projects import COMPOSE_JOBS, EDIT_JOBS, FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR, UploadedMaterial, build_layered_generated_image, build_material_analysis_messages, build_style_reference_analysis_messages, compose_long_jpeg, edit_generated_image, generate_detail_images, normalize_style_reference_plan_from_model, render_layered_language_version, router as projects_router
+from app.routers.projects import COMPOSE_JOBS, EDIT_JOBS, FIXED_PRODUCT_REFERENCE_REQUIRED_ERROR, STYLE_JOBS, UploadedMaterial, build_layered_generated_image, build_material_analysis_messages, build_style_reference_analysis_messages, compose_long_jpeg, edit_generated_image, generate_detail_images, normalize_style_reference_plan_from_model, render_layered_language_version, router as projects_router
 from app.services.language_renderer import build_text_layers, render_text_layers_to_data_url
 from app.services.app_session import AppSessionUserSnapshot
 
@@ -1304,6 +1304,87 @@ class DownloadContractTests(unittest.TestCase):
             from app.routers import projects
 
             projects.ANALYSIS_JOBS.pop(job_id, None)
+
+    def test_plan_style_job_endpoint_returns_pollable_result(self):
+        job_result = {
+            "source": "model",
+            "style": {"id": "ai_custom", "name": "AI 自定义风格"},
+            "raw": "{}",
+            "warnings": [],
+        }
+        with patch("app.routers.projects.plan_custom_style", new=AsyncMock(return_value=job_result)):
+            response = self.make_client().post(
+                "/api/projects/plan-style/jobs",
+                json={
+                    "product_info": {"product_name": "积雪草修护精华"},
+                    "product_images": [{"filename": "product.png", "content_type": "image/png", "data_url": self.png_data_url()}],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        job_id = response.json()["job_id"]
+        try:
+            job_response = self.make_client().get(f"/api/projects/plan-style/jobs/{job_id}")
+            self.assertEqual(job_response.status_code, 200)
+            job = job_response.json()
+            self.assertEqual(job["status"], "done")
+            self.assertEqual(job["result"], job_result)
+        finally:
+            STYLE_JOBS.pop(job_id, None)
+
+    def test_analyze_style_reference_job_endpoint_returns_pollable_result(self):
+        job_result = {
+            "source": "model",
+            "style": {"id": "ai_reference", "name": "图片对标风格"},
+            "raw": "{}",
+            "uploaded_style_references": [],
+            "warnings": [],
+        }
+        with patch("app.routers.projects.analyze_style_reference", new=AsyncMock(return_value=job_result)):
+            response = self.make_client().post(
+                "/api/projects/analyze-style-reference/jobs",
+                json={
+                    "product_info": {"product_name": "积雪草修护精华"},
+                    "style_reference_images": [{"filename": "style.png", "content_type": "image/png", "data_url": self.png_data_url()}],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        job_id = response.json()["job_id"]
+        try:
+            job_response = self.make_client().get(f"/api/projects/analyze-style-reference/jobs/{job_id}")
+            self.assertEqual(job_response.status_code, 200)
+            job = job_response.json()
+            self.assertEqual(job["status"], "done")
+            self.assertEqual(job["result"], job_result)
+        finally:
+            STYLE_JOBS.pop(job_id, None)
+
+    def test_plan_style_sample_job_endpoint_returns_pollable_result(self):
+        job_result = {
+            "source": "model",
+            "style": {"id": "ai_custom", "name": "AI 自定义风格", "asset": self.png_data_url()},
+            "warnings": [],
+        }
+        with patch("app.routers.projects.generate_custom_style_sample", new=AsyncMock(return_value=job_result)):
+            response = self.make_client().post(
+                "/api/projects/plan-style-sample/jobs",
+                json={
+                    "style": {"id": "ai_custom", "name": "AI 自定义风格"},
+                    "product_info": {"product_name": "积雪草修护精华"},
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        job_id = response.json()["job_id"]
+        try:
+            job_response = self.make_client().get(f"/api/projects/plan-style-sample/jobs/{job_id}")
+            self.assertEqual(job_response.status_code, 200)
+            job = job_response.json()
+            self.assertEqual(job["status"], "done")
+            self.assertEqual(job["result"], job_result)
+        finally:
+            STYLE_JOBS.pop(job_id, None)
 
     def test_image_compliance_endpoint_uses_gemini_image_review(self):
         class FakeComplianceProvider:

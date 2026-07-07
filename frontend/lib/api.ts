@@ -254,6 +254,23 @@ type EditImageJobStatus = {
   error?: string;
   result?: EditImageResult;
 };
+type StyleResult = {
+  source: string;
+  style?: StyleOption;
+  error?: string;
+  raw?: string;
+  warnings?: string[];
+  uploaded_style_references?: Array<{ id: string; slot: string; filename: string; content_type: string; url: string }>;
+};
+type StyleJobStatus = {
+  status: "pending" | "running" | "done" | "error";
+  stage: string;
+  current: number;
+  total: number;
+  message: string;
+  error?: string;
+  result?: StyleResult;
+};
 
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -350,14 +367,8 @@ export async function pollGenerateImageJob(jobId: string, timeoutMs = 600000) {
 
 export async function planAiCustomStyle(productInfo?: ProductInfo, productImages: MaterialPayload[] = []) {
   try {
-    return await requestJson<{ source: string; style?: StyleOption; error?: string }>("/api/projects/plan-style", {
-      method: "POST",
-      body: JSON.stringify({
-        product_info: productInfo,
-        product_images: productImages
-      }),
-      timeoutMs: 180000
-    });
+    const { job_id: jobId } = await createPlanStyleJob(productInfo, productImages);
+    return await pollPlanStyleJob(jobId);
   } catch (error) {
     rethrowMainAppRedirect(error);
     return {
@@ -367,16 +378,43 @@ export async function planAiCustomStyle(productInfo?: ProductInfo, productImages
   }
 }
 
+export async function createPlanStyleJob(productInfo?: ProductInfo, productImages: MaterialPayload[] = []) {
+  return requestJson<{ job_id: string }>("/api/projects/plan-style/jobs", {
+    method: "POST",
+    body: JSON.stringify({
+      product_info: productInfo,
+      product_images: productImages
+    }),
+    timeoutMs: 15000
+  });
+}
+
+export async function fetchPlanStyleJob(jobId: string) {
+  return requestJson<StyleJobStatus>(`/api/projects/plan-style/jobs/${jobId}`, { timeoutMs: 15000 });
+}
+
+export async function pollPlanStyleJob(jobId: string, timeoutMs = 600000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt <= timeoutMs) {
+    const job = await fetchPlanStyleJob(jobId);
+    if (job.status === "done") {
+      if (!job.result) {
+        throw new Error("AI 风格规划任务完成但没有返回结果");
+      }
+      return job.result;
+    }
+    if (job.status === "error") {
+      throw new Error(job.error || job.message || "AI 风格规划任务失败");
+    }
+    await sleep(3000);
+  }
+  throw new Error("AI 风格规划任务超时，请稍后重试");
+}
+
 export async function analyzeStyleReference(productInfo?: ProductInfo, styleReferenceImages: MaterialPayload[] = []) {
   try {
-    return await requestJson<{ source: string; style?: StyleOption; error?: string; uploaded_style_references?: Array<{ id: string; slot: string; filename: string; content_type: string; url: string }> }>("/api/projects/analyze-style-reference", {
-      method: "POST",
-      body: JSON.stringify({
-        product_info: productInfo,
-        style_reference_images: styleReferenceImages
-      }),
-      timeoutMs: 180000
-    });
+    const { job_id: jobId } = await createAnalyzeStyleReferenceJob(productInfo, styleReferenceImages);
+    return await pollAnalyzeStyleReferenceJob(jobId);
   } catch (error) {
     rethrowMainAppRedirect(error);
     return {
@@ -386,16 +424,43 @@ export async function analyzeStyleReference(productInfo?: ProductInfo, styleRefe
   }
 }
 
+export async function createAnalyzeStyleReferenceJob(productInfo?: ProductInfo, styleReferenceImages: MaterialPayload[] = []) {
+  return requestJson<{ job_id: string }>("/api/projects/analyze-style-reference/jobs", {
+    method: "POST",
+    body: JSON.stringify({
+      product_info: productInfo,
+      style_reference_images: styleReferenceImages
+    }),
+    timeoutMs: 15000
+  });
+}
+
+export async function fetchAnalyzeStyleReferenceJob(jobId: string) {
+  return requestJson<StyleJobStatus>(`/api/projects/analyze-style-reference/jobs/${jobId}`, { timeoutMs: 15000 });
+}
+
+export async function pollAnalyzeStyleReferenceJob(jobId: string, timeoutMs = 600000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt <= timeoutMs) {
+    const job = await fetchAnalyzeStyleReferenceJob(jobId);
+    if (job.status === "done") {
+      if (!job.result) {
+        throw new Error("图片对标分析任务完成但没有返回结果");
+      }
+      return job.result;
+    }
+    if (job.status === "error") {
+      throw new Error(job.error || job.message || "图片对标分析任务失败");
+    }
+    await sleep(3000);
+  }
+  throw new Error("图片对标分析任务超时，请稍后重试");
+}
+
 export async function generateAiCustomStyleSample(style: StyleOption, productInfo?: ProductInfo) {
   try {
-    return await requestJson<{ source: string; style?: StyleOption; error?: string }>("/api/projects/plan-style-sample", {
-      method: "POST",
-      body: JSON.stringify({
-        style,
-        product_info: productInfo
-      }),
-      timeoutMs: 600000
-    });
+    const { job_id: jobId } = await createPlanStyleSampleJob(style, productInfo);
+    return await pollPlanStyleSampleJob(jobId);
   } catch (error) {
     rethrowMainAppRedirect(error);
     return {
@@ -403,6 +468,39 @@ export async function generateAiCustomStyleSample(style: StyleOption, productInf
       error: error instanceof Error ? error.message : "AI 风格样例图请求失败"
     };
   }
+}
+
+export async function createPlanStyleSampleJob(style: StyleOption, productInfo?: ProductInfo) {
+  return requestJson<{ job_id: string }>("/api/projects/plan-style-sample/jobs", {
+    method: "POST",
+    body: JSON.stringify({
+      style,
+      product_info: productInfo
+    }),
+    timeoutMs: 15000
+  });
+}
+
+export async function fetchPlanStyleSampleJob(jobId: string) {
+  return requestJson<StyleJobStatus>(`/api/projects/plan-style-sample/jobs/${jobId}`, { timeoutMs: 15000 });
+}
+
+export async function pollPlanStyleSampleJob(jobId: string, timeoutMs = 600000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt <= timeoutMs) {
+    const job = await fetchPlanStyleSampleJob(jobId);
+    if (job.status === "done") {
+      if (!job.result) {
+        throw new Error("AI 风格样例图任务完成但没有返回结果");
+      }
+      return job.result;
+    }
+    if (job.status === "error") {
+      throw new Error(job.error || job.message || "AI 风格样例图任务失败");
+    }
+    await sleep(3000);
+  }
+  throw new Error("AI 风格样例图任务超时，请稍后重试");
 }
 
 export async function fetchSavedStyles() {

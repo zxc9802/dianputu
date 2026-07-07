@@ -51,6 +51,8 @@ GENERATION_JOBS: dict[str, dict[str, Any]] = {}
 GENERATION_JOB_TTL_SECONDS = 3600  # 1 hour
 EDIT_JOBS: dict[str, dict[str, Any]] = {}
 EDIT_JOB_TTL_SECONDS = 3600  # 1 hour
+STYLE_JOBS: dict[str, dict[str, Any]] = {}
+STYLE_JOB_TTL_SECONDS = 3600  # 1 hour
 COMPOSE_JOBS: dict[str, dict[str, Any]] = {}
 COMPOSE_JOB_TTL_SECONDS = 600  # 10 minutes
 WHITE_BACKGROUND_REFERENCE_REQUIRED_ERROR = "白底图需要先上传产品图，系统会直接复用上传图以避免模型重绘导致包装、Logo 或瓶身变形。"
@@ -224,6 +226,18 @@ def _cleanup_expired_edit_jobs() -> None:
     ]
     for job_id in expired:
         EDIT_JOBS.pop(job_id, None)
+
+
+def _cleanup_expired_style_jobs() -> None:
+    """Remove style jobs older than TTL to prevent memory leaks."""
+    now = datetime.now(UTC)
+    expired = [
+        job_id
+        for job_id, job in STYLE_JOBS.items()
+        if (now - datetime.fromisoformat(job.get("created_at", now.isoformat()))).total_seconds() > STYLE_JOB_TTL_SECONDS
+    ]
+    for job_id in expired:
+        STYLE_JOBS.pop(job_id, None)
 
 
 def _cleanup_expired_compose_jobs() -> None:
@@ -1890,6 +1904,51 @@ try:
         except Exception as exc:
             job.update({"status": "error", "stage": "error", "message": str(exc), "error": str(exc)})
 
+    async def run_style_job(job_id: str, payload: dict[str, Any]) -> None:
+        job = STYLE_JOBS.get(job_id)
+        if not job:
+            return
+        kind = str(payload.get("kind") or "")
+        try:
+            job.update(
+                {
+                    "status": "running",
+                    "stage": "planning",
+                    "current": 0,
+                    "total": 1,
+                    "message": "正在生成风格方案",
+                }
+            )
+            if kind == "plan_style":
+                result = await plan_custom_style(
+                    payload.get("product_info"),
+                    product_images=payload.get("product_images") or [],
+                )
+            elif kind == "analyze_style_reference":
+                result = await analyze_style_reference(
+                    payload.get("product_info"),
+                    payload.get("style_reference_images") or [],
+                )
+            elif kind == "plan_style_sample":
+                result = await generate_custom_style_sample(
+                    payload.get("style") or {},
+                    payload.get("product_info"),
+                )
+            else:
+                raise ValueError("unknown style job kind")
+            job.update(
+                {
+                    "status": "done",
+                    "stage": "done",
+                    "current": 1,
+                    "total": 1,
+                    "message": "风格任务完成",
+                    "result": result,
+                }
+            )
+        except Exception as exc:
+            job.update({"status": "error", "stage": "error", "message": str(exc), "error": str(exc)})
+
     class PlanStyleRequest(BaseModel):
         product_info: dict[str, Any] | None = None
         product_images: list[MaterialPayload] = Field(default_factory=list)
@@ -1997,14 +2056,104 @@ try:
         product_images = [uploaded_material_from_payload(payload) for payload in request.product_images[:3]]
         return await plan_custom_style(request.product_info, product_images=product_images)
 
+    @router.post("/plan-style/jobs")
+    async def create_plan_project_style_job(request: PlanStyleRequest, background_tasks: BackgroundTasks) -> dict[str, str]:
+        _cleanup_expired_style_jobs()
+        job_id = f"style_{uuid4().hex}"
+        STYLE_JOBS[job_id] = {
+            "status": "pending",
+            "stage": "pending",
+            "current": 0,
+            "total": 1,
+            "message": "等待开始风格规划",
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        background_tasks.add_task(
+            run_style_job,
+            job_id,
+            {
+                "kind": "plan_style",
+                "product_info": request.product_info,
+                "product_images": [uploaded_material_from_payload(payload) for payload in request.product_images[:3]],
+            },
+        )
+        return {"job_id": job_id}
+
+    @router.get("/plan-style/jobs/{job_id}")
+    async def get_plan_project_style_job(job_id: str) -> dict[str, Any]:
+        job = STYLE_JOBS.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="style job not found")
+        return job
+
     @router.post("/analyze-style-reference")
     async def analyze_project_style_reference(request: AnalyzeStyleReferenceRequest) -> dict[str, Any]:
         style_reference_images = [uploaded_material_from_payload(payload) for payload in request.style_reference_images[:4]]
         return await analyze_style_reference(request.product_info, style_reference_images)
 
+    @router.post("/analyze-style-reference/jobs")
+    async def create_analyze_project_style_reference_job(request: AnalyzeStyleReferenceRequest, background_tasks: BackgroundTasks) -> dict[str, str]:
+        _cleanup_expired_style_jobs()
+        job_id = f"style_{uuid4().hex}"
+        STYLE_JOBS[job_id] = {
+            "status": "pending",
+            "stage": "pending",
+            "current": 0,
+            "total": 1,
+            "message": "等待开始图片对标分析",
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        background_tasks.add_task(
+            run_style_job,
+            job_id,
+            {
+                "kind": "analyze_style_reference",
+                "product_info": request.product_info,
+                "style_reference_images": [uploaded_material_from_payload(payload) for payload in request.style_reference_images[:4]],
+            },
+        )
+        return {"job_id": job_id}
+
+    @router.get("/analyze-style-reference/jobs/{job_id}")
+    async def get_analyze_project_style_reference_job(job_id: str) -> dict[str, Any]:
+        job = STYLE_JOBS.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="style job not found")
+        return job
+
     @router.post("/plan-style-sample")
     async def plan_project_style_sample(request: PlanStyleSampleRequest) -> dict[str, Any]:
         return await generate_custom_style_sample(request.style, request.product_info)
+
+    @router.post("/plan-style-sample/jobs")
+    async def create_plan_project_style_sample_job(request: PlanStyleSampleRequest, background_tasks: BackgroundTasks) -> dict[str, str]:
+        _cleanup_expired_style_jobs()
+        job_id = f"style_{uuid4().hex}"
+        STYLE_JOBS[job_id] = {
+            "status": "pending",
+            "stage": "pending",
+            "current": 0,
+            "total": 1,
+            "message": "等待开始生成风格样例",
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+        background_tasks.add_task(
+            run_style_job,
+            job_id,
+            {
+                "kind": "plan_style_sample",
+                "style": request.style,
+                "product_info": request.product_info,
+            },
+        )
+        return {"job_id": job_id}
+
+    @router.get("/plan-style-sample/jobs/{job_id}")
+    async def get_plan_project_style_sample_job(job_id: str) -> dict[str, Any]:
+        job = STYLE_JOBS.get(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="style job not found")
+        return job
 
     @router.post("/generate")
     async def generate_project(request: GenerateRequest) -> dict[str, Any]:

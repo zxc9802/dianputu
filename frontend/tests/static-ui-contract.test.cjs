@@ -223,8 +223,16 @@ assertNotIncludes("components/StyleStep.tsx", "styleSource === \"reference\"", "
 assertNotIncludes("components/StyleStep.tsx", "onStyleReferenceSelect", "style step should not expose removed reference style handler");
 assertIncludes("lib/api.ts", "planAiCustomStyle", "frontend API must expose Gemini custom style planning");
 assertIncludes("lib/api.ts", "/api/projects/plan-style", "frontend API must call the backend style planning endpoint");
+assertIncludes("lib/api.ts", "createPlanStyleJob", "custom style planning must create a backend job");
+assertIncludes("lib/api.ts", "fetchPlanStyleJob", "custom style planning must poll the backend job");
+assertIncludes("lib/api.ts", "pollPlanStyleJob", "custom style planning must wait for job completion through polling");
+assertIncludes("lib/api.ts", "/api/projects/plan-style/jobs", "custom style planning must use the backend job endpoint");
 assertIncludes("lib/api.ts", "analyzeStyleReference", "frontend API must expose Gemini benchmark image style analysis");
 assertIncludes("lib/api.ts", "/api/projects/analyze-style-reference", "frontend API must call the backend benchmark style analysis endpoint");
+assertIncludes("lib/api.ts", "createAnalyzeStyleReferenceJob", "style reference analysis must create a backend job");
+assertIncludes("lib/api.ts", "fetchAnalyzeStyleReferenceJob", "style reference analysis must poll the backend job");
+assertIncludes("lib/api.ts", "pollAnalyzeStyleReferenceJob", "style reference analysis must wait for job completion through polling");
+assertIncludes("lib/api.ts", "/api/projects/analyze-style-reference/jobs", "style reference analysis must use the backend job endpoint");
 assertIncludes("lib/constants.ts", 'id: "space_repair"', "frontend preset styles must include space repair as a normal style option");
 assertIncludes("lib/constants.ts", 'id: "black_gold_luxury"', "frontend preset styles must include black gold luxury as a normal style option");
 assertNotIncludes("lib/constants.ts", 'id: "green_repair"', "frontend preset styles must remove the old green repair preset");
@@ -254,6 +262,10 @@ assertNotIncludes("app/page.tsx", "productInfo.category || selectedCategory", "h
 assertIncludes("lib/api.ts", "product_images: productImages", "custom style planning must send product images directly to Gemini");
 assertIncludes("lib/api.ts", "generateAiCustomStyleSample", "frontend API must expose custom style sample generation");
 assertIncludes("lib/api.ts", "/api/projects/plan-style-sample", "frontend API must call the style sample endpoint separately");
+assertIncludes("lib/api.ts", "createPlanStyleSampleJob", "AI style sample generation must create a backend job");
+assertIncludes("lib/api.ts", "fetchPlanStyleSampleJob", "AI style sample generation must poll the backend job");
+assertIncludes("lib/api.ts", "pollPlanStyleSampleJob", "AI style sample generation must wait for job completion through polling");
+assertIncludes("lib/api.ts", "/api/projects/plan-style-sample/jobs", "AI style sample generation must use the backend job endpoint");
 assertIncludes("lib/types.ts", "SavedStyleRecord", "frontend must type account saved style records");
 assertIncludes("lib/api.ts", "fetchSavedStyles", "frontend API must list account saved styles");
 assertIncludes("lib/api.ts", "saveSavedStyle", "frontend API must save a Gemini style to the account library");
