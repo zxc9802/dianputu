@@ -170,6 +170,9 @@ assertIncludes("components/PreviewStep.tsx", "批量下载", "main and campaign 
 assertIncludes("components/PreviewStep.tsx", "张详情分图", "detail directory must expose a real split-image batch download, not only a manifest");
 assertIncludes("lib/api.ts", "/api/projects/compose-long-image", "frontend API must expose backend long image composition");
 assertIncludes("lib/api.ts", "/api/projects/compose-long-image/prepare", "frontend API must expose backend compose source preparation");
+assertNotIncludes("lib/api.ts", "export async function composeLongImage(", "frontend must not expose synchronous long image composition");
+assertIncludes("lib/api.ts", "createComposeLongImageJob", "frontend long image composition must create a backend job");
+assertIncludes("lib/api.ts", "fetchComposeLongImageJob", "frontend long image composition must poll the backend job");
 assertIncludes("app/page.tsx", "PROJECT_STATE_STORAGE_KEY", "page must define a storage key for preserving generated results");
 assertIncludes("app/page.tsx", "localStorage", "page must persist generated results across reloads and step changes");
 assertIncludes("app/page.tsx", "restored.generatedImages", "page must restore generated images from saved state");

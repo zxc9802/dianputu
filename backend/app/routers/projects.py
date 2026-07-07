@@ -26,7 +26,6 @@ from app.services.language_renderer import (
     normalize_language,
     render_text_layers_to_data_url,
 )
-from app.services.object_storage import upload_bytes_to_object_storage, upload_data_url_to_object_storage
 from app.services.prompt_builder import build_module_image_prompt
 from app.services.product_compositor import compose_fixed_product_image
 from app.services.text_model import call_text_model
@@ -240,27 +239,11 @@ def _cleanup_expired_compose_jobs() -> None:
 
 
 async def upload_image_url_if_configured(url: str, folder: str) -> str:
-    if not url.startswith("data:"):
-        return url
-    try:
-        uploaded_url = await upload_data_url_to_object_storage(url, folder=folder)
-    except Exception as exc:
-        logger.warning("object storage image upload failed folder=%s error=%s", folder, exc)
-        return url
-    return uploaded_url or url
+    return url
 
 
 async def upload_bytes_if_configured(content: bytes, *, content_type: str, folder: str, extension: str) -> str:
-    try:
-        return await upload_bytes_to_object_storage(
-            content,
-            content_type=content_type,
-            folder=folder,
-            extension=extension,
-        )
-    except Exception as exc:
-        logger.warning("object storage bytes upload failed folder=%s error=%s", folder, exc)
-        return ""
+    return ""
 
 
 async def upload_material_image_if_configured(material: UploadedMaterial) -> str:
@@ -269,10 +252,7 @@ async def upload_material_image_if_configured(material: UploadedMaterial) -> str
 
 
 async def prepare_compose_image_urls(image_urls: list[str]) -> list[str]:
-    prepared: list[str] = []
-    for url in image_urls[:20]:
-        prepared.append(await upload_image_url_if_configured(url, "compose-sources"))
-    return prepared
+    return image_urls[:20]
 
 
 TEXT_MODEL_RETRY_DELAYS = [1, 2, 4, 8, 16]

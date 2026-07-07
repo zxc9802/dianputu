@@ -22,11 +22,12 @@ class ModelPayloadTests(unittest.TestCase):
         self.assertEqual(settings.image.size, "2048x2048")
         self.assertEqual(settings.image.n, 0)
         self.assertEqual(settings.image.quality, "")
-        self.assertEqual(settings.image.response_format, "url")
+        self.assertEqual(settings.image.response_format, "b64_json")
         self.assertEqual(settings.fallback_image.size, "2048x2048")
         self.assertEqual(settings.fallback_image.label, "gpt image2(2)")
         self.assertEqual(settings.fallback_image.base_url, "https://api-xai.ainaibahub.com/v1")
         self.assertEqual(settings.fallback_image.model, "gpt-image-2")
+        self.assertEqual(settings.fallback_image.response_format, "b64_json")
         self.assertEqual(settings.default_image_option_id, "fallback")
         self.assertIn("fallback", settings.image_options)
         self.assertIn("gemini_flash_image", settings.image_options)
@@ -54,6 +55,7 @@ class ModelPayloadTests(unittest.TestCase):
         self.assertEqual(backup.model, "gpt-image-2")
         self.assertEqual(backup.size, "2048x2048")
         self.assertEqual(backup.n, 1)
+        self.assertEqual(backup.response_format, "b64_json")
         self.assertNotIn("primary_backup", settings.image_options)
 
     def test_fallback_image_can_include_backup_retry_api(self):
@@ -74,6 +76,7 @@ class ModelPayloadTests(unittest.TestCase):
         self.assertEqual(backup.model, "gpt-image-2-all")
         self.assertEqual(backup.size, "2048x2048")
         self.assertEqual(backup.n, 1)
+        self.assertEqual(backup.response_format, "b64_json")
         self.assertNotIn("fallback_backup", settings.image_options)
 
     def test_text_payload_contains_messages_model_and_defaults(self):

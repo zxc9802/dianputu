@@ -117,7 +117,7 @@ def get_model_settings(env: Mapping[str, str] | None = None, env_file: Path | st
         n=int(_read(source, "IMAGE_GENERATION_BACKUP_N", "1")),
         quality=_read(source, "IMAGE_GENERATION_BACKUP_QUALITY", ""),
         output_format=_read(source, "IMAGE_GENERATION_BACKUP_OUTPUT_FORMAT", ""),
-        response_format=_read(source, "IMAGE_GENERATION_BACKUP_RESPONSE_FORMAT", ""),
+        response_format=_read(source, "IMAGE_GENERATION_BACKUP_RESPONSE_FORMAT", "b64_json"),
     )
     primary_retry_groups = int(_read(source, "IMAGE_GENERATION_RETRY_GROUPS", "5")) if primary_backup_image.api_key else 1
     primary_image = ImageGenerationSettings(
@@ -131,7 +131,7 @@ def get_model_settings(env: Mapping[str, str] | None = None, env_file: Path | st
         n=int(_read(source, "IMAGE_GENERATION_N", "0")),
         quality=_read(source, "IMAGE_GENERATION_QUALITY", ""),
         output_format=_read(source, "IMAGE_GENERATION_OUTPUT_FORMAT", "png"),
-        response_format=_read(source, "IMAGE_GENERATION_RESPONSE_FORMAT", "url"),
+        response_format=_read(source, "IMAGE_GENERATION_RESPONSE_FORMAT", "b64_json"),
         retry_alternates=(primary_backup_image,) if primary_backup_image.api_key else (),
         retry_groups=max(1, primary_retry_groups),
     )
@@ -147,7 +147,7 @@ def get_model_settings(env: Mapping[str, str] | None = None, env_file: Path | st
         n=int(_read(source, "FALLBACK_IMAGE_GENERATION_BACKUP_N", "1")),
         quality=_read(source, "FALLBACK_IMAGE_GENERATION_BACKUP_QUALITY", ""),
         output_format=_read(source, "FALLBACK_IMAGE_GENERATION_BACKUP_OUTPUT_FORMAT", ""),
-        response_format=_read(source, "FALLBACK_IMAGE_GENERATION_BACKUP_RESPONSE_FORMAT", ""),
+        response_format=_read(source, "FALLBACK_IMAGE_GENERATION_BACKUP_RESPONSE_FORMAT", "b64_json"),
     )
     fallback_retry_groups = int(_read(source, "FALLBACK_IMAGE_GENERATION_RETRY_GROUPS", "5")) if fallback_backup_image.api_key else 1
     fallback_image = ImageGenerationSettings(
@@ -159,6 +159,7 @@ def get_model_settings(env: Mapping[str, str] | None = None, env_file: Path | st
         model=_read(source, "FALLBACK_IMAGE_GENERATION_MODEL", _read(source, "LEGACY_IMAGE_GENERATION_MODEL", "gpt-image-2")),
         size=fallback_size,
         n=int(_read(source, "FALLBACK_IMAGE_GENERATION_N", _read(source, "LEGACY_IMAGE_GENERATION_N", "1"))),
+        response_format=_read(source, "FALLBACK_IMAGE_GENERATION_RESPONSE_FORMAT", "b64_json"),
         retry_alternates=(fallback_backup_image,) if fallback_backup_image.api_key else (),
         retry_groups=max(1, fallback_retry_groups),
     )

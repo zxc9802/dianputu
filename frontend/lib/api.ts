@@ -671,21 +671,11 @@ type ComposeJobStatus = {
   error?: string;
 };
 
-export async function composeLongImage(
-  images: ComposeImageInput
-) {
-  return requestBlob("/api/projects/compose-long-image", {
-    method: "POST",
-    body: JSON.stringify({ images }),
-    timeoutMs: 600000
-  });
-}
-
 export async function createComposeLongImageJob(images: ComposeImageInput) {
   return requestJson<{ job_id: string }>("/api/projects/compose-long-image/jobs", {
     method: "POST",
     body: JSON.stringify({ images }),
-    timeoutMs: 600000
+    timeoutMs: 15000
   });
 }
 
@@ -698,7 +688,7 @@ export async function prepareComposeLongImageSources(images: ComposeImageInput) 
 }
 
 export async function fetchComposeLongImageJob(jobId: string) {
-  return requestJson<ComposeJobStatus>(`/api/projects/compose-long-image/jobs/${jobId}`, { timeoutMs: 600000 });
+  return requestJson<ComposeJobStatus>(`/api/projects/compose-long-image/jobs/${jobId}`, { timeoutMs: 15000 });
 }
 
 export async function downloadComposeLongImageJob(jobId: string) {

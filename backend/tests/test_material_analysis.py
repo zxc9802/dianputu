@@ -356,7 +356,7 @@ class AnalyzeUploadedMaterialsConfigTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["source"], "error")
         self.assertEqual(result["error"], "text model is not configured")
 
-    async def test_analyze_uploaded_materials_uses_r2_urls_for_uploaded_images(self):
+    async def test_analyze_uploaded_materials_uses_base64_for_uploaded_images(self):
         captured_messages = []
 
         async def fake_call_text_model(settings, messages):
@@ -365,30 +365,15 @@ class AnalyzeUploadedMaterialsConfigTests(unittest.IsolatedAsyncioTestCase):
 
         with patch("app.routers.projects.get_model_settings") as mocked_settings:
             mocked_settings.return_value.text.api_key = "text-key"
-            with (
-                patch("app.routers.projects.upload_material_image_if_configured", new=AsyncMock(return_value="https://img.example.com/prod/materials/main.png")) as upload_mocked,
-                patch("app.routers.projects.call_text_model", new=fake_call_text_model),
-            ):
+            with patch("app.routers.projects.call_text_model", new=fake_call_text_model):
                 result = await analyze_uploaded_materials(
                     [UploadedMaterial(filename="main.png", content_type="image/png", data=b"\x89PNG\r\n")]
                 )
 
         self.assertEqual(result["source"], "model")
-        upload_mocked.assert_awaited_once()
         content = captured_messages[0]["content"]
-        self.assertEqual(content[1]["image_url"]["url"], "https://img.example.com/prod/materials/main.png")
-        self.assertEqual(
-            result["uploaded_materials"],
-            [
-                {
-                    "id": "",
-                    "slot": "documents",
-                    "filename": "main.png",
-                    "content_type": "image/png",
-                    "url": "https://img.example.com/prod/materials/main.png",
-                }
-            ],
-        )
+        self.assertTrue(content[1]["image_url"]["url"].startswith("data:image/png;base64,"))
+        self.assertEqual(result["uploaded_materials"], [])
 
     async def test_analyze_uploaded_materials_retries_gemini_with_backoff(self):
         calls = []
@@ -763,18 +748,17 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("gpt-image-2", result["images"][0]["url"])
         self.assertIn("gpt-image-2-vip", result["images"][1]["url"])
 
-    async def test_generated_data_urls_are_uploaded_to_object_storage(self):
+    async def test_generated_data_urls_are_returned_as_base64(self):
         previous_key = environ.get("IMAGE_GENERATION_API_KEY")
         environ["IMAGE_GENERATION_API_KEY"] = "test-key"
         try:
-            with (
-                patch("app.routers.projects.call_image_model", new=AsyncMock(return_value=["data:image/png;base64,aGVsbG8="])),
-                patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(return_value="https://img.example.com/prod/generated/hero.png")) as upload_mocked,
-            ):
+            with patch("app.routers.projects.call_image_model", new=AsyncMock(return_value=["data:image/png;base64,aGVsbG8="])):
                 result = await generate_detail_images(
                     ["main_ingredient"],
                     "green_repair",
                     product_info={"product_name": "积雪草修护精华"},
+                    reference_images=["data:image/png;base64,aGVsbG8="],
+                    image_model_id="primary",
                 )
         finally:
             if previous_key is None:
@@ -783,17 +767,15 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
                 environ["IMAGE_GENERATION_API_KEY"] = previous_key
 
         self.assertEqual(result["source"], "model")
-        self.assertEqual(result["images"], [{"module_id": "main_ingredient", "url": "https://img.example.com/prod/generated/hero.png"}])
-        upload_mocked.assert_awaited_once()
+        self.assertEqual(result["images"], [{"module_id": "main_ingredient", "url": "data:image/png;base64,aGVsbG8="}])
 
-    async def test_edited_data_url_is_uploaded_to_object_storage(self):
+    async def test_edited_data_url_is_returned_as_base64(self):
         previous_key = environ.get("IMAGE_GENERATION_API_KEY")
         environ["IMAGE_GENERATION_API_KEY"] = "test-key"
         try:
             with (
                  patch("app.routers.projects._read_image_bytes", new=AsyncMock(return_value=b"\x89PNG\r\n")),
                  patch("app.routers.projects.call_image_edit_model", new=AsyncMock(return_value=["data:image/png;base64,aGVsbG8="])),
-                 patch("app.routers.projects.upload_image_url_if_configured", new=AsyncMock(return_value="https://img.example.com/prod/edited/image.png")),
                  patch("app.routers.projects.create_default_compliance_provider", return_value=PassingComplianceProvider()),
              ):
                 from app.routers.projects import edit_generated_image
@@ -806,10 +788,10 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
                 environ["IMAGE_GENERATION_API_KEY"] = previous_key
 
         self.assertEqual(result["source"], "model")
-        self.assertEqual(result["url"], "https://img.example.com/prod/edited/image.png")
+        self.assertEqual(result["url"], "data:image/png;base64,aGVsbG8=")
         self.assertEqual(result["compliance"]["summary"]["status"], "pass")
 
-    async def test_compose_job_uploads_finished_jpeg_to_object_storage(self):
+    async def test_compose_job_keeps_finished_jpeg_for_job_download(self):
         from app.routers import projects
 
         projects.COMPOSE_JOBS["compose_test"] = {
@@ -822,34 +804,25 @@ class GenerationMaterialTests(unittest.IsolatedAsyncioTestCase):
             "created_at": "2026-05-07T00:00:00+00:00",
         }
         try:
-            with (
-                patch("app.routers.projects.compose_long_jpeg", new=AsyncMock(return_value=b"jpeg-bytes")),
-                patch("app.routers.projects.upload_bytes_if_configured", new=AsyncMock(return_value="https://img.example.com/prod/composed/full-detail.jpg")),
-            ):
+            with patch("app.routers.projects.compose_long_jpeg", new=AsyncMock(return_value=b"jpeg-bytes")):
                 await run_compose_job("compose_test", ["data:image/png;base64,aGVsbG8="])
 
             job = projects.COMPOSE_JOBS["compose_test"]
             self.assertEqual(job["status"], "done")
-            self.assertEqual(job["url"], "https://img.example.com/prod/composed/full-detail.jpg")
-            self.assertEqual(job["content"], b"")
+            self.assertEqual(job.get("url"), "")
+            self.assertEqual(job["content"], b"jpeg-bytes")
         finally:
             projects.COMPOSE_JOBS.pop("compose_test", None)
 
-    async def test_prepare_compose_image_urls_uploads_data_urls_before_job_creation(self):
-        with patch(
-            "app.routers.projects.upload_image_url_if_configured",
-            new=AsyncMock(side_effect=["https://img.example.com/composed/source-1.png", "https://img.example.com/source-2.png"]),
-        ) as upload_mocked:
-            result = await prepare_compose_image_urls(
-                [
-                    "data:image/png;base64,aGVsbG8=",
-                    "https://img.example.com/source-2.png",
-                ]
-            )
+    async def test_prepare_compose_image_urls_keeps_base64_sources(self):
+        result = await prepare_compose_image_urls(
+            [
+                "data:image/png;base64,aGVsbG8=",
+                "https://img.example.com/source-2.png",
+            ]
+        )
 
-        self.assertEqual(result, ["https://img.example.com/composed/source-1.png", "https://img.example.com/source-2.png"])
-        upload_mocked.assert_any_await("data:image/png;base64,aGVsbG8=", "compose-sources")
-        upload_mocked.assert_any_await("https://img.example.com/source-2.png", "compose-sources")
+        self.assertEqual(result, ["data:image/png;base64,aGVsbG8=", "https://img.example.com/source-2.png"])
 
     async def test_generation_job_stores_completed_result(self):
         from app.routers import projects
