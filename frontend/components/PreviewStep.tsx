@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import { Download, FileImage, Monitor, Save, Smartphone } from "lucide-react";
+import JSZip from "jszip";
 import { createComposeLongImageJob, downloadComposeLongImageJob, downloadImage, fetchComposeLongImageJob, prepareComposeLongImageSources } from "@/lib/api";
 import { complianceIssueLocationLabel, complianceStatusClass, complianceStatusLabel, highestComplianceStatus } from "@/lib/compliance";
 import { DETAIL_IMAGE_GENERATION_SIZE } from "@/lib/constants";
+import { fetchImageBlob } from "@/lib/imageDownloads";
 import { buildDetailDownloadState } from "@/lib/projectEnhancements";
 import type { CommercePlatform, ComplianceReport, GeneratedImageVersion, GeneratedImageVersionState, ImageGroup, LanguageCode, ModuleConfig } from "@/lib/types";
 
@@ -51,24 +53,8 @@ function downloadBlob(blob: Blob, filename: string) {
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }
 
-function isDirectDownloadUrl(url: string) {
-  return /^https?:\/\//i.test(url);
-}
-
 async function fetchAndDownload(url: string, filename: string) {
-  if (isDirectDownloadUrl(url)) {
-    try {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`Image fetch failed: ${response.status}`);
-      downloadBlob(await response.blob(), filename);
-      return;
-    } catch {
-      const blob = await downloadImage(url, filename);
-      downloadBlob(blob, filename);
-      return;
-    }
-  }
-  const blob = await downloadImage(url, filename);
+  const blob = await fetchImageBlob(url, (sourceUrl) => downloadImage(sourceUrl, filename));
   downloadBlob(blob, filename);
 }
 
@@ -223,6 +209,8 @@ export function PreviewStep({
   const [isComposing, setIsComposing] = useState(false);
   const [composeStatus, setComposeStatus] = useState("");
   const [composeError, setComposeError] = useState("");
+  const [isDownloadingBatch, setIsDownloadingBatch] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
   const [editDrafts, setEditDrafts] = useState<Record<string, string>>({});
   const [editingModuleIds, setEditingModuleIds] = useState<Record<string, boolean>>({});
   const generatedByModule = new Map(
@@ -253,11 +241,33 @@ export function PreviewStep({
   const batchDownloadLabel = activeImageGroup === "campaign" ? "活动主图" : "主图";
 
   async function handleDownloadVisibleBatch() {
-    if (visibleItems.length === 0) return;
+    if (visibleItems.length === 0 || isDownloadingBatch) return;
     const filenamePrefix = activeImageGroup === "detail" ? "detail" : activeImageGroup;
-    for (let index = 0; index < visibleItems.length; index++) {
-      const item = visibleItems[index];
-      await fetchAndDownload(item.url, `${filenamePrefix}-${String(index + 1).padStart(2, "0")}-${item.module.id}.png`);
+    setIsDownloadingBatch(true);
+    setDownloadError("");
+    try {
+      const zip = new JSZip();
+      for (let index = 0; index < visibleItems.length; index += 1) {
+        const item = visibleItems[index];
+        const filename = `${filenamePrefix}-${String(index + 1).padStart(2, "0")}-${item.module.id}.png`;
+        const blob = await fetchImageBlob(item.url, (sourceUrl) => downloadImage(sourceUrl, filename));
+        zip.file(filename, blob);
+      }
+      const archive = await zip.generateAsync({ type: "blob", compression: "STORE" });
+      downloadBlob(archive, `${filenamePrefix}-images.zip`);
+    } catch (error) {
+      setDownloadError(error instanceof Error ? error.message : "批量下载失败，请重试");
+    } finally {
+      setIsDownloadingBatch(false);
+    }
+  }
+
+  async function handleSingleDownload(url: string, filename: string) {
+    setDownloadError("");
+    try {
+      await fetchAndDownload(url, filename);
+    } catch (error) {
+      setDownloadError(error instanceof Error ? error.message : "图片下载失败，请重试");
     }
   }
 
@@ -386,7 +396,7 @@ export function PreviewStep({
                               {isCurrent ? "生成中" : url ? "重新生成" : "生成"}
                             </button>
                             {url ? (
-                              <button className="inlineActionButton" onClick={() => fetchAndDownload(url, downloadFilenameForModule(module, index, activeImageGroup))} type="button">
+                              <button className="inlineActionButton" onClick={() => void handleSingleDownload(url, downloadFilenameForModule(module, index, activeImageGroup))} type="button">
                                 下载
                               </button>
                             ) : null}
@@ -473,7 +483,7 @@ export function PreviewStep({
                             <button className="inlineActionButton" onClick={() => onGenerateModule(activeImageGroup, item.module.id)} type="button">
                               再生成一版
                             </button>
-                            <button className="inlineActionButton" onClick={() => fetchAndDownload(itemUrl, downloadFilenameForModule(item.module, index, "detail"))} type="button">
+                            <button className="inlineActionButton" onClick={() => void handleSingleDownload(itemUrl, downloadFilenameForModule(item.module, index, "detail"))} type="button">
                               下载
                             </button>
                           </span>
@@ -534,7 +544,7 @@ export function PreviewStep({
                   <b>{module.name}</b>
                   <span className="directoryDownloadSlot">
                     {moduleUrl ? (
-                      <button className="inlineActionButton" onClick={() => fetchAndDownload(moduleUrl, downloadFilenameForModule(module, index, activeImageGroup))} type="button">
+                      <button className="inlineActionButton" onClick={() => void handleSingleDownload(moduleUrl, downloadFilenameForModule(module, index, activeImageGroup))} type="button">
                         下载
                       </button>
                     ) : null}
@@ -576,9 +586,9 @@ export function PreviewStep({
                       ? `合成并下载 ${groupedItems.detail.length}/${groupedModules.detail.length} 张详情图为 JPG 长图`
                       : "暂无详情长图可导出"}
                 </button>
-                <button className="ghostButton" onClick={handleDownloadVisibleBatch} disabled={groupedItems.detail.length === 0} type="button">
+                <button className="ghostButton" onClick={handleDownloadVisibleBatch} disabled={groupedItems.detail.length === 0 || isDownloadingBatch} type="button">
                   <Download size={20} />
-                  批量下载 {groupedItems.detail.length}/{groupedModules.detail.length} 张详情分图
+                  {isDownloadingBatch ? "正在打包 ZIP..." : `批量下载 ${groupedItems.detail.length}/${groupedModules.detail.length} 张详情分图`}
                 </button>
                 <a className="ghostButton" href={manifestHref} download="split-images-manifest.json">
                   <Download size={20} />
@@ -589,11 +599,12 @@ export function PreviewStep({
                 {composeError ? <p className="composeError">{composeError}</p> : null}
               </>
             ) : (
-              <button className="primaryButton" onClick={handleDownloadVisibleBatch} disabled={visibleItems.length === 0} type="button">
+              <button className="primaryButton" onClick={handleDownloadVisibleBatch} disabled={visibleItems.length === 0 || isDownloadingBatch} type="button">
                 <Download size={20} />
-                {visibleItems.length ? `批量下载 ${visibleItems.length} 张${batchDownloadLabel}` : "暂无可批量下载图片"}
+                {isDownloadingBatch ? "正在打包 ZIP..." : visibleItems.length ? `批量下载 ${visibleItems.length} 张${batchDownloadLabel}` : "暂无可批量下载图片"}
               </button>
             )}
+            {downloadError ? <p className="composeError">{downloadError}</p> : null}
           </div>
         </aside>
       </div>

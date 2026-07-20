@@ -160,11 +160,15 @@ assertIncludes("components/PreviewStep.tsx", "full-detail.jpg", "full long image
 assertNotIncludes("components/PreviewStep.tsx", "full-detail.svg", "full long image export must not download SVG");
 assertNotIncludes("components/PreviewStep.tsx", "window.open", "image downloads must not open popup tabs when direct fetch fails");
 assertNotIncludes("components/PreviewStep.tsx", "window.location.href = download.url", "long image downloads must not navigate to remote image URLs");
-assertIncludes("components/PreviewStep.tsx", "isDirectDownloadUrl", "public image URLs should download directly without backend proxying");
-assertIncludes("components/PreviewStep.tsx", "fetch(url)", "public image downloads should fetch R2 images in-browser before creating a download blob");
+assertIncludes("lib/imageDownloads.ts", "isDirectDownloadUrl", "public image URLs should download directly without backend proxying");
+assertIncludes("lib/imageDownloads.ts", "fetch(url)", "public image downloads should fetch R2 images in-browser before creating a download blob");
 assertNotIncludes("components/PreviewStep.tsx", "downloadUrl(url, filename)", "cross-origin public image downloads must not use direct anchor URLs because browsers may open them");
+assertIncludes("components/PreviewStep.tsx", "fetchImageBlob", "preview downloads must decode base64 images in the browser instead of posting them to the backend");
 assertIncludes("components/PreviewStep.tsx", "handleDownloadVisibleBatch", "preview directory must expose batch download for the active main/campaign group");
-assertIncludes("components/PreviewStep.tsx", "index < visibleItems.length", "batch download must only download currently generated images in the active directory");
+assertIncludes("components/PreviewStep.tsx", "new JSZip", "batch download must create one ZIP instead of triggering many browser downloads");
+assertIncludes("components/PreviewStep.tsx", "generateAsync", "batch download must generate a downloadable ZIP blob");
+assertIncludes("components/PreviewStep.tsx", "isDownloadingBatch", "batch download must expose in-progress state and prevent duplicate packaging");
+assertIncludes("components/PreviewStep.tsx", "downloadError", "single and batch download failures must be visible to the user");
 assertIncludes("components/PreviewStep.tsx", 'activeImageGroup === "detail"', "detail directory must keep compose download separate from main/campaign batch download");
 assertIncludes("components/PreviewStep.tsx", "批量下载", "main and campaign directories must show a batch download action");
 assertIncludes("components/PreviewStep.tsx", "张详情分图", "detail directory must expose a real split-image batch download, not only a manifest");

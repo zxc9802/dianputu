@@ -8,9 +8,10 @@
     "start": "next start",
     "lint": "next lint",
     "test:static": "node tests/static-ui-contract.test.cjs",
-    "test": "npm run test:static && node tests/compliance.test.cjs && node tests/product-info-merge.test.cjs && node tests/project-enhancements.test.cjs && node tests/model-selection.test.cjs && node tests/history-api.test.cjs && node tests/saved-styles-api.test.cjs"
+    "test": "npm run test:static && node tests/image-downloads.test.cjs && node tests/compliance.test.cjs && node tests/product-info-merge.test.cjs && node tests/project-enhancements.test.cjs && node tests/model-selection.test.cjs && node tests/history-api.test.cjs && node tests/saved-styles-api.test.cjs"
   },
   "dependencies": {
+    "jszip": "^3.10.1",
     "lucide-react": "^0.468.0",
     "next": "^15.0.0",
     "react": "^19.0.0",
