@@ -1906,6 +1906,27 @@ def _product_identity_lock_rules(has_product_reference: bool, *, has_product_ide
     )
 
 
+def _product_color_override_rules(product_info: dict[str, Any] | None) -> str:
+    raw_reference = (product_info or {}).get("product_color")
+    if not isinstance(raw_reference, dict):
+        return ""
+    name = _text(raw_reference.get("name"), "")[:60]
+    raw_hex = _text(raw_reference.get("hex"), "").upper()
+    hex_value = raw_hex if re.fullmatch(r"#[0-9A-F]{6}", raw_hex) else ""
+    if not name and not hex_value:
+        return ""
+    color_label = f"{name}（{hex_value}）" if name and hex_value else name or hex_value
+    return "\n".join(
+        [
+            "【用户指定产品颜色｜最高优先级】",
+            f"- 商品本体或包装主色必须呈现为：{color_label}。",
+            "- 如果产品主图、检测报告、说明书、AI 识别结果或风格参考图显示其他颜色，全部忽略颜色冲突，以本节用户选择为准。",
+            "- 本节仅覆盖前文关于“包装主色不可变”或“保持参考图原色”的约束；瓶型、比例、盖子/泵头/滴管、标签版式、Logo、文字、图案、材质与边缘细节仍必须保持同一商品身份。",
+            "- 该颜色只用于商品本体或包装需要着色的区域，不是背景色或整套图片的风格主色；背景与风格仍按当前模块要求执行。",
+        ]
+    )
+
+
 def build_module_image_prompt(
     *,
     product_info: dict[str, Any] | None,
@@ -2066,6 +2087,7 @@ def build_module_image_prompt(
         has_product_reference and not is_white_bg,
         has_product_identity_reference_board=has_product_identity_reference_board,
     )
+    product_color_override_rules = _product_color_override_rules(product_info)
     visual_reduction_rules = (
         "\n".join(
             part
@@ -2119,6 +2141,7 @@ def build_module_image_prompt(
                 *style_section,
                 *(["", main_campaign_visual_budget_rules] if main_campaign_visual_budget_rules else []),
                 *(["", visual_reduction_rules] if visual_reduction_rules else []),
+                *(["", product_color_override_rules] if product_color_override_rules else []),
             ]
         )
     )

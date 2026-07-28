@@ -14,6 +14,7 @@ import {
   LineChart,
   Medal,
   Package,
+  Palette,
   Shield,
   ShieldCheck,
   Sparkles,
@@ -21,7 +22,7 @@ import {
   Trash2
 } from "lucide-react";
 import { productInfoFieldsForDetailLayout, productInfoValueFor, type ProductInfoFieldKey } from "@/lib/productInfo";
-import type { DetailLayoutConfig, DetailLayoutId, ProductInfo, UploadedFileInfo, UploadSlot } from "@/lib/types";
+import type { DetailLayoutConfig, DetailLayoutId, ProductColorReference, ProductInfo, UploadedFileInfo, UploadSlot } from "@/lib/types";
 
 const uploadSlots: Array<{
   id: string;
@@ -100,9 +101,11 @@ export function UploadStep({
   manualFieldKeys,
   isAnalyzing,
   analysisSource,
+  productColor,
   onFilesAdded,
   onFileRemove,
   onDetailLayoutChange,
+  onProductColorChange,
   onManualFieldChange,
   onAnalyze,
   onNext
@@ -117,9 +120,11 @@ export function UploadStep({
   manualFieldKeys: ProductInfoFieldKey[];
   isAnalyzing: boolean;
   analysisSource: string;
+  productColor: ProductColorReference | null;
   onFilesAdded: (slot: UploadSlot, files: File[]) => void;
   onFileRemove: (id: string) => void;
   onDetailLayoutChange: (id: DetailLayoutId) => void;
+  onProductColorChange: (reference: ProductColorReference | null) => void;
   onManualFieldChange: (key: ProductInfoFieldKey, draft: string) => void;
   onAnalyze: () => void;
   onNext: () => void;
@@ -127,6 +132,9 @@ export function UploadStep({
   const [draggingSlot, setDraggingSlot] = useState<UploadSlot | null>(null);
   const hasFiles = uploadedFiles.length > 0;
   const manualRows = productInfoFieldsForDetailLayout(selectedDetailLayoutId);
+  const productColorLabel = productColor
+    ? [productColor.name, productColor.hex].filter(Boolean).join(" · ")
+    : "AI 自动识别";
 
   function handleFiles(slot: UploadSlot, files: FileList | File[]) {
     const nextFiles = Array.from(files);
@@ -227,6 +235,64 @@ export function UploadStep({
                 </article>
               );
             })}
+
+            <article className={`uploadSlotCard productColorCard ${productColor ? "selected" : ""}`}>
+              <div className="productColorHeading">
+                <div className="slotIcon">
+                  <Palette size={28} />
+                </div>
+                {productColor ? (
+                  <span className="priorityBadge">
+                    <CheckCircle2 size={14} />
+                    用户选择优先
+                  </span>
+                ) : null}
+              </div>
+              <h3>产品颜色</h3>
+              <p>选择商品本体或包装主色；若与主图、报告或说明书冲突，以此处选择为准。</p>
+
+              <div className="productColorFields">
+                <label className="productColorPickerLabel">
+                  <input
+                    aria-label="选择任意产品颜色"
+                    type="color"
+                    value={productColor?.hex || "#F5F1E8"}
+                    onChange={(event) => {
+                      const hex = event.target.value.toUpperCase();
+                      onProductColorChange({ name: productColor?.name ?? "", hex });
+                    }}
+                  />
+                  <span
+                    className="selectedColorSwatch"
+                    style={{ backgroundColor: productColor?.hex || "#F5F1E8" }}
+                  />
+                  任意取色
+                </label>
+                <input
+                  aria-label="产品颜色描述"
+                  className="productColorNameInput"
+                  placeholder="颜色描述，如：半透明淡蓝"
+                  value={productColor?.name ?? ""}
+                  onChange={(event) =>
+                    onProductColorChange({
+                      name: event.target.value,
+                      hex: productColor?.hex ?? ""
+                    })
+                  }
+                />
+              </div>
+
+              <div className="productColorFooter">
+                <span>{productColorLabel}</span>
+                {productColor ? (
+                  <button onClick={() => onProductColorChange(null)} type="button">
+                    清除选择
+                  </button>
+                ) : (
+                  <em>未选择时由 AI 识别</em>
+                )}
+              </div>
+            </article>
           </div>
 
           <div className="analysisBar">
@@ -269,6 +335,12 @@ export function UploadStep({
               <ShieldCheck size={26} />
               <p>
                 <b>风格：</b>{selectedStyleName}
+              </p>
+            </div>
+            <div>
+              <Palette size={26} />
+              <p>
+                <b>颜色：</b>{productColorLabel}
               </p>
             </div>
             <div>

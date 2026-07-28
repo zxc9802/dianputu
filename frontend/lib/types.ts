@@ -10,6 +10,11 @@ export type PromptBranch = "current" | "prompt_optimization";
 
 export type DetailLayoutId = "detail_evidence_chain_16" | "detail_standard_conversion_10";
 
+export type ProductColorReference = {
+  name: string;
+  hex: string;
+};
+
 export type StyleReferenceScope = { type: "global" } | { type: "module"; moduleId: string };
 
 export type StyleReferenceSelection = {
@@ -123,6 +128,7 @@ export type ProductInfo = {
   product_name: string;
   category: string;
   spec: string;
+  product_color?: ProductColorReference;
   core_selling_points: string[];
   functions: string[];
   ingredients: Array<{ name: string; benefit: string }>;

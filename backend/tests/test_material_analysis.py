@@ -55,6 +55,32 @@ class MaterialAnalysisTests(unittest.TestCase):
         self.assertEqual(content[1]["type"], "image_url")
         self.assertTrue(content[1]["image_url"]["url"].startswith("data:image/png;base64,"))
 
+    def test_user_selected_product_color_has_priority_over_uploaded_materials(self):
+        color_reference = {"name": "香槟金", "hex": "#C8A24A"}
+        messages = build_material_analysis_messages(
+            [
+                UploadedMaterial(
+                    filename="blue-product.png",
+                    content_type="image/png",
+                    data=b"\x89PNG\r\n",
+                    slot="product_image",
+                )
+            ],
+            product_color_reference=color_reference,
+        )
+
+        text = messages[0]["content"][0]["text"]
+        self.assertIn("用户指定商品颜色（最高优先级）", text)
+        self.assertIn("香槟金（#C8A24A）", text)
+        self.assertIn("与产品主图、检测报告、说明书或其他上传资料冲突", text)
+        self.assertEqual(
+            normalize_product_info_from_model(
+                '{"product_name":"修护精华"}',
+                product_color_reference=color_reference,
+            )["product_color"],
+            color_reference,
+        )
+
     def test_evidence_chain_analysis_prompt_requires_screen_modules_and_ai_fill(self):
         messages = build_material_analysis_messages(
             [
@@ -342,6 +368,25 @@ class MaterialAnalysisTests(unittest.TestCase):
         self.assertIn("标签文字、Logo、图案", prompt)
         self.assertIn("不能把产品标签抹成空白", prompt)
         self.assertIn("不能重绘包装", prompt)
+
+    def test_generation_prompt_treats_user_product_color_as_highest_priority(self):
+        prompt = build_module_image_prompt(
+            product_info={
+                "product_name": "积雪草修护精华",
+                "product_color": {"name": "奶油白", "hex": "#F5F1E8"},
+            },
+            style={"name": "蓝色科技风", "primary_color": "#3B82F6", "keywords": ["蓝色", "科技"]},
+            module={"id": "main_hero_selling_point", "name": "首图", "description": "产品 + 核心卖点", "image_group": "main"},
+            module_index=1,
+            total_modules=5,
+            has_product_reference=True,
+            has_style_reference=True,
+        )
+
+        self.assertIn("【用户指定产品颜色｜最高优先级】", prompt)
+        self.assertIn("奶油白（#F5F1E8）", prompt)
+        self.assertIn("产品主图、检测报告、说明书、AI 识别结果或风格参考图", prompt)
+        self.assertIn("不是背景色或整套图片的风格主色", prompt)
 
 
 class AnalyzeUploadedMaterialsConfigTests(unittest.IsolatedAsyncioTestCase):

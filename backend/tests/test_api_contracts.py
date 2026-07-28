@@ -1275,11 +1275,12 @@ class DownloadContractTests(unittest.TestCase):
             "raw": '{"product_name":"积雪草修护精华"}',
             "uploaded_materials": [],
         }
-        with patch("app.routers.projects.analyze_uploaded_materials", new=AsyncMock(return_value=job_result)):
+        with patch("app.routers.projects.analyze_uploaded_materials", new=AsyncMock(return_value=job_result)) as analyze_mock:
             response = self.make_client().post(
                 "/api/projects/analyze-materials/jobs",
                 json={
                     "detail_layout_id": "detail_standard_conversion_10",
+                    "product_color_reference": {"name": "香槟金", "hex": "#C8A24A"},
                     "materials": [
                         {
                             "id": "material-1",
@@ -1300,6 +1301,10 @@ class DownloadContractTests(unittest.TestCase):
             job = job_response.json()
             self.assertEqual(job["status"], "done")
             self.assertEqual(job["result"], job_result)
+            self.assertEqual(
+                analyze_mock.await_args.kwargs["product_color_reference"],
+                {"name": "香槟金", "hex": "#C8A24A"},
+            )
         finally:
             from app.routers import projects
 

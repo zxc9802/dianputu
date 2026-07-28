@@ -377,15 +377,49 @@ def _detail_layout_analysis_guide(detail_layout_id: str | None) -> str:
     )
 
 
-def build_material_analysis_messages(materials: list[UploadedMaterial], detail_layout_id: str | None = None) -> list[dict[str, Any]]:
+def _normalize_product_color_reference(value: Any) -> dict[str, str] | None:
+    if not isinstance(value, dict):
+        return None
+    name = str(value.get("name") or "").strip()[:60]
+    raw_hex = str(value.get("hex") or "").strip().upper()
+    hex_value = raw_hex if re.fullmatch(r"#[0-9A-F]{6}", raw_hex) else ""
+    if not name and not hex_value:
+        return None
+    return {"name": name, "hex": hex_value}
+
+
+def _format_product_color_reference(value: Any) -> str:
+    reference = _normalize_product_color_reference(value)
+    if not reference:
+        return ""
+    if reference["name"] and reference["hex"]:
+        return f"{reference['name']}（{reference['hex']}）"
+    return reference["name"] or reference["hex"]
+
+
+def build_material_analysis_messages(
+    materials: list[UploadedMaterial],
+    detail_layout_id: str | None = None,
+    product_color_reference: dict[str, str] | None = None,
+) -> list[dict[str, Any]]:
     from app.services.file_parser import parse_document
 
     file_lines = "\n".join(
         f"- [{material.slot}] {material.filename} ({material.content_type or 'unknown'}, {len(material.data)} bytes)"
         for material in materials
     )
+    selected_product_color = _format_product_color_reference(product_color_reference)
+    color_priority_rule = (
+        f"用户指定商品颜色（最高优先级）：{selected_product_color}。"
+        "这是商品本体或包装主色，不是背景色或视觉风格主色。"
+        "如果该颜色与产品主图、检测报告、说明书或其他上传资料冲突，必须以用户指定颜色为准；"
+        "不得根据图片识别结果改写、弱化或忽略用户选择。"
+        if selected_product_color
+        else ""
+    )
     prompt = (
         "你是电商护肤详情页产品经理。请根据上传的产品主图和资料，提取商品详情页生成所需信息。"
+        f"{color_priority_rule}"
         "如果资料很长，先在内部筛选最适合打动消费者、最可信、最适合上图表达的内容，再写入 JSON。"
         "必须优先提炼：1) 可作为购买理由的核心卖点；2) 有数据或实验依据的功效点；3) 可用于权威背书的报告/资质/实验室信息；"
         "4) 需要谨慎表达或不能直接宣传的内容。"
@@ -749,7 +783,11 @@ def _normalize_detail_layout_brief(value: Any, info: dict[str, Any], detail_layo
     }
 
 
-def normalize_product_info_from_model(raw: str, detail_layout_id: str | None = None) -> dict[str, Any]:
+def normalize_product_info_from_model(
+    raw: str,
+    detail_layout_id: str | None = None,
+    product_color_reference: dict[str, str] | None = None,
+) -> dict[str, Any]:
     data = _extract_json_object(raw) or {}
     info = {
         "product_name": str(data.get("product_name") or "").strip(),
@@ -766,6 +804,9 @@ def normalize_product_info_from_model(raw: str, detail_layout_id: str | None = N
         "cross_image_brief": data.get("cross_image_brief") if isinstance(data.get("cross_image_brief"), dict) else {},
         "confirmation_status": "pending",
     }
+    normalized_product_color = _normalize_product_color_reference(product_color_reference)
+    if normalized_product_color:
+        info["product_color"] = normalized_product_color
     info["detail_layout_brief"] = _normalize_detail_layout_brief(data.get("detail_layout_brief"), info, detail_layout_id)
     return info
 
@@ -937,7 +978,11 @@ async def analyze_product_materials(raw_text: str | None = None) -> dict[str, An
     return {"source": "error", "error": "text model is not configured or no raw text was provided"}
 
 
-async def analyze_uploaded_materials(materials: list[UploadedMaterial], detail_layout_id: str | None = None) -> dict[str, Any]:
+async def analyze_uploaded_materials(
+    materials: list[UploadedMaterial],
+    detail_layout_id: str | None = None,
+    product_color_reference: dict[str, str] | None = None,
+) -> dict[str, Any]:
     settings = get_model_settings()
     if not materials:
         return {"source": "error", "error": "no materials were uploaded"}
@@ -973,13 +1018,29 @@ async def analyze_uploaded_materials(materials: list[UploadedMaterial], detail_l
                     )
             else:
                 model_materials.append(material)
-        content = await call_text_model_with_retry(settings, build_material_analysis_messages(model_materials, detail_layout_id=detail_layout_id))
+        content = await call_text_model_with_retry(
+            settings,
+            build_material_analysis_messages(
+                model_materials,
+                detail_layout_id=detail_layout_id,
+                product_color_reference=product_color_reference,
+            ),
+        )
     except Exception as exc:
         return {"source": "error", "error": str(exc)}
     if not content:
         return {"source": "error", "error": "text model returned empty content"}
 
-    return {"source": "model", "product_info": normalize_product_info_from_model(content, detail_layout_id=detail_layout_id), "raw": content, "uploaded_materials": uploaded_materials}
+    return {
+        "source": "model",
+        "product_info": normalize_product_info_from_model(
+            content,
+            detail_layout_id=detail_layout_id,
+            product_color_reference=product_color_reference,
+        ),
+        "raw": content,
+        "uploaded_materials": uploaded_materials,
+    }
 
 
 async def plan_custom_style(
@@ -1731,6 +1792,7 @@ try:
     class AnalyzeMaterialsRequest(BaseModel):
         materials: list[MaterialPayload] = Field(default_factory=list)
         detail_layout_id: str | None = DEFAULT_DETAIL_LAYOUT_ID
+        product_color_reference: dict[str, str] | None = None
 
     class GenerateRequest(BaseModel):
         module_ids: list[str] = Field(default_factory=lambda: [module["id"] for module in DEFAULT_MODULES])
@@ -1790,6 +1852,7 @@ try:
         return {
             "materials": [uploaded_material_from_payload(payload) for payload in request.materials[:8]],
             "detail_layout_id": request.detail_layout_id,
+            "product_color_reference": _normalize_product_color_reference(request.product_color_reference),
         }
 
     async def run_analysis_job(job_id: str, payload: dict[str, Any]) -> None:
@@ -1809,6 +1872,7 @@ try:
             result = await analyze_uploaded_materials(
                 payload.get("materials") or [],
                 detail_layout_id=payload.get("detail_layout_id"),
+                product_color_reference=payload.get("product_color_reference"),
             )
             job.update(
                 {
@@ -2026,7 +2090,11 @@ try:
     @router.post("/analyze-materials")
     async def analyze_project_materials(request: AnalyzeMaterialsRequest) -> dict[str, Any]:
         materials = [uploaded_material_from_payload(payload) for payload in request.materials[:8]]
-        return await analyze_uploaded_materials(materials, detail_layout_id=request.detail_layout_id)
+        return await analyze_uploaded_materials(
+            materials,
+            detail_layout_id=request.detail_layout_id,
+            product_color_reference=request.product_color_reference,
+        )
 
     @router.post("/analyze-materials/jobs")
     async def create_analyze_project_materials_job(request: AnalyzeMaterialsRequest, background_tasks: BackgroundTasks) -> dict[str, str]:

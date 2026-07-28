@@ -77,6 +77,7 @@ import type {
   ModuleConfig,
   PersistedProjectState,
   PromptBranch,
+  ProductColorReference,
   ProductInfo,
   ProjectTemplate,
   PublicModelConfig,
@@ -942,6 +943,17 @@ export default function Home() {
     });
   }
 
+  function updateProductColor(reference: ProductColorReference | null) {
+    setProductInfo((current) => {
+      const base = current ?? createEmptyProductInfo(selectedCategory);
+      if (reference) {
+        return { ...base, product_color: reference, confirmation_status: "pending" };
+      }
+      const { product_color: _productColor, ...withoutProductColor } = base;
+      return { ...withoutProductColor, confirmation_status: "pending" };
+    });
+  }
+
   async function handleAnalyzeMaterials() {
     if (isAnalyzing) return;
     if (uploadedFiles.length === 0) {
@@ -959,7 +971,11 @@ export default function Home() {
     setIsAnalyzing(true);
     setStatusText("AI 解析中");
     try {
-      const result = await analyzeUploadedMaterials(materials, { detailLayoutId: selectedDetailLayoutId });
+      const userProductColor = productInfo?.product_color ?? null;
+      const result = await analyzeUploadedMaterials(materials, {
+        detailLayoutId: selectedDetailLayoutId,
+        productColorReference: userProductColor
+      });
       setAnalysisSource(
         result.source === "model" && result.product_info
           ? "AI 已根据上传资料更新商品信息。"
@@ -969,9 +985,12 @@ export default function Home() {
         if (result.uploaded_materials?.length) {
           setUploadedFiles((current) => replaceUploadedFileDataUrlsWithMaterialUrls(current, result.uploaded_materials));
         }
-        const mergedProductInfo = productInfo
-          ? mergeProductInfoWithManualPriority(productInfo, result.product_info, manualFieldKeys)
+        const analyzedProductInfo = userProductColor
+          ? { ...result.product_info, product_color: userProductColor }
           : result.product_info;
+        const mergedProductInfo = productInfo
+          ? mergeProductInfoWithManualPriority(productInfo, analyzedProductInfo, manualFieldKeys)
+          : analyzedProductInfo;
         const expandedProductInfo = productInfoWithDetailLayoutFields(mergedProductInfo, selectedDetailLayoutId);
         setProductInfo(expandedProductInfo);
         setHasAiProductInfo(true);
@@ -1292,9 +1311,11 @@ export default function Home() {
             manualFieldKeys={manualFieldKeys}
             isAnalyzing={isAnalyzing}
             analysisSource={analysisSource}
+            productColor={productInfo?.product_color ?? null}
             onFilesAdded={addUploadedFiles}
             onFileRemove={(id) => setUploadedFiles((current) => current.filter((file) => file.id !== id))}
             onDetailLayoutChange={changeDetailLayout}
+            onProductColorChange={updateProductColor}
             onManualFieldChange={updateManualField}
             onAnalyze={handleAnalyzeMaterials}
             onNext={() => go(nextStep(activeStep))}

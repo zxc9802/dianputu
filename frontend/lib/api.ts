@@ -1,6 +1,6 @@
 import { DEFAULT_MODULES, DEMO_MODEL_CONFIG, STYLE_OPTIONS } from "./constants";
 import { MainAppRedirectError, extractApiErrorMessage, readJsonSafely, redirectToMainAppIfNeeded } from "./client/api-response";
-import type { CommercePlatformId, ComplianceReport, ComplianceTextItem, DetailLayoutId, GenerationMode, LanguageCode, LanguageVersion, MaterialPayload, ModuleConfig, ProductInfo, PromptBranch, PublicModelConfig, SavedStyleRecord, StyleOption, StyleReferenceSelection, TextLayer } from "./types";
+import type { CommercePlatformId, ComplianceReport, ComplianceTextItem, DetailLayoutId, GenerationMode, LanguageCode, LanguageVersion, MaterialPayload, ModuleConfig, ProductColorReference, ProductInfo, PromptBranch, PublicModelConfig, SavedStyleRecord, StyleOption, StyleReferenceSelection, TextLayer } from "./types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 const LOCAL_SAVED_STYLES_STORAGE_KEY = "detail-image-agent-saved-styles";
@@ -716,7 +716,10 @@ type AnalyzeMaterialsJobStatus = {
   result?: AnalyzeMaterialsResult;
 };
 
-export async function analyzeUploadedMaterials(materials: MaterialPayload[], options: { detailLayoutId?: DetailLayoutId } = {}) {
+export async function analyzeUploadedMaterials(
+  materials: MaterialPayload[],
+  options: { detailLayoutId?: DetailLayoutId; productColorReference?: ProductColorReference | null } = {}
+) {
   try {
     const { job_id: jobId } = await createAnalyzeMaterialsJob(materials, options);
     return await pollAnalyzeMaterialsJob(jobId);
@@ -729,10 +732,17 @@ export async function analyzeUploadedMaterials(materials: MaterialPayload[], opt
   }
 }
 
-export async function createAnalyzeMaterialsJob(materials: MaterialPayload[], options: { detailLayoutId?: DetailLayoutId } = {}) {
+export async function createAnalyzeMaterialsJob(
+  materials: MaterialPayload[],
+  options: { detailLayoutId?: DetailLayoutId; productColorReference?: ProductColorReference | null } = {}
+) {
   return requestJson<{ job_id: string }>("/api/projects/analyze-materials/jobs", {
     method: "POST",
-    body: JSON.stringify({ materials, detail_layout_id: options.detailLayoutId }),
+    body: JSON.stringify({
+      materials,
+      detail_layout_id: options.detailLayoutId,
+      product_color_reference: options.productColorReference ?? null
+    }),
     timeoutMs: 15000
   });
 }

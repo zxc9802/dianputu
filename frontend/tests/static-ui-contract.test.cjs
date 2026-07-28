@@ -25,6 +25,10 @@ assertIncludes("components/UploadStep.tsx", "document-file-upload", "upload step
 assertIncludes("components/UploadStep.tsx", "onAnalyze", "upload step must trigger AI material analysis");
 assertIncludes("components/UploadStep.tsx", "详情图排版结构", "upload step must let users choose the detail layout before analysis");
 assertIncludes("components/UploadStep.tsx", "onDetailLayoutChange", "upload step must propagate detail layout changes");
+assertIncludes("components/UploadStep.tsx", "产品颜色", "upload step must expose an explicit product color reference");
+assertIncludes("components/UploadStep.tsx", "用户选择优先", "product color control must explain its conflict priority");
+assertIncludes("components/UploadStep.tsx", 'type="color"', "product color control must support arbitrary color selection");
+assertIncludes("components/UploadStep.tsx", "onProductColorChange", "upload step must propagate the selected product color");
 assertIncludes("components/UploadStep.tsx", "手动补充信息（可不填）", "upload sidebar must expose optional manual product fields");
 assertIncludes("components/UploadStep.tsx", "productInfoFieldsForDetailLayout(selectedDetailLayoutId)", "upload manual fields must follow the selected detail layout");
 assertIncludes("components/UploadStep.tsx", "onManualFieldChange", "upload sidebar must propagate manual field edits");
@@ -41,6 +45,7 @@ assertNotIncludes("app/page.tsx", "onStyleFilesAdded", "page should not wire sty
 assertNotIncludes("app/page.tsx", "请先上传并选择风格参考图", "generation should not block on removed style reference mode");
 assertIncludes("lib/api.ts", "analyzeUploadedMaterials", "frontend API must send uploaded materials for AI analysis");
 assertIncludes("lib/api.ts", "detail_layout_id: detailLayoutId", "material analysis must send the selected detail layout id");
+assertIncludes("lib/api.ts", "product_color_reference", "material analysis must send the user-selected product color");
 assertNotIncludes("lib/api.ts", "analyzeProductVisual", "frontend API must not use a separate product visual suggestion step");
 assertNotIncludes("lib/api.ts", "/api/projects/analyze-product-visual", "frontend API must not call a separate product visual suggestion endpoint");
 assertIncludes("lib/productInfo.ts", "mergeProductInfoWithManualPriority", "product info helper must preserve manual fields when AI returns data");
