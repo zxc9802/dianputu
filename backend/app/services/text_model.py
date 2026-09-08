@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.services.main_usage import metered_post
+
 from typing import Any
 
 from app.core.config import TextAnalysisSettings
@@ -37,7 +39,7 @@ async def call_text_model(settings: TextAnalysisSettings, messages: list[Message
         temperature=settings.temperature,
     )
     async with httpx.AsyncClient(timeout=120) as client:
-        response = await client.post(
+        response = await metered_post(client,
             settings.endpoint_url,
             headers={
                 "Accept": "application/json",

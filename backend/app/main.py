@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
+import asyncio
+
+from app.dependencies.auth import require_app_user
+from app.services.main_usage import enabled, usage_user, usage_worker
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,8 +19,14 @@ from app.services.database import close_pool, ensure_tables
 async def lifespan(app: FastAPI):
     """Startup: ensure database tables exist.  Shutdown: close the pool."""
     await ensure_tables()
-    yield
-    await close_pool()
+    reporter = asyncio.create_task(usage_worker())
+    try:
+        yield
+    finally:
+        reporter.cancel()
+        with suppress(asyncio.CancelledError):
+            await reporter
+        await close_pool()
 
 
 def create_app() -> FastAPI:
@@ -28,6 +38,20 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.middleware("http")
+    async def employee_usage_context(request: Request, call_next):
+        if not enabled() or not request.url.path.startswith('/api/projects'):
+            return await call_next(request)
+        try:
+            user = require_app_user(request)
+        except AppSessionUnauthorizedError as error:
+            return JSONResponse(app_session_error_payload(error), status_code=error.status_code)
+        token = usage_user.set(user.user_id)
+        try:
+            return await call_next(request)
+        finally:
+            usage_user.reset(token)
 
     @app.get("/health")
     async def health() -> dict[str, str]:

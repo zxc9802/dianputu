@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.services.main_usage import metered_post
+
 import base64
 from io import BytesIO
 import re
@@ -106,7 +108,7 @@ async def call_image_model(
             image=image,
         )
         async with httpx.AsyncClient(timeout=480) as client:
-            response = await client.post(
+            response = await metered_post(client,
                 settings.endpoint_url,
                 headers={
                     "Accept": "application/json",
@@ -134,7 +136,7 @@ async def call_image_model(
         response_format=settings.response_format,
     )
     async with httpx.AsyncClient(timeout=480) as client:
-        response = await client.post(
+        response = await metered_post(client,
             settings.endpoint_url,
             headers={
                 "Accept": "application/json",
@@ -246,7 +248,7 @@ async def _post_image_edit_files(
         data["response_format"] = settings.response_format
 
     async with httpx.AsyncClient(timeout=480) as client:
-        response = await client.post(
+        response = await metered_post(client,
             edit_url,
             headers={
                 "Accept": "application/json",
