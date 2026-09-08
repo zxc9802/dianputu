@@ -12,3 +12,7 @@ frontend/.next
 frontend/tsconfig.tsbuildinfo
 __pycache__
 *.pyc
+
+# Server-side usage report outbox (contains employee IDs).
+.usage-outbox/
+**/.usage-outbox/
