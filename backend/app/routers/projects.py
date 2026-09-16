@@ -2138,7 +2138,7 @@ try:
             "created_at": datetime.now(UTC).isoformat(),
         }
         background_tasks.add_task(
-            run_style_job,
+            capture_usage_task(run_style_job),
             job_id,
             {
                 "kind": "plan_style",
@@ -2173,7 +2173,7 @@ try:
             "created_at": datetime.now(UTC).isoformat(),
         }
         background_tasks.add_task(
-            run_style_job,
+            capture_usage_task(run_style_job),
             job_id,
             {
                 "kind": "analyze_style_reference",
@@ -2207,7 +2207,7 @@ try:
             "created_at": datetime.now(UTC).isoformat(),
         }
         background_tasks.add_task(
-            run_style_job,
+            capture_usage_task(run_style_job),
             job_id,
             {
                 "kind": "plan_style_sample",

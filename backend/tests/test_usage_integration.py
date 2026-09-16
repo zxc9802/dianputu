@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -38,6 +39,43 @@ class ProviderUsageTests(unittest.IsolatedAsyncioTestCase):
 
 
 class SessionUsageTests(unittest.TestCase):
+    def test_deferred_style_jobs_keep_each_signed_owner_after_request_cleanup(self):
+        from app.routers import projects
+        from starlette.background import BackgroundTasks
+
+        app = FastAPI()
+        app.include_router(projects.router)
+        deferred = []
+        seen = []
+        job_ids = []
+
+        def defer(self, work, *args, **kwargs):
+            deferred.append((work, args, kwargs))
+
+        async def style_work(*args, **kwargs):
+            seen.append(usage.current_usage_user())
+            return {'source': 'test'}
+
+        async def run_deferred():
+            with usage.usage_user('unrelated-request'):
+                for work, args, kwargs in deferred:
+                    await work(*args, **kwargs)
+
+        with patch.dict(os.environ, {'MAIN_APP_URL': 'https://main.test', 'REQUIRE_MAIN_APP_SSO': 'true', 'DETAIL_IMAGE_AGENT_SESSION_SECRET': 'test-only-secret'}), patch.object(BackgroundTasks, 'add_task', defer), patch.object(projects, 'plan_custom_style', style_work), patch.object(projects, 'analyze_style_reference', style_work), patch.object(projects, 'generate_custom_style_sample', style_work):
+            with TestClient(app) as client:
+                for user_id in ['employee-a', 'employee-b']:
+                    cookie = build_session_cookie_value(token='verified-token', user={'id': user_id}, main_app_url='https://main.test')
+                    client.cookies.set('detail_image_agent_session', cookie)
+                    for route in ['plan-style', 'analyze-style-reference', 'plan-style-sample']:
+                        response = client.post(f'/api/projects/{route}/jobs', json={'style': {}, 'userId': 'attacker'})
+                        self.assertEqual(response.status_code, 200)
+                        job_ids.append(response.json()['job_id'])
+            self.assertIsNone(usage.current_usage_user())
+            asyncio.run(run_deferred())
+
+        self.assertEqual(seen, ['employee-a'] * 3 + ['employee-b'] * 3)
+        self.assertTrue(all(projects.STYLE_JOBS[job_id]['status'] == 'done' for job_id in job_ids))
+
     def test_signed_identity_ignores_body_identity_and_background_task_preserves_owner(self):
         from app.routers import projects
         app = FastAPI()
