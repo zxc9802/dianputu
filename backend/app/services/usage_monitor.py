@@ -70,7 +70,7 @@ def parse_usage(data: Any) -> dict[str, Any]:
         candidates = _count(gemini.get("candidatesTokenCount"))
         outputs = candidates + (thoughts or 0) if candidates is not None else None
     total = _count(usage.get("total_tokens"), gemini.get("totalTokenCount"))
-    if total is None and inputs is not None and outputs is not None:
+    if inputs is not None and outputs is not None:
         total = inputs + outputs
     image_counts = [_count(d.get("tokenCount")) for d in gemini.get("promptTokensDetails", []) if isinstance(d, dict) and d.get("modality") == "IMAGE"]
     image_input = _count(details.get("image_tokens"), usage.get("image_input_tokens"))
@@ -119,7 +119,12 @@ async def _deliver(event, settings) -> bool:
     import httpx
     async with httpx.AsyncClient(timeout=2, follow_redirects=False) as client:
         response = await client.post(settings["url"], headers={"x-usage-tool": "dianputu", "x-usage-secret": settings["secret"]}, json=event)
-        return response.is_success
+        if not response.is_success:
+            return False
+        try:
+            return _object(response.json()).get("success") is True
+        except ValueError:
+            return False
 
 
 async def drain_usage_outbox() -> None:
