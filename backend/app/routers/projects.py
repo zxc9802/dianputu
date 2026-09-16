@@ -1774,9 +1774,10 @@ try:
     from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
     from pydantic import BaseModel, Field
 
-    from app.dependencies.auth import require_app_user
+    from app.dependencies.auth import require_app_user, require_usage_context
+    from app.services.usage_monitor import capture_usage_task
 
-    router = APIRouter(prefix="/api/projects", tags=["projects"], dependencies=[Depends(require_app_user)])
+    router = APIRouter(prefix="/api/projects", tags=["projects"], dependencies=[Depends(require_app_user), Depends(require_usage_context)])
 
     class AnalyzeRequest(BaseModel):
         raw_text: str | None = None
@@ -2109,7 +2110,7 @@ try:
             "message": "等待开始解析",
             "created_at": datetime.now(UTC).isoformat(),
         }
-        background_tasks.add_task(run_analysis_job, job_id, payload)
+        background_tasks.add_task(capture_usage_task(run_analysis_job), job_id, payload)
         return {"job_id": job_id}
 
     @router.get("/analyze-materials/jobs/{job_id}")
@@ -2257,7 +2258,7 @@ try:
             "message": "等待开始生成",
             "created_at": datetime.now(UTC).isoformat(),
         }
-        background_tasks.add_task(run_generation_job, job_id, payload)
+        background_tasks.add_task(capture_usage_task(run_generation_job), job_id, payload)
         return {"job_id": job_id}
 
     @router.get("/generate/jobs/{job_id}")
@@ -2290,7 +2291,7 @@ try:
             "message": "等待开始微调",
             "created_at": datetime.now(UTC).isoformat(),
         }
-        background_tasks.add_task(run_edit_job, job_id, payload)
+        background_tasks.add_task(capture_usage_task(run_edit_job), job_id, payload)
         return {"job_id": job_id}
 
     @router.get("/edit-image/jobs/{job_id}")
