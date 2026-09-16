@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from app.services.usage_monitor import tracked_post
-
 from typing import Any
 
 from app.core.config import TextAnalysisSettings
@@ -39,10 +37,8 @@ async def call_text_model(settings: TextAnalysisSettings, messages: list[Message
         temperature=settings.temperature,
     )
     async with httpx.AsyncClient(timeout=120) as client:
-        response = await tracked_post(
-            client,
+        response = await client.post(
             settings.endpoint_url,
-            model=settings.model,
             headers={
                 "Accept": "application/json",
                 "Authorization": f"Bearer {settings.api_key}",

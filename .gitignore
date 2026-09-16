@@ -14,5 +14,3 @@ frontend/.next/
 frontend/tsconfig.tsbuildinfo
 
 自动生成店铺图前端设计
-# Durable usage metadata belongs on the deployment volume.
-data/usage-outbox/

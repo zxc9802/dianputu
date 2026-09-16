@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from fastapi import Depends, Request
-
-from app.services.usage_monitor import drain_usage_outbox, usage_user
+from fastapi import Request
 
 from app.services.app_session import (
     AppSession,
@@ -36,10 +34,3 @@ def require_app_user(request: Request) -> AppSessionUserSnapshot:
 
 def user_snapshot_dict(user: AppSessionUserSnapshot) -> dict[str, str]:
     return {key: value for key, value in asdict(user).items() if value}
-
-
-async def require_usage_context(user: AppSessionUserSnapshot = Depends(require_app_user)):
-    # Async dependency keeps ContextVar state in the request task, not the sync dependency threadpool.
-    with usage_user(user.user_id):
-        await drain_usage_outbox()
-        yield user

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from app.services.usage_monitor import tracked_post
-
 import base64
 from io import BytesIO
 import re
@@ -108,10 +106,8 @@ async def call_image_model(
             image=image,
         )
         async with httpx.AsyncClient(timeout=480) as client:
-            response = await tracked_post(
-                client,
+            response = await client.post(
                 settings.endpoint_url,
-                model=settings.model,
                 headers={
                     "Accept": "application/json",
                     "Authorization": f"Bearer {settings.api_key}",
@@ -138,10 +134,8 @@ async def call_image_model(
         response_format=settings.response_format,
     )
     async with httpx.AsyncClient(timeout=480) as client:
-        response = await tracked_post(
-            client,
+        response = await client.post(
             settings.endpoint_url,
-            model=settings.model,
             headers={
                 "Accept": "application/json",
                 "Authorization": f"Bearer {settings.api_key}",
@@ -252,10 +246,8 @@ async def _post_image_edit_files(
         data["response_format"] = settings.response_format
 
     async with httpx.AsyncClient(timeout=480) as client:
-        response = await tracked_post(
-            client,
+        response = await client.post(
             edit_url,
-            model=settings.model,
             headers={
                 "Accept": "application/json",
                 "Authorization": f"Bearer {settings.api_key}",
