@@ -28,6 +28,16 @@ class UsageMonitorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((usage['totalTokens'], usage['cachedInputTokens'], usage['imageInputTokens']), (120, 40, 30))
         gemini = m.parse_usage({'usageMetadata': {'promptTokenCount': 80, 'candidatesTokenCount': 5, 'thoughtsTokenCount': 3, 'promptTokensDetails': [{'modality': 'IMAGE', 'tokenCount': 50}]}})
         self.assertEqual((gemini['imageInputTokens'], gemini['outputTokens'], gemini['totalTokens']), (50, 8, 88))
+        self.assertEqual(m.parse_usage({'usage': {'input_tokens': 10, 'output_tokens': 5, 'total_tokens': 99}})['totalTokens'], 15)
+
+    async def test_delivery_requires_explicit_json_acknowledgement(self):
+        import httpx
+        m = self.module()
+        real_client = httpx.AsyncClient
+        for body in ['{"success":false}', '<html>Sign in</html>', '{}', '{"success":true}']:
+            with patch('httpx.AsyncClient', lambda **kwargs: real_client(transport=httpx.MockTransport(lambda request: httpx.Response(200, text=body)), **kwargs)):
+                accepted = await m._deliver({'requestId': 'test-id'}, {'url': 'https://main.test/api/sso/usage', 'secret': 'fake'})
+                self.assertEqual(accepted, body == '{"success":true}')
 
     async def test_durable_retry_same_id_no_sensitive_content_and_user_isolation(self):
         m = self.module()
